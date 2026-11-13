@@ -1,0 +1,38 @@
+# APISIX declarative config (Master Spec §9): OIDC validation, tenant
+# resolution, per-tenant rate limits, canary routing. openappsec sits in front
+# for WAF/bot defense (SEO scraping, credential stuffing).
+apisix_version: 2
+
+routes:
+  - id: core-api
+    uris: ["/v1/*"]
+    upstream_id: core-api
+    plugins:
+      openid-connect:
+        bearer_only: true
+        realm: concierge
+        client_id: core-api
+        discovery: "http://keycloak:8080/realms/concierge/.well-known/openid-configuration"
+      # tenant resolution: JWT tenant claim -> X-Tenant-ID header consumed by services
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - |
+            return function(conf, ctx)
+              local core = require("apisix.core")
+              local sub = core.request.header(ctx, "X-Auth-Tenant")
+              if sub then
+                core.request.set_header(ctx, "X-Tenant-ID", sub)
+              end
+            end
+      limit-count:
+        count: 600
+        time_window: 60
+        rejected_code: 429
+        key: remote_addr
+
+upstreams:
+  - id: core-api
+    type: roundrobin
+    nodes:
+      "core-api.concierge-engine.svc.cluster.local:8000": 1

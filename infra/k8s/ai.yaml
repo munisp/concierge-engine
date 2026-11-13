@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: concierge-agent
+  namespace: concierge-engine
+  labels: { app: concierge-agent }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: concierge-agent }
+  template:
+    metadata:
+      labels: { app: concierge-agent }
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "concierge-agent"
+    spec:
+      containers:
+        - name: concierge-agent
+          image: ghcr.io/munisp/concierge-engine/concierge-agent:latest
+          args: ["uvicorn", "concierge_agent.main:app", "--host", "0.0.0.0", "--port", "8100"]
+          ports: [{ containerPort: 8100 }]
+          env:
+            - name: CE_CORE_API_URL
+              value: "http://core-api:8000"
+            - name: CE_POLICY_ENGINE_URL
+              value: "http://policy-engine:8200"
+            - name: CE_MODEL_PROVIDER
+              value: "mock"   # set openai-compatible + CE_MODEL_BASE_URL for live inference
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whatsapp-adapter
+  namespace: concierge-engine
+  labels: { app: whatsapp-adapter }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: whatsapp-adapter }
+  template:
+    metadata:
+      labels: { app: whatsapp-adapter }
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "whatsapp-adapter"
+    spec:
+      containers:
+        - name: whatsapp-adapter
+          image: ghcr.io/munisp/concierge-engine/whatsapp-adapter:latest
+          args: ["uvicorn", "whatsapp_adapter.main:app", "--host", "0.0.0.0", "--port", "8110"]
+          ports: [{ containerPort: 8110 }]
+          env:
+            - name: CE_CORE_API_URL
+              value: "http://core-api:8000"
+            - name: CE_AGENT_URL
+              value: "http://concierge-agent:8100"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: concierge-agent
+  namespace: concierge-engine
+spec:
+  selector: { app: concierge-agent }
+  ports: [{ port: 8100, targetPort: 8100 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whatsapp-adapter
+  namespace: concierge-engine
+spec:
+  selector: { app: whatsapp-adapter }
+  ports: [{ port: 8110, targetPort: 8110 }]

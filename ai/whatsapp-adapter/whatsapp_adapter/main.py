@@ -115,3 +115,88 @@ async def _deliver(tenant_id: str, contact: str, body: str,
 @app.get("/v1/sandbox/outbox")
 def sandbox_outbox() -> dict:
     return {"sent": sandbox.sent}
+
+
+# ---------------------------------------------------------------------------
+# Meta Cloud API webhook (direct integration path).
+#
+# GET  — verification handshake: Meta probes with hub.mode/hub.verify_token/
+#        hub.challenge; we echo the challenge only on a token match.
+# POST — signed ingress: X-Hub-Signature-256 over the RAW body, verified
+#        before parsing. The tenant is resolved from the receiving
+#        phone_number_id (CE_META_TENANT_MAP), never from caller input.
+# ---------------------------------------------------------------------------
+
+META_APP_SECRET = os.getenv("CE_META_APP_SECRET", "")
+META_VERIFY_TOKEN = os.getenv("CE_META_VERIFY_TOKEN", "")
+
+
+def _meta_tenant_map() -> dict[str, str]:
+    raw = os.getenv("CE_META_TENANT_MAP", "")  # "phone_id:tenant_id,..."
+    out = {}
+    for pair in raw.split(","):
+        if ":" in pair:
+            phone_id, tenant_id = pair.split(":", 1)
+            out[phone_id.strip()] = tenant_id.strip()
+    return out
+
+
+@app.get("/webhooks/whatsapp/meta")
+async def meta_verify(request: Request):
+    from .meta import verify_challenge
+
+    params = request.query_params
+    challenge = verify_challenge(params.get("hub.mode"), params.get("hub.verify_token"),
+                                 params.get("hub.challenge"), META_VERIFY_TOKEN)
+    if challenge is None:
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse("forbidden", status_code=403)
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(challenge)
+
+
+@app.post("/webhooks/whatsapp/meta")
+async def meta_inbound(request: Request) -> dict[str, Any]:
+    from .meta import verify_meta_signature
+
+    body = await request.body()
+    if not verify_meta_signature(META_APP_SECRET, body,
+                                 request.headers.get("x-hub-signature-256", "")):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "invalid signature"}, status_code=403)
+
+    import json as _json
+
+    payload = _json.loads(body)
+    tenant_map = _meta_tenant_map()
+    processed = 0
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            phone_id = value.get("metadata", {}).get("phone_number_id", "")
+            tenant_id = tenant_of_phone(phone_id, tenant_map)
+            if not tenant_id:
+                continue
+            contacts = {c.get("wa_id"): c.get("profile", {}).get("name", "")
+                        for c in value.get("contacts", [])}
+            for msg in value.get("messages", []):
+                if msg.get("type") != "text":
+                    continue  # media/interactive replies: next iteration
+                contact = msg.get("from", "")
+                text = msg.get("text", {}).get("body", "")
+                if not contact or not text:
+                    continue
+                await inbound(WebhookMessage(
+                    tenant_id=tenant_id, contact=contact, text=text,
+                    external_ref=msg.get("id", ""),
+                    display_name=contacts.get(contact, "")))
+                processed += 1
+    return {"processed": processed}
+
+
+def tenant_of_phone(phone_id: str, tenant_map: dict[str, str]) -> str:
+    """phone_number_id -> tenant. Explicit map first, then the single-tenant
+    default for flagship deployments (CE_META_DEFAULT_TENANT)."""
+    if phone_id in tenant_map:
+        return tenant_map[phone_id]
+    return os.getenv("CE_META_DEFAULT_TENANT", "")

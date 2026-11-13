@@ -43,7 +43,16 @@ func (svc *PaymentService) CreatePaymentLink(ctx context.Context, tenantID, quot
 		State: "LINK_SENT", IdempotencyKey: idem, CreatedAt: svc.s.Now(),
 	}
 	// Hosted link is brand-skinned and PCI-safe; no card data through chat.
+	// With Stripe configured we mint a real Checkout Session; otherwise the
+	// deterministic sandbox URL keeps dev/CI network-free.
 	intent.HostedURL = fmt.Sprintf("https://pay.concierge.engine/p/%s", intent.ID)
+	if svc.s.Stripe.Enabled() {
+		hostedURL, sessionID, err := svc.s.Stripe.CreateCheckoutSession(ctx, intent)
+		if err != nil {
+			return nil, err
+		}
+		intent.HostedURL, intent.PSPRef = hostedURL, sessionID
+	}
 	if err := svc.s.Store.Payments().CreateIntent(ctx, intent); err != nil {
 		return nil, err
 	}

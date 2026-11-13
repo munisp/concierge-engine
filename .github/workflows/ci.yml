@@ -32,6 +32,9 @@ jobs:
       - run: cd ai/concierge-agent && python -m pytest tests -q
       - run: cd ai/whatsapp-adapter && python -m pytest tests -q
       - run: python -m pytest analytics/tests -q
+      # Temporal worker: the time-skipping test server downloads on first use.
+      - run: pip install -r workers/requirements.txt pytest-asyncio
+      - run: cd workers && python -m pytest -q
 
   web:
     runs-on: ubuntu-latest

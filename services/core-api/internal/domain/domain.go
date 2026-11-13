@@ -20,6 +20,9 @@ type Deps struct {
 	FieldKeyB64 string // CE_FIELD_KEY: VIP field-level encryption key
 	TripSecret  string // CE_TRIP_SECRET: chauffeur magic-link HMAC secret
 	PublicBase  string // public base URL for adapter callbacks
+	StripeKey   string // CE_STRIPE_KEY: secret key; empty = sandbox links
+	StripeBase  string // CE_STRIPE_BASE_URL override (tests / sandbox)
+	StripeWHSec string // CE_STRIPE_WEBHOOK_SECRET for signature verification
 	Now         func() time.Time
 }
 
@@ -41,6 +44,7 @@ type Services struct {
 	Audit         *AuditService
 	Policy        *PolicyClient
 	Ledger        *LedgerClient
+	Stripe        *StripeClient
 	Events        *EventBus
 	Cipher        *FieldCipher
 	now           func() time.Time
@@ -54,6 +58,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s := &Services{Store: st, now: now}
 	s.Policy = NewPolicyClient(deps.PolicyURL)
 	s.Ledger = NewLedgerClient(deps.LedgerURL)
+	s.Stripe = NewStripeClient(deps.StripeKey, deps.StripeBase, deps.StripeWHSec, now)
 	s.Events = &EventBus{outbox: st.Outbox(), attribution: st.Attribution()}
 	cipher, err := NewFieldCipher(deps.FieldKeyB64)
 	if err != nil {

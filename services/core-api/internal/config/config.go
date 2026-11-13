@@ -14,6 +14,9 @@ type Config struct {
 	FieldKeyB64      string // CE_FIELD_KEY: 32-byte base64, VIP field encryption
 	TripSecret       string // CE_TRIP_SECRET: chauffeur magic-link HMAC
 	PublicBase       string // public base URL for adapter callbacks
+	StripeKey        string // CE_STRIPE_KEY: secret key; empty = sandbox links
+	StripeBase       string // CE_STRIPE_BASE_URL override (tests/sandbox)
+	StripeWHSec      string // CE_STRIPE_WEBHOOK_SECRET: webhook signature
 }
 
 func getenv(k, def string) string {
@@ -36,5 +39,8 @@ func Load() Config {
 		FieldKeyB64:      getenv("CE_FIELD_KEY", ""),
 		TripSecret:       getenv("CE_TRIP_SECRET", ""),
 		PublicBase:       getenv("CE_PUBLIC_BASE_URL", "http://localhost:8000"),
+		StripeKey:        getenv("CE_STRIPE_KEY", ""),
+		StripeBase:       getenv("CE_STRIPE_BASE_URL", ""),
+		StripeWHSec:      getenv("CE_STRIPE_WEBHOOK_SECRET", ""),
 	}
 }

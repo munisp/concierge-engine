@@ -3,6 +3,7 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -52,6 +53,8 @@ func New(svc *domain.Services) http.Handler {
 	mux.HandleFunc("POST /v1/payments/links", h.createPaymentLink)
 	mux.HandleFunc("GET /v1/payments/intents/{id}", h.getIntent)
 	mux.HandleFunc("POST /v1/payments/webhooks/{psp}", h.pspWebhook)
+	// Signed Stripe webhook: tenant is taken from event metadata (tenant-middleware exempt).
+	mux.HandleFunc("POST /v1/payments/stripe/webhook", h.stripeWebhook)
 	mux.HandleFunc("GET /v1/payments/postings", h.listPostings)
 
 	// dispatch (M4)
@@ -100,6 +103,7 @@ func New(svc *domain.Services) http.Handler {
 	// partner payouts via Mojaloop saga (Phase 2, Master Spec section 11.3)
 	mux.HandleFunc("POST /v1/payouts", h.createPayout)
 	mux.HandleFunc("GET /v1/payouts", h.listPayouts)
+	mux.HandleFunc("GET /v1/payouts/{id}", h.getPayout)
 	mux.HandleFunc("POST /v1/payouts/{id}/quote", h.quotePayout)
 	mux.HandleFunc("POST /v1/payouts/{id}/execute", h.executePayout)
 	mux.HandleFunc("POST /v1/payouts/{id}/compensate", h.compensatePayout)
@@ -425,6 +429,39 @@ func (h *handlers) pspWebhook(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Payments.HandlePSPWebhook(r.Context(), tenantOf(r), body.IntentID, body.Event, body.PSPRef); err != nil {
 		httpx.WriteError(w, err)
 		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
+}
+
+// stripeWebhook ingests signed Stripe events. The signature is verified
+// against the raw body before anything is parsed; the tenant is routed from
+// the metadata CreateCheckoutSession attached, so a forged tenant header can
+// never redirect settlement.
+func (h *handlers) stripeWebhook(w http.ResponseWriter, r *http.Request) {
+	payload, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	if !domain.VerifyStripeSignature(r.Header.Get("Stripe-Signature"), payload,
+		h.svc.Stripe.WebhookSecret(), time.Now()) {
+		httpx.WriteError(w, httpx.ErrForbidden)
+		return
+	}
+	ev, err := domain.ParseStripeEvent(payload)
+	if err != nil || ev.TenantID == "" {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	switch ev.Type {
+	case "checkout.session.completed":
+		if err := h.svc.Payments.HandlePSPWebhook(r.Context(), ev.TenantID, ev.IntentID,
+			"checkout.session.completed", ev.SessionID); err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+	default:
+		// Unknown event kinds are acknowledged, not processed (forward-compat).
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
 }
@@ -830,6 +867,15 @@ func (h *handlers) createPayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, p)
+}
+
+func (h *handlers) getPayout(w http.ResponseWriter, r *http.Request) {
+	p, err := h.svc.Payouts.Get(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
 func (h *handlers) listPayouts(w http.ResponseWriter, r *http.Request) {

@@ -48,6 +48,9 @@ func main() {
 		FieldKeyB64: cfg.FieldKeyB64,
 		TripSecret:  cfg.TripSecret,
 		PublicBase:  cfg.PublicBase,
+		StripeKey:   cfg.StripeKey,
+		StripeBase:  cfg.StripeBase,
+		StripeWHSec: cfg.StripeWHSec,
 		Now:         time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {
@@ -55,6 +58,12 @@ func main() {
 	}
 	if cfg.TripSecret == "" {
 		log.Println("WARNING: CE_TRIP_SECRET not set — using dev chauffeur-link secret")
+	}
+	if cfg.StripeKey == "" {
+		log.Println("WARNING: CE_STRIPE_KEY not set — payment links use the deterministic sandbox URL")
+	}
+	if cfg.StripeKey != "" && cfg.StripeWHSec == "" {
+		log.Println("WARNING: CE_STRIPE_WEBHOOK_SECRET not set — Stripe webhooks will all be rejected")
 	}
 
 	srv := &http.Server{

@@ -20,6 +20,9 @@ run-ledger:
 run-mojaloop:
 	cd crates/mojaloop-adapter && cargo run
 
+run-worker:
+	cd workers && python -m temporal_worker.worker
+
 seo:
 	python3 scripts/build_seo_pages.py
 
@@ -38,6 +41,7 @@ test:
 	cd ai/concierge-agent && python -m pytest -q
 	cd ai/whatsapp-adapter && python -m pytest -q
 	python -m pytest analytics/tests -q
+	cd workers && python -m pytest -q
 
 build:
 	cd services/core-api && go build ./...

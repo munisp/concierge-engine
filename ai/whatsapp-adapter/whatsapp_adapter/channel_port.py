@@ -140,6 +140,9 @@ def adapter_for(cfg: BSPConfig, sandbox: Optional[SandboxAdapter] = None) -> Cha
         return sandbox
     if cfg.provider == "infobip":
         return InfobipAdapter()
+    if cfg.provider == "meta_direct":
+        from .meta import MetaCloudAdapter  # lazy: avoids a circular import
+        return MetaCloudAdapter()
     raise ValueError(f"unsupported BSP provider {cfg.provider!r}")
 
 

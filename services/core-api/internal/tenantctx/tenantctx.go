@@ -24,13 +24,15 @@ func WithTenant(ctx context.Context, tenantID string) context.Context {
 }
 
 // Middleware enforces presence of a tenant on all /v1/ routes except
-// platform-admin, health endpoints, and chauffeur trip links (token-authed:
-// the HMAC-signed token carries the tenant, verified in the trip handler).
+// platform-admin, health endpoints, chauffeur trip links (token-authed: the
+// HMAC-signed token carries the tenant), and the Stripe webhook (the tenant
+// rides in the HMAC-signed event metadata, never the caller's headers).
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/") &&
 			!strings.HasPrefix(r.URL.Path, "/v1/platform/") &&
-			!strings.HasPrefix(r.URL.Path, "/v1/trips/") {
+			!strings.HasPrefix(r.URL.Path, "/v1/trips/") &&
+			r.URL.Path != "/v1/payments/stripe/webhook" {
 			id := r.Header.Get("X-Tenant-ID")
 			if id == "" {
 				httpx.WriteError(w, httpx.ErrForbidden)

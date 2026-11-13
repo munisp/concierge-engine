@@ -12,3 +12,7 @@ No Phase-1 regret: each item has an explicit un-defer trigger.
 | OpenCTI threat-intel | Wazuh baseline covers Phase 1 | Phase 2–3 | Credible targeted-attack signals or government-tenant questionnaire | DEFERRED |
 | Self-hosted open-weight models | Hosted frontier for quality at launch | Phase 2–3 | Inference spend > $5–10k/mo steady, or tenant data-locality mandate | DEFERRED |
 | Partner-network routing, corporate accounts, Avinode, GDS | Vertical depth before breadth | Phase 2–3 | Taylor fleet >70% utilization; >=3 EA bookers; first blocked aviation/hotel itinerary | **PICKED UP (Phase 2)** — partners + corporate + Avinode port live; GDS pending first blocked itinerary |
+
+| Temporal saga binding | In-process domain orchestration covers Phase 1–2 volume | Phase 2 hardening | First multi-step money saga needing durable retries/compensation (payout saga §11.3) | **PICKED UP (hardening wave)** — `workers/temporal_worker` payout saga: signal + poll backstop, time-skipping tests |
+| BSP-only WhatsApp egress | Infobip covers launch volume | Phase 3 | Flagship volume where BSP markup > direct Meta cost | PARTIAL — `meta.py` direct Cloud API adapter + signed webhook ingress live; Infobip remains default |
+| Live PSP charges | Hosted-link capture suffices for pilot | Phase 2 hardening | First production payment | **PICKED UP (hardening wave)** — Stripe Checkout Sessions + signed webhook; sandbox fallback without CE_STRIPE_KEY |

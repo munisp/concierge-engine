@@ -78,4 +78,10 @@ fill-rate KPIs, corporate accounts + consolidated invoicing, charter supply
 port (Avinode-ready, mock fallback), lakehouse bronze/silver (`analytics/`),
 AI v2 (PII redaction before inference, shadow mode, judged evals).
 
+**Hardening wave.** Temporal payout-saga binding (`workers/` — durable
+quote/execute/await/compensate with signal + poll backstop, tested on the
+time-skipping server), live Stripe Checkout Sessions + HMAC-signed webhook
+ingress (sandbox fallback without keys), Meta Cloud API direct adapter with
+X-Hub-Signature-256 webhook verification and tenant routing by phone_number_id.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

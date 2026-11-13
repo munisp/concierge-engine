@@ -30,10 +30,10 @@ class OllamaProvider:
     """OpenAI-compatible chat completions against a local Ollama daemon."""
 
     def __init__(self, base: Optional[str] = None, model: Optional[str] = None,
-                 timeout: float = 30.0) -> None:
+                 timeout: float = 0) -> None:
         self.base = (base or config.OLLAMA_BASE_URL).rstrip("/")
         self.model = model or config.OLLAMA_MODEL
-        self.timeout = timeout
+        self.timeout = timeout or config.OLLAMA_TIMEOUT
         self._healthy_until = 0.0
         self._healthy = False
 
@@ -61,6 +61,9 @@ class OllamaProvider:
                 {"role": "user", "content": user},
             ],
             "stream": False,
+            # Structured tasks (triage/next-action) must not burn the token
+            # budget on qwen3 thinking traces; ignored by models without it.
+            "think": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }).encode()
         req = urllib.request.Request(
@@ -143,20 +146,31 @@ class ModelRouter:
     # ---- public task APIs (used by case management + the orchestrator)
 
     def triage(self, text: str) -> dict[str, Any]:
-        """Classify kind/priority/summary. LLM first, rules on any failure."""
+        """Classify kind/priority/summary. LLM first, rules on any failure.
+        Deterministic escalation: when the rules detect a safety/legal or
+        service-recovery signal (incident at P1/P2), their kind wins and
+        priority can only escalate — small models are observed to mis-kind
+        complaints as bookings (see docs/eval-qwen3-ladder.md)."""
         safe, mapping = prepare_for_inference(text)
+        rule = _rule_triage(text)
         if self.ollama.healthy():
             try:
                 raw = self.ollama.chat(TRIAGE_SYSTEM, safe, temperature=0.0, max_tokens=200)
                 parsed = _parse_json_object(raw)
                 if parsed and parsed.get("kind") in {"booking", "incident", "inquiry", "vip_request"} \
                         and parsed.get("priority") in {"P1", "P2", "P3", "P4"}:
+                    if rule["kind"] == "incident" and rule["priority"] in ("P1", "P2"):
+                        if parsed["kind"] != "incident" or parsed["priority"] > rule["priority"]:
+                            parsed["kind"] = "incident"
+                            parsed["priority"] = min(parsed["priority"], rule["priority"])
+                            parsed["reason"] = (parsed.get("reason", "") +
+                                                " [rules-override: safety/recovery signal]").strip()
                     parsed["engine"] = f"ollama/{self.ollama.model}"
                     parsed["redacted_kinds"] = sorted({m["kind"] for m in mapping})
                     return parsed
             except (InferenceError, ValueError):
                 pass  # fall through to rules
-        out = _rule_triage(text)
+        out = rule
         out["engine"] = "rules"
         out["redacted_kinds"] = sorted({m["kind"] for m in mapping})
         return out

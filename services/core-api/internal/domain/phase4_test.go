@@ -277,3 +277,60 @@ func TestCaseSimilarRecall(t *testing.T) {
 		t.Fatalf("no embeddings must mean no recall, got %+v, %v", out, err)
 	}
 }
+
+// ---- Phase 5: channel intake policy ------------------------------------
+
+func TestCaseIntakePolicy(t *testing.T) {
+	s := testServices(t, Deps{})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+
+	// Incident -> always opens, conversation linked.
+	r1, err := s.Cases.Intake(ctx, tenantID, "client-1", "My driver never showed up, I want a refund", "conv-1", "wa:m1")
+	if err != nil || !r1.Opened || r1.Case == nil {
+		t.Fatalf("incident must open: %+v, %v", r1, err)
+	}
+	if r1.Kind != model.CaseKindIncident || r1.Engine != "core-rules" {
+		t.Fatalf("triage evidence wrong: %+v", r1)
+	}
+	if r1.Case.ConversationID != "conv-1" {
+		t.Fatalf("conversation not linked: %+v", r1.Case)
+	}
+
+	// Plain inquiry -> stays in conversation flow, no case.
+	r2, err := s.Cases.Intake(ctx, tenantID, "client-1", "What are your opening hours?", "conv-2", "wa:m2")
+	if err != nil || r2.Opened || r2.Case != nil {
+		t.Fatalf("inquiry must not open: %+v, %v", r2, err)
+	}
+	if r2.Kind == "" || r2.Engine == "" {
+		t.Fatalf("triage evidence required even when skipped: %+v", r2)
+	}
+
+	// Routine P3 booking -> no case.
+	r3, err := s.Cases.Intake(ctx, tenantID, "client-1", "I would like to book a car for next Tuesday", "conv-3", "wa:m3")
+	if err != nil || r3.Opened {
+		t.Fatalf("P3 booking must not open: %+v, %v", r3, err)
+	}
+}
+
+func TestCaseIntakeIdempotentReplay(t *testing.T) {
+	s := testServices(t, Deps{})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+
+	r1, err := s.Cases.Intake(ctx, tenantID, "client-1", "There was a safety threat against my principal", "conv-9", "wa:dup")
+	if err != nil || !r1.Opened || r1.Case == nil {
+		t.Fatalf("first delivery opens: %+v, %v", r1, err)
+	}
+	r2, err := s.Cases.Intake(ctx, tenantID, "client-1", "There was a safety threat against my principal", "conv-9", "wa:dup")
+	if err != nil || !r2.Opened || r2.Case != nil {
+		t.Fatalf("replay reports opened without duplicating: %+v, %v", r2, err)
+	}
+	m, err := s.Cases.Metrics(ctx, tenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Open != 1 {
+		t.Fatalf("replay must not create a second case, metrics: %+v", m)
+	}
+}

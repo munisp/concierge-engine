@@ -145,3 +145,17 @@ def test_embed_against_fake_daemon(fake_ollama):
     # redaction applies to embeddings too — the daemon saw no raw email
     sent = json.dumps(fake.seen)
     assert "ada@example.com" not in sent
+
+
+def test_triage_rules_override_complaint_miskind(fake_ollama):
+    """Eval evidence (docs/eval-qwen3-ladder.md): small qwen3 models mis-kind
+    service-recovery complaints as bookings. The deterministic safety/recovery
+    signal must win over the model."""
+    provider, fake = fake_ollama
+    fake.queue.append({"choices": [{"message": {"content":
+        '{"kind":"booking","priority":"P3","summary":"late car report","reason":"standard booking"}'}}]})
+    router = ModelRouter(ollama=provider)
+    out = router.triage("My chauffeur was 40 minutes late and I want a refund")
+    assert out["kind"] == "incident" and out["priority"] == "P2"
+    assert "rules-override" in out["reason"]
+    assert out["engine"] == "ollama/qwen3:8b"  # provenance stays honest: model spoke, rules escalated

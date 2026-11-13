@@ -98,4 +98,12 @@ deterministic rule floor; next-generation case management on top of the CRM
 (AI-triaged cases with priority SLA clocks, state machine, tasks, timeline,
 engine-provenance metrics), console Cases page.
 
+**Phase 5 — delivered (see `docs/phase5.md`).** WhatsApp → case intake loop
+(`POST /v1/cases/intake` policy: incidents/VIP/P1-P2 open cases idempotently,
+routine messages stay conversational); gold-layer ML v1 — fitted retention
+curve for LTV, empirical-hazard survival model for churn, SPC pricing
+signals (stdlib, deterministic, model-labeled rows); real-model eval ladder
+(`docs/eval-qwen3-ladder.md`) with the `CE_OLLAMA_TIMEOUT` knob and thinking
+suppression for structured tasks.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

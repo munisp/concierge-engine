@@ -71,6 +71,22 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
         await client.post(f"/v1/conversations/{conversation['id']}/messages",
                           json={"author": "CLIENT", "body": msg.text})
 
+        # Case intake loop: triage policy in core-api decides whether this
+        # message warrants an accountable case (incidents, VIP, P1/P2).
+        # Idempotent per WhatsApp message id, so webhook redeliveries never
+        # double-open. Advisory — intake failure never breaks the message.
+        intake_result: dict[str, Any] = {}
+        try:
+            idem = f"wa:{msg.external_ref}" if msg.external_ref else _stable_idem(
+                msg.tenant_id, msg.contact, msg.text)
+            intake = await client.post("/v1/cases/intake", json={
+                "client_id": client_id, "conversation_id": conversation["id"],
+                "text": msg.text, "idempotency_key": idem})
+            intake.raise_for_status()
+            intake_result = intake.json()
+        except Exception:
+            intake_result = {"opened": False, "reason": "intake unavailable"}
+
     # Forward the turn to the AI concierge.
     async with httpx.AsyncClient(timeout=30.0) as http:
         turn = await http.post(f"{AGENT_URL}/v1/turns", json={
@@ -87,7 +103,16 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     if result.get("reply"):
         await _deliver(msg.tenant_id, msg.contact, result["reply"], None)
     return {"conversation_id": conversation["id"], "client_id": client_id,
-            "agent": result}
+            "agent": result, "intake": intake_result}
+
+
+def _stable_idem(tenant_id: str, contact: str, text: str) -> str:
+    """Deterministic idempotency key when the channel gave no message id:
+    same (tenant, contact, text) redelivered maps to the same key."""
+    import hashlib
+
+    digest = hashlib.sha256(f"{tenant_id}|{contact}|{text}".encode()).hexdigest()
+    return f"wa:auto:{digest[:24]}"
 
 
 @app.post("/v1/send")

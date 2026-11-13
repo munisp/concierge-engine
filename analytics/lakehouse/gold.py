@@ -1,10 +1,30 @@
-"""Gold layer (Phase 3, Master Spec §14 — "ML pricing/churn/LTV").
+"""Gold layer (Master Spec §14 — "ML pricing/churn/LTV").
 
-v0 is deliberately heuristic, deterministic and explainable — every output
-carries the rule that produced it, so pricing/churn decisions remain
-auditable (§13) and the AI autonomy dial contract (raise only on eval
-evidence) is respected. Trained models replace these rules only after the
-eval harness demonstrates lift; the interface stays identical.
+v1 replaces the Phase-3 flat heuristics with probabilistic models fitted
+from the event stream, stdlib-only and fully deterministic (no RNG — model
+parameters are closed-form estimates from the data, so CI needs no GPU and
+results are reproducible byte-for-byte):
+
+- **LTV** — smoothed empirical retention curve (Kaplan-Meier style): the
+  per-tenant continuation probabilities r_k = P(client reaches booking
+  k+1 | reached k), Laplace-smoothed and shrunk toward the platform curve
+  for thin tenants. Expected future bookings per client = sum over the
+  4-booking horizon of the chained continuation probabilities. This is
+  strictly richer than v0's flat repeat_prob: a client at booking 4 in a
+  tenant where veterans keep booking scores higher than a one-timer.
+- **Churn** — empirical-hazard survival model: pool observed inter-booking
+  gaps per tenant, build the survival curve S(d) = P(gap > d), then score
+  each client at their cadence-adjusted silence: clients who book 2x
+  faster than the tenant median get penalized 2x faster. Thin tenants fall
+  back to the v0 rule, labeled.
+- **Pricing** — statistical process control on the tenant's own daily
+  instant-share series (current 7-day mean vs trailing mean + 1 sigma)
+  instead of fixed 0.8/0.2 cutoffs; still bounded at ±5% per cycle and
+  never self-executing. Thin history falls back to the v0 absolute floors.
+
+Every row carries `model` (or `rule` when on a fallback) — the audit trail
+always knows what produced a number. The autonomy-dial contract is
+unchanged: these outputs advise humans (or the gated agent).
 
 Consumes: lakehouse/bronze (raw events), lakehouse/silver/daily_kpis.json
 Produces: lakehouse/gold/client_ltv.json, churn_risk.json,
@@ -40,15 +60,38 @@ def _client_events(events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
     return by_client
 
 
-def build_client_ltv(root: Path) -> dict[str, Any]:
-    """LTV per client = observed revenue + expected repeat revenue.
+def _retention_curve(counts: list[int], horizon: int) -> list[float]:
+    """Smoothed empirical continuation probabilities r_1..r_horizon from a
+    list of per-client booking counts (Kaplan-Meier style, Laplace
+    smoothing). r_k = (clients with > k bookings + 1) / (clients with >= k
+    bookings + 2)."""
+    curve = []
+    for k in range(1, horizon + 1):
+        ge = sum(1 for n in counts if n >= k)
+        gt = sum(1 for n in counts if n > k)
+        curve.append((gt + 1) / (ge + 2) if ge else 0.5)
+    return curve
 
-    expected = avg_booking_value * repeat_probability * horizon_bookings,
-    where repeat_probability is the fraction of the tenant's clients with
-    >1 booking (network-wide cold start: per-tenant, falling back to 0.25
-    for single-booking-only tenants). Rule labels make every number
-    traceable.
-    """
+
+def _expected_future_bookings(n: int, curve: list[float], horizon: int) -> float:
+    """E[future bookings in horizon] for a client at n bookings: chained
+    continuation probabilities from their current position on the curve.
+    Beyond the fitted range the curve's last value persists."""
+    total, cont = 0.0, 1.0
+    for j in range(horizon):
+        k = n + j  # index of the continuation prob needed (r_k: reach k+1 | reached k)
+        r = curve[min(k, len(curve)) - 1] if k >= 1 else curve[0]
+        cont *= r
+        total += cont
+    return total
+
+
+def build_client_ltv(root: Path) -> dict[str, Any]:
+    """LTV per client = observed revenue + expected repeat revenue, where the
+    expectation comes from the tenant's smoothed retention curve shrunk
+    toward the platform curve (thin tenants) or a 0.25 flat prior (no
+    repeat data anywhere). Model label on every row."""
+    horizon = 4
     events = _load_bronze(root)
     by_client = _client_events(events)
     per_tenant_counts: dict[str, list[int]] = defaultdict(list)
@@ -56,10 +99,22 @@ def build_client_ltv(root: Path) -> dict[str, Any]:
         tenant = key.split("|", 1)[0]
         n = sum(1 for e in evs if e.get("event_type") == "booking.confirmed")
         per_tenant_counts[tenant].append(n)
-    repeat_prob = {
-        t: (sum(1 for n in ns if n > 1) / len(ns)) if ns else 0.0
-        for t, ns in per_tenant_counts.items()
-    }
+
+    platform_counts = [n for ns in per_tenant_counts.values() for n in ns]
+    platform_curve = _retention_curve(platform_counts, horizon)
+    curves: dict[str, list[float]] = {}
+    labels: dict[str, str] = {}
+    for tenant, ns in per_tenant_counts.items():
+        tc = _retention_curve(ns, horizon)
+        if len(ns) >= 5:
+            curves[tenant], labels[tenant] = tc, "km-retention/v1"
+        elif len(platform_counts) >= 5:
+            # Empirical-Bayes style shrinkage toward the platform curve.
+            w = len(ns) / (len(ns) + 5.0)
+            curves[tenant] = [w * a + (1 - w) * b for a, b in zip(tc, platform_curve)]
+            labels[tenant] = "km-retention/v1 (shrunk to platform)"
+        else:
+            curves[tenant], labels[tenant] = [0.25] * horizon, "prior:flat-0.25"
 
     rows = []
     for key, evs in sorted(by_client.items()):
@@ -70,29 +125,35 @@ def build_client_ltv(root: Path) -> dict[str, Any]:
         )
         bookings = sum(1 for e in evs if e.get("event_type") == "booking.confirmed")
         avg = revenue // bookings if bookings else revenue
-        rp = repeat_prob.get(tenant, 0.25) or 0.25
-        expected = int(avg * rp * 4)  # 4-booking horizon
+        efb = _expected_future_bookings(bookings, curves[tenant], horizon)
+        expected = int(avg * efb)
         rows.append({
             "tenant_id": tenant, "client_id": cid,
             "bookings": bookings, "revenue_minor": revenue,
-            "avg_booking_minor": avg, "repeat_probability": round(rp, 3),
+            "avg_booking_minor": avg,
+            "expected_future_bookings": round(efb, 3),
             "ltv_minor": revenue + expected,
-            "rule": "observed_revenue + avg*repeat_prob*4",
+            "model": labels[tenant],
         })
     return {"grain": "tenant|client", "rows": rows}
 
 
 def build_churn_risk(root: Path, today: date | None = None) -> dict[str, Any]:
-    """Churn risk from booking recency vs the client's own cadence.
+    """Churn risk from an empirical-hazard survival model over the tenant's
+    pooled inter-booking gaps.
 
-    risk = min(1, days_since_last / (2 * median_gap_days)); a client with a
-    single booking is scored against a 45-day default gap. Deterministic and
-    explainable; the risk tier drives concierge outreach playbooks.
-    """
+    S(d) = fraction of the tenant's observed gaps longer than d. A client's
+    silence is cadence-adjusted (silence * tenant_median / client_median)
+    so habitual fast bookers score risky sooner; risk = 1 - S(adjusted).
+    Tenants with < 8 pooled gaps fall back to the v0 recency rule
+    (labeled). Tiers drive concierge outreach playbooks: high >= 0.75,
+    medium >= 0.4."""
     today = today or date.today()
     by_client = _client_events(_load_bronze(root))
-    rows = []
-    for key, evs in sorted(by_client.items()):
+
+    per_client: dict[str, dict[str, Any]] = {}
+    tenant_gaps: dict[str, list[int]] = defaultdict(list)
+    for key, evs in by_client.items():
         tenant, cid = key.split("|", 1)
         days = []
         for e in evs:
@@ -105,64 +166,106 @@ def build_churn_risk(root: Path, today: date | None = None) -> dict[str, Any]:
         if not days:
             continue
         gaps = [max((b - a).days, 1) for a, b in zip(days, days[1:])]
-        typical = statistics.median(gaps) if gaps else 45
+        tenant_gaps[tenant].extend(gaps)
+        per_client[key] = {
+            "tenant": tenant, "cid": cid, "days": days,
+            "typical": statistics.median(gaps) if gaps else None,
+        }
+
+    tenant_medians = {t: statistics.median(g) for t, g in tenant_gaps.items() if g}
+
+    rows = []
+    for key, info in sorted(per_client.items()):
+        tenant, cid, days = info["tenant"], info["cid"], info["days"]
+        gaps = tenant_gaps[tenant]
         since = max((today - days[-1]).days, 0)
-        risk = min(1.0, since / (2 * typical))
+        typical = info["typical"] if info["typical"] is not None else tenant_medians.get(tenant, 45)
+        if len(gaps) >= 8:
+            median_gap = tenant_medians[tenant]
+            adjusted = since * (median_gap / typical) if typical else since
+            # 1 - S(adjusted): fraction of pooled gaps the silence has outlasted
+            risk = sum(1 for g in gaps if g <= adjusted) / len(gaps)
+            model = "empirical-hazard/v1"
+        else:
+            risk = min(1.0, since / (2 * typical))
+            model = "rule:min(1, days_since / (2*median_gap))"
+        risk = round(min(1.0, risk), 3)
         tier = "high" if risk >= 0.75 else "medium" if risk >= 0.4 else "low"
         rows.append({
             "tenant_id": tenant, "client_id": cid,
             "days_since_last_booking": since, "typical_gap_days": typical,
-            "churn_risk": round(risk, 3), "tier": tier,
-            "rule": "min(1, days_since / (2*median_gap))",
+            "churn_risk": risk, "tier": tier,
+            "model": model,
         })
     return {"grain": "tenant|client", "rows": rows}
 
 
 def build_pricing_suggestions(root: Path) -> dict[str, Any]:
-    """Pricing suggestions from silver daily KPIs — bounded nudges only.
+    """Pricing suggestions from silver daily KPIs — bounded nudges only
+    (±5% max per cycle, never self-executing; a human or the
+    autonomy-dial-gated agent applies them).
 
-    Rules (all ±5% max per cycle, never self-executing — a human or the
-    autonomy-dial-gated agent applies them):
-      * instant_share >= 0.8 and partner_fill >= 0.5  -> demand healthy: +5%
-      * instant_share <= 0.2                          -> catalog not
-        auto-quotable enough: review catalog, no price move
-      * partner_fill <= 0.2                           -> supply thin:
-        raise partner margin, not client price
-    """
+    Demand signal is statistical process control on the tenant's own daily
+    instant-share series: the trailing 7-day mean is compared against the
+    prior history's mean + 1 sigma, so each tenant is judged against its
+    own baseline rather than a one-size-fits-all 0.8 cutoff. Tenants with
+    < 10 days of quote history fall back to the v0 absolute floors
+    (labeled). Supply-side partner-fill checks are unchanged (thin supply
+    is a structural fact, not a trend)."""
     silver_path = root / "silver" / "daily_kpis.json"
     if not silver_path.exists():
         return {"grain": "tenant", "rows": []}
     silver = json.loads(silver_path.read_text())
 
-    agg: dict[str, dict[str, Any]] = defaultdict(lambda: {
-        "instant": 0, "human": 0, "partner": 0, "fleet": 0, "days": 0,
-    })
+    days_by_tenant: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in silver.get("rows", []):
-        a = agg[r["tenant_id"]]
-        a["instant"] += r["quotes_instant"]
-        a["human"] += r["quotes_human"]
-        a["partner"] += r["assignments_partner"]
-        a["fleet"] += r["assignments_fleet"]
-        a["days"] += 1
+        days_by_tenant[r["tenant_id"]].append(r)
 
     rows = []
-    for tenant, a in sorted(agg.items()):
-        quotes = a["instant"] + a["human"]
-        assigns = a["partner"] + a["fleet"]
-        instant_share = a["instant"] / quotes if quotes else 0.0
-        fill = a["partner"] / assigns if assigns else 0.0
-        if quotes >= 10 and instant_share >= 0.8 and fill >= 0.5:
-            rows.append({"tenant_id": tenant, "action": "raise_price", "pct": 5,
-                         "rule": "instant_share>=0.8 & partner_fill>=0.5",
-                         "instant_share": round(instant_share, 3), "partner_fill": round(fill, 3)})
-        elif quotes >= 10 and instant_share <= 0.2:
-            rows.append({"tenant_id": tenant, "action": "review_catalog", "pct": 0,
-                         "rule": "instant_share<=0.2",
-                         "instant_share": round(instant_share, 3), "partner_fill": round(fill, 3)})
-        elif assigns >= 10 and fill <= 0.2:
-            rows.append({"tenant_id": tenant, "action": "raise_partner_margin", "pct": 5,
-                         "rule": "partner_fill<=0.2",
-                         "instant_share": round(instant_share, 3), "partner_fill": round(fill, 3)})
+    for tenant, ds in sorted(days_by_tenant.items()):
+        ds.sort(key=lambda r: r["day"])
+        quotes = sum(r["quotes_instant"] + r["quotes_human"] for r in ds)
+        assigns = sum(r["assignments_partner"] + r["assignments_fleet"] for r in ds)
+        partner = sum(r["assignments_partner"] for r in ds)
+        instant = sum(r["quotes_instant"] for r in ds)
+        fill = partner / assigns if assigns else 0.0
+        instant_share = instant / quotes if quotes else 0.0
+        ctx = {"instant_share": round(instant_share, 3), "partner_fill": round(fill, 3)}
+
+        # Daily instant-share series for days that had any quotes.
+        series = [
+            r["quotes_instant"] / (r["quotes_instant"] + r["quotes_human"])
+            for r in ds if r["quotes_instant"] + r["quotes_human"] > 0
+        ]
+        action = None
+        model = ""
+        if len(series) >= 10:
+            recent, hist = series[-7:], series[:-7]
+            if hist:
+                mu = statistics.mean(hist)
+                sigma = statistics.stdev(hist) if len(hist) > 1 else 0.0
+                recent_mu = statistics.mean(recent)
+                ctx["recent_7d_share"] = round(recent_mu, 3)
+                ctx["baseline_mu"] = round(mu, 3)
+                if recent_mu >= mu + max(sigma, 0.05) and fill >= 0.5:
+                    action, pct = "raise_price", 5
+                    model = "spc/v1: 7d share >= baseline + max(1sigma, 0.05) & fill>=0.5"
+                elif recent_mu <= mu - max(sigma, 0.05):
+                    action, pct = "review_catalog", 0
+                    model = "spc/v1: 7d share <= baseline - max(1sigma, 0.05)"
+        else:
+            if quotes >= 10 and instant_share >= 0.8 and fill >= 0.5:
+                action, pct = "raise_price", 5
+                model = "rule:instant_share>=0.8 & partner_fill>=0.5 (thin history)"
+            elif quotes >= 10 and instant_share <= 0.2:
+                action, pct = "review_catalog", 0
+                model = "rule:instant_share<=0.2 (thin history)"
+        if action is None and assigns >= 10 and fill <= 0.2:
+            action, pct = "raise_partner_margin", 5
+            model = "rule:partner_fill<=0.2"
+        if action:
+            rows.append({"tenant_id": tenant, "action": action, "pct": pct,
+                         "model": model, **ctx})
     return {"grain": "tenant", "rows": rows}
 
 

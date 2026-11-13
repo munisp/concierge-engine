@@ -157,8 +157,13 @@ func (svc *CaseService) Open(ctx context.Context, tenantID, clientID, title, tex
 	if title == "" || text == "" {
 		return nil, httpx.ErrValidation
 	}
-	now := svc.s.Now()
 	kind, priority, summary, engine := svc.triage(ctx, text)
+	return svc.openTriaged(ctx, tenantID, clientID, title, idem, kind, priority, summary, engine)
+}
+
+// openTriaged persists a case from an already-computed triage result.
+func (svc *CaseService) openTriaged(ctx context.Context, tenantID, clientID, title, idem, kind, priority, summary, engine string) (*model.Case, error) {
+	now := svc.s.Now()
 	c := &model.Case{
 		ID: NewID(), TenantID: tenantID, ClientID: clientID, Title: title,
 		Kind: kind, Priority: priority, State: model.CaseOpen,
@@ -177,6 +182,68 @@ func (svc *CaseService) Open(ctx context.Context, tenantID, clientID, title, tex
 		_ = svc.s.Store.Embeddings().StoreEmbedding(ctx, tenantID, c.ID, emb)
 	}
 	return c, nil
+}
+
+// IntakeResult reports an automated intake decision: whether the inbound
+// text became a case, plus the triage evidence either way.
+type IntakeResult struct {
+	Opened   bool        `json:"opened"`
+	Case     *model.Case `json:"case,omitempty"`
+	Kind     string      `json:"kind"`
+	Priority string      `json:"priority"`
+	Engine   string      `json:"engine"`
+	Reason   string      `json:"reason"`
+}
+
+// caseIntakeKinds always warrant a case regardless of priority.
+var caseIntakeKinds = map[string]bool{
+	model.CaseKindIncident: true, model.CaseKindVIP: true,
+}
+
+// Intake applies the channel-intake policy: triage once, then open a case
+// only when the message warrants accountable follow-up — incidents and VIP
+// requests always; anything at P1/P2 (time-critical, service recovery);
+// plain inquiries and routine P3/P4 bookings stay in the conversation flow
+// and do NOT create cases. Idempotent per (tenant, idem) so redelivered
+// channel webhooks never double-open. conversationID links the case back
+// to the CRM conversation spine.
+func (svc *CaseService) Intake(ctx context.Context, tenantID, clientID, text, conversationID, idem string) (*IntakeResult, error) {
+	if clientID == "" || text == "" {
+		return nil, httpx.ErrValidation
+	}
+	kind, priority, summary, engine := svc.triage(ctx, text)
+	res := &IntakeResult{Kind: kind, Priority: priority, Engine: engine}
+	if !caseIntakeKinds[kind] && priority != "P1" && priority != "P2" {
+		res.Reason = "routine message — stays in conversation flow"
+		return res, nil
+	}
+	res.Reason = "warrants accountable follow-up"
+	title := summary
+	if title == "" {
+		title = text
+	}
+	if len(title) > 80 {
+		title = title[:80]
+	}
+	c, err := svc.openTriaged(ctx, tenantID, clientID, title, idem, kind, priority, summary, engine)
+	if err == httpx.ErrConflict {
+		// Idempotent replay (channel webhook redelivery): the case already
+		// exists — report opened without duplicating.
+		res.Opened, res.Reason = true, "duplicate delivery — case already open"
+		return res, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if conversationID != "" {
+		linked, err := svc.Link(ctx, tenantID, c.ID, "", "", conversationID)
+		if err != nil {
+			return nil, err
+		}
+		c = linked
+	}
+	res.Opened, res.Case = true, c
+	return res, nil
 }
 
 // slaFor resolves the SLA clock: tenant override (SLAConfig.CaseSLAHours)

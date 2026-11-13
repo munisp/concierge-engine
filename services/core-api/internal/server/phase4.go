@@ -13,6 +13,7 @@ import (
 
 func (h *handlers) registerPhase4(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/cases", h.openCase)
+	mux.HandleFunc("POST /v1/cases/intake", h.intakeCase)
 	mux.HandleFunc("GET /v1/cases", h.listCases)
 	mux.HandleFunc("GET /v1/cases/metrics", h.caseMetrics)
 	mux.HandleFunc("GET /v1/cases/{id}", h.getCase)
@@ -47,6 +48,30 @@ func (h *handlers) openCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, c)
+}
+
+// intakeCase is the channel-facing policy endpoint: triage the inbound
+// message and open a case only when it warrants accountable follow-up.
+// Used by the WhatsApp adapter (and any future channel) — idempotent per
+// idempotency key so webhook redeliveries never double-open.
+func (h *handlers) intakeCase(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ClientID       string `json:"client_id"`
+		ConversationID string `json:"conversation_id"`
+		Text           string `json:"text"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	res, err := h.svc.Cases.Intake(r.Context(), tenantOf(r), body.ClientID,
+		body.Text, body.ConversationID, body.IdempotencyKey)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *handlers) listCases(w http.ResponseWriter, r *http.Request) {

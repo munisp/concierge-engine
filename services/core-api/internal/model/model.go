@@ -13,7 +13,13 @@ type Tenant struct {
 	SLAConfig       SLAConfig      `json:"sla_config"`
 	AutonomyDial    int            `json:"autonomy_dial"` // 0 draft-only .. 3 full-auto
 	Tier2LimitMinor int64          `json:"tier2_limit_minor"`
-	CreatedAt       time.Time      `json:"created_at"`
+	// Phase 3: data residency (§13 regional residency — EU primary, UAE
+	// option) and cross-tenant referral opt-in (network effects require
+	// explicit consent per tenant).
+	Region           string    `json:"region"` // EU (default) | UAE
+	AcceptsReferrals bool      `json:"accepts_referrals"`
+	ReferralFeePct   float64   `json:"referral_fee_pct,omitempty"` // default 0.10
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type PricingRules struct {

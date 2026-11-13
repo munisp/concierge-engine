@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strconv"
 	"time"
 
 	"concierge-engine/services/core-api/internal/model"
@@ -12,18 +13,21 @@ import (
 )
 
 type Deps struct {
-	PolicyURL   string
-	LedgerURL   string
-	MojaloopURL string // Rust FSPIOP adapter (Phase 2)
-	AvinodeURL  string // charter supply adapter (Phase 2); empty = disabled
-	AvinodeKey  string
-	FieldKeyB64 string // CE_FIELD_KEY: VIP field-level encryption key
-	TripSecret  string // CE_TRIP_SECRET: chauffeur magic-link HMAC secret
-	PublicBase  string // public base URL for adapter callbacks
-	StripeKey   string // CE_STRIPE_KEY: secret key; empty = sandbox links
-	StripeBase  string // CE_STRIPE_BASE_URL override (tests / sandbox)
-	StripeWHSec string // CE_STRIPE_WEBHOOK_SECRET for signature verification
-	Now         func() time.Time
+	PolicyURL     string
+	LedgerURL     string
+	MojaloopURL   string // Rust FSPIOP adapter (Phase 2)
+	AvinodeURL    string // charter supply adapter (Phase 2); empty = disabled
+	AvinodeKey    string
+	FieldKeyB64   string // CE_FIELD_KEY: VIP field-level encryption key
+	TripSecret    string // CE_TRIP_SECRET: chauffeur magic-link HMAC secret
+	PublicBase    string // public base URL for adapter callbacks
+	StripeKey     string // CE_STRIPE_KEY: secret key; empty = sandbox links
+	StripeBase    string // CE_STRIPE_BASE_URL override (tests / sandbox)
+	StripeWHSec   string // CE_STRIPE_WEBHOOK_SECRET for signature verification
+	AmadeusBase   string // CE_AMADEUS_BASE_URL (test.api.amadeus.com default)
+	AmadeusID     string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
+	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
+	Now           func() time.Time
 }
 
 type Services struct {
@@ -39,6 +43,11 @@ type Services struct {
 	Partners      *PartnerService
 	Corporate     *CorporateService
 	Payouts       *PayoutService
+	Webhooks      *WebhookService
+	ApiKeys       *ApiKeyService
+	Referrals     *ReferralService
+	GDS           *GDSService
+	InstantOn     *InstantOnService
 	Supply        *SupplyService
 	Trips         *TripService
 	Audit         *AuditService
@@ -83,6 +92,15 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Corporate = &CorporateService{s: s}
 	s.Payouts = NewPayoutService(s, NewMojaloopClient(deps.MojaloopURL), deps.PublicBase)
 	s.Supply = NewSupplyService(s, NewAvinodeAdapter(deps.AvinodeURL, deps.AvinodeKey))
+	s.Webhooks = NewWebhookService(s)
+	s.ApiKeys = &ApiKeyService{s: s}
+	s.Referrals = &ReferralService{s: s}
+	s.GDS = NewGDSService(s, NewAmadeusAdapter(deps.AmadeusBase, deps.AmadeusID, deps.AmadeusSecret))
+	s.InstantOn = &InstantOnService{s: s}
+	// Webhook fan-out hooks the event spine after outbox persistence.
+	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
+		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)
+	}
 	return s
 }
 
@@ -114,13 +132,20 @@ func NewID() string {
 type EventBus struct {
 	outbox      store.OutboxStore
 	attribution store.AttributionStore
+	// hook fans events out to webhook subscriptions (Phase 3). Optional so
+	// tests can use the bus without a webhook service.
+	hook func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any)
 }
 
 func (e *EventBus) Emit(ctx context.Context, tenantID, aggregate, aggregateID, eventType string, payload map[string]any) {
-	_ = e.outbox.Add(ctx, &model.OutboxEvent{
+	ev := &model.OutboxEvent{
 		TenantID: tenantID, Aggregate: aggregate, AggregateID: aggregateID,
 		EventType: eventType, Payload: payload,
-	})
+	}
+	_ = e.outbox.Add(ctx, ev)
+	if e.hook != nil {
+		e.hook(ctx, tenantID, eventType, strconv.FormatInt(ev.ID, 10), payload)
+	}
 }
 
 func (e *EventBus) Track(ctx context.Context, ev *model.AttributionEvent) {

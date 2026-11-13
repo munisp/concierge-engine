@@ -84,4 +84,12 @@ time-skipping server), live Stripe Checkout Sessions + HMAC-signed webhook
 ingress (sandbox fallback without keys), Meta Cloud API direct adapter with
 X-Hub-Signature-256 webhook verification and tenant routing by phone_number_id.
 
+**Phase 3 — delivered (see `docs/phase3.md`).** Public API + webhooks
+marketplace (`cek_` keys with scope enforcement; HMAC-signed at-least-once
+deliveries), cross-tenant referral network with ledger-settled commissions,
+GDS/hotels via Amadeus NDC (live-first, honest mock degrade, attach-rate
+tracking), ML v0 gold layer (LTV/churn/pricing heuristics with traceable
+rules), new-entrant instant-on, UAE residency, SOC 2 control mapping
+(`docs/soc2-control-map.md`).
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

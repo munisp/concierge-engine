@@ -119,6 +119,12 @@ func New(svc *domain.Services) http.Handler {
 	mux.HandleFunc("GET /v1/platform/outbox/unpublished", h.outboxUnpublished)
 	mux.HandleFunc("POST /v1/platform/outbox/published", h.outboxMarkPublished)
 
+	// Phase 3: public API keys, webhooks marketplace, referrals, GDS, instant-on
+	h.registerPhase3(mux)
+
+	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
+	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
+
 	return tenantctx.Middleware(mux)
 }
 

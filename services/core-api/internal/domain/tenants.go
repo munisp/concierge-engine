@@ -33,6 +33,17 @@ func (svc *TenantService) Create(ctx context.Context, t *model.Tenant) (*model.T
 	if t.Tier2LimitMinor == 0 {
 		t.Tier2LimitMinor = 50000
 	}
+	// Phase 3: regional residency (Master Spec §13). EU is the default home;
+	// UAE is the only other residency region currently offered.
+	if t.Region == "" {
+		t.Region = "EU"
+	}
+	if t.Region != "EU" && t.Region != "UAE" {
+		return nil, httpx.ErrValidation
+	}
+	if t.ReferralFeePct == 0 {
+		t.ReferralFeePct = 0.10 // network default; 0 means "unset", not "free"
+	}
 	t.CreatedAt = svc.s.Now()
 	if err := svc.s.Store.Tenants().Create(ctx, t); err != nil {
 		return nil, err

@@ -17,6 +17,9 @@ type Config struct {
 	StripeKey        string // CE_STRIPE_KEY: secret key; empty = sandbox links
 	StripeBase       string // CE_STRIPE_BASE_URL override (tests/sandbox)
 	StripeWHSec      string // CE_STRIPE_WEBHOOK_SECRET: webhook signature
+	AmadeusBase      string // CE_AMADEUS_BASE_URL: default test.api.amadeus.com
+	AmadeusID        string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
+	AmadeusSecret    string // CE_AMADEUS_CLIENT_SECRET
 }
 
 func getenv(k, def string) string {
@@ -42,5 +45,8 @@ func Load() Config {
 		StripeKey:        getenv("CE_STRIPE_KEY", ""),
 		StripeBase:       getenv("CE_STRIPE_BASE_URL", ""),
 		StripeWHSec:      getenv("CE_STRIPE_WEBHOOK_SECRET", ""),
+		AmadeusBase:      getenv("CE_AMADEUS_BASE_URL", ""),
+		AmadeusID:        getenv("CE_AMADEUS_CLIENT_ID", ""),
+		AmadeusSecret:    getenv("CE_AMADEUS_CLIENT_SECRET", ""),
 	}
 }

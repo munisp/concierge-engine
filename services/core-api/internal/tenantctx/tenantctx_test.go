@@ -1,0 +1,99 @@
+package tenantctx
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func okHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(FromContext(r.Context())))
+}
+
+func TestMiddlewareTenantHeader(t *testing.T) {
+	h := Middleware(http.HandlerFunc(okHandler))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/clients/x", nil)
+	req.Header.Set("X-Tenant-ID", "t-1")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "t-1" {
+		t.Fatalf("header auth failed: %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/clients/x", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("missing tenant must be 403, got %d", rec.Code)
+	}
+}
+
+func TestMiddlewareApiKeyAuthAndScopes(t *testing.T) {
+	SetKeyAuthenticator(func(_ context.Context, header string) (string, []string, error) {
+		switch header {
+		case "Bearer cek_readonly":
+			return "t-key", []string{"read"}, nil
+		case "Bearer cek_writer":
+			return "t-2", []string{"write"}, nil
+		}
+		return "", nil, errors.New("nope")
+	})
+	defer SetKeyAuthenticator(nil)
+
+	h := Middleware(http.HandlerFunc(okHandler))
+
+	// read-scoped key: GET allowed, POST rejected.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/catalog", nil)
+	req.Header.Set("Authorization", "Bearer cek_readonly")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "t-key" {
+		t.Fatalf("read GET must pass and resolve tenant, got %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/catalog", nil)
+	req.Header.Set("Authorization", "Bearer cek_readonly")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("read key mutating must be 403, got %d", rec.Code)
+	}
+
+	// write key implies read and permits mutations; tenant resolves from key.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/catalog", nil)
+	req.Header.Set("Authorization", "Bearer cek_writer")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "t-2" {
+		t.Fatalf("write key must pass and resolve tenant, got %d %q", rec.Code, rec.Body.String())
+	}
+
+	// webhook admin needs webhooks:manage.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/webhooks", nil)
+	req.Header.Set("Authorization", "Bearer cek_writer")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("webhook admin without webhooks:manage must be 403, got %d", rec.Code)
+	}
+
+	// bogus key rejected.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/catalog", nil)
+	req.Header.Set("Authorization", "Bearer cek_bogus")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("bogus key must be 403, got %d", rec.Code)
+	}
+
+	// platform routes stay open (no tenant required).
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/platform/tenants", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("platform route must not require tenant, got %d", rec.Code)
+	}
+}

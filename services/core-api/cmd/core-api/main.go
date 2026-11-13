@@ -40,18 +40,21 @@ func main() {
 	defer st.Close()
 
 	svc := domain.NewServices(st, domain.Deps{
-		PolicyURL:   cfg.PolicyEngineURL,
-		LedgerURL:   cfg.LedgerAdapterURL,
-		MojaloopURL: cfg.MojaloopURL,
-		AvinodeURL:  cfg.AvinodeURL,
-		AvinodeKey:  cfg.AvinodeKey,
-		FieldKeyB64: cfg.FieldKeyB64,
-		TripSecret:  cfg.TripSecret,
-		PublicBase:  cfg.PublicBase,
-		StripeKey:   cfg.StripeKey,
-		StripeBase:  cfg.StripeBase,
-		StripeWHSec: cfg.StripeWHSec,
-		Now:         time.Now,
+		PolicyURL:     cfg.PolicyEngineURL,
+		LedgerURL:     cfg.LedgerAdapterURL,
+		MojaloopURL:   cfg.MojaloopURL,
+		AvinodeURL:    cfg.AvinodeURL,
+		AvinodeKey:    cfg.AvinodeKey,
+		FieldKeyB64:   cfg.FieldKeyB64,
+		TripSecret:    cfg.TripSecret,
+		PublicBase:    cfg.PublicBase,
+		StripeKey:     cfg.StripeKey,
+		StripeBase:    cfg.StripeBase,
+		StripeWHSec:   cfg.StripeWHSec,
+		AmadeusBase:   cfg.AmadeusBase,
+		AmadeusID:     cfg.AmadeusID,
+		AmadeusSecret: cfg.AmadeusSecret,
+		Now:           time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {
 		log.Println("WARNING: CE_FIELD_KEY not set — VIP field-level encryption disabled (dev only)")
@@ -65,6 +68,15 @@ func main() {
 	if cfg.StripeKey != "" && cfg.StripeWHSec == "" {
 		log.Println("WARNING: CE_STRIPE_WEBHOOK_SECRET not set — Stripe webhooks will all be rejected")
 	}
+	if cfg.AmadeusID == "" {
+		log.Println("GDS: no Amadeus credentials — deterministic mock supply (dev/CI)")
+	}
+
+	// Phase 3: background webhook dispatcher (at-least-once delivery,
+	// exponential backoff). Runs in-process; the outbox stays the durable spine.
+	dispatchCtx, stopDispatch := context.WithCancel(context.Background())
+	defer stopDispatch()
+	go svc.Webhooks.RunDispatcher(dispatchCtx, 15*time.Second)
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,

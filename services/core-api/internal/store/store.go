@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"concierge-engine/services/core-api/internal/model"
 )
@@ -127,6 +128,36 @@ type AuditStore interface {
 	List(ctx context.Context, tenantID string, limit int) ([]model.AuditEntry, error)
 }
 
+// ------------------------------------------------------------- Phase 3 stores
+
+type ApiKeyStore interface {
+	Create(ctx context.Context, k *model.ApiKey) error
+	GetByPrefix(ctx context.Context, prefix string) (*model.ApiKey, error)
+	List(ctx context.Context, tenantID string) ([]model.ApiKey, error)
+	Revoke(ctx context.Context, tenantID, id string) error
+	TouchUsed(ctx context.Context, id string, at time.Time) error
+}
+
+type WebhookStore interface {
+	CreateSubscription(ctx context.Context, s *model.WebhookSubscription) error
+	GetSubscription(ctx context.Context, tenantID, id string) (*model.WebhookSubscription, error)
+	ListSubscriptions(ctx context.Context, tenantID string) ([]model.WebhookSubscription, error)
+	UpdateSubscription(ctx context.Context, s *model.WebhookSubscription) error
+	// Deliveries: due returns pending deliveries whose NextAttemptAt <= now.
+	EnqueueDelivery(ctx context.Context, d *model.WebhookDelivery) error
+	DueDeliveries(ctx context.Context, now time.Time, limit int) ([]model.WebhookDelivery, error)
+	UpdateDelivery(ctx context.Context, d *model.WebhookDelivery) error
+	ListDeliveries(ctx context.Context, tenantID string, limit int) ([]model.WebhookDelivery, error)
+}
+
+type ReferralStore interface {
+	Create(ctx context.Context, r *model.Referral) error
+	Get(ctx context.Context, tenantID, id string) (*model.Referral, error)
+	// List returns referrals where the tenant is referrer or receiver.
+	List(ctx context.Context, tenantID string) ([]model.Referral, error)
+	Update(ctx context.Context, r *model.Referral) error
+}
+
 type Store interface {
 	Tenants() TenantStore
 	Clients() ClientStore
@@ -144,5 +175,8 @@ type Store interface {
 	Corporate() CorporateStore
 	Payouts() PayoutStore
 	Audit() AuditStore
+	ApiKeys() ApiKeyStore
+	Webhooks() WebhookStore
+	Referrals() ReferralStore
 	Close()
 }

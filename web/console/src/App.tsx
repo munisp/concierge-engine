@@ -5,7 +5,9 @@ import Chauffeur from "./pages/Chauffeur";
 import Console from "./pages/Console";
 import Corporate from "./pages/Corporate";
 import Dispatch from "./pages/Dispatch";
+import Integrations from "./pages/Integrations";
 import Partners from "./pages/Partners";
+import Referrals from "./pages/Referrals";
 
 export default function App() {
   return (
@@ -16,7 +18,9 @@ export default function App() {
         <Link to="/console">Concierge console</Link>
         <Link to="/dispatch">Dispatch board</Link>
         <Link to="/partners">Partners</Link>
+        <Link to="/referrals">Referrals</Link>
         <Link to="/corporate">Corporate</Link>
+        <Link to="/integrations">Integrations</Link>
         <Link to="/admin">Admin</Link>
       </nav>
       <main>
@@ -26,7 +30,9 @@ export default function App() {
           <Route path="/console" element={<Console />} />
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/partners" element={<Partners />} />
+          <Route path="/referrals" element={<Referrals />} />
           <Route path="/corporate" element={<Corporate />} />
+          <Route path="/integrations" element={<Integrations />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/chauffeur" element={<Chauffeur />} />
         </Routes>

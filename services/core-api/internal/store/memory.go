@@ -42,6 +42,11 @@ type memory struct {
 	corporate     map[string]*model.CorporateAccount
 	invoices      map[string]*model.CorporateInvoice
 	invoiceIdem   map[string]string
+	apiKeys       map[string]*model.ApiKey
+	webhookSubs   map[string]*model.WebhookSubscription
+	webhookDlvs   map[string]*model.WebhookDelivery
+	referrals     map[string]*model.Referral
+	referralIdem  map[string]string
 	payouts       map[string]*model.Payout
 	payoutIdem    map[string]string
 	audit         []model.AuditEntry
@@ -73,6 +78,11 @@ func NewMemory() Store {
 		invoiceIdem:   map[string]string{},
 		payouts:       map[string]*model.Payout{},
 		payoutIdem:    map[string]string{},
+		apiKeys:       map[string]*model.ApiKey{},
+		webhookSubs:   map[string]*model.WebhookSubscription{},
+		webhookDlvs:   map[string]*model.WebhookDelivery{},
+		referrals:     map[string]*model.Referral{},
+		referralIdem:  map[string]string{},
 	}
 }
 
@@ -94,6 +104,9 @@ func (m *memory) Partners() PartnerStore           { return &memPartners{m} }
 func (m *memory) Corporate() CorporateStore        { return &memCorporate{m} }
 func (m *memory) Payouts() PayoutStore             { return &memPayouts{m} }
 func (m *memory) Audit() AuditStore                { return &memAudit{m} }
+func (m *memory) ApiKeys() ApiKeyStore             { return &memApiKeys{m} }
+func (m *memory) Webhooks() WebhookStore           { return &memWebhooks{m} }
+func (m *memory) Referrals() ReferralStore         { return &memReferrals{m} }
 
 // ------------------------------------------------------------- tenants
 type memTenants struct{ m *memory }

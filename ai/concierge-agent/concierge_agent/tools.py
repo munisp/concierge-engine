@@ -44,9 +44,13 @@ def idempotency_key(conversation_id: str, turn: int, tool: str) -> str:
 class ToolExecutor:
     """Executes tools against core-api with policy gating and full traces."""
 
-    def __init__(self, core_url: Optional[str] = None, policy_url: Optional[str] = None):
+    def __init__(self, core_url: Optional[str] = None, policy_url: Optional[str] = None,
+                 shadow: Optional[bool] = None):
         self.core = core_url or config.CORE_API_URL
         self.policy = policy_url or config.POLICY_ENGINE_URL
+        # Shadow mode (AI spec 7): read-only tools and escalation run for
+        # real; mutations and sends are recorded as shadowed, never executed.
+        self.shadow = config.SHADOW_MODE if shadow is None else shadow
         self.traces: list[dict[str, Any]] = []
 
     async def _policy_check(self, tenant_id: str, conversation_id: str, tool: str,
@@ -93,7 +97,17 @@ class ToolExecutor:
                                   verdict=verdict, data={"handoff_required": True,
                                                          "pending_action": {"tool": tool, "args": args}})
 
-        # 3. Execute against core-api (the same APIs the UI uses).
+        # 3. Shadow mode: record the would-be mutation, execute nothing.
+        if self.shadow and tool not in TIER_0 and tool != "escalate_to_human":
+            result = ToolResult(ok=True, verdict=verdict,
+                                data={"shadow": True, "tool": tool,
+                                      "note": "shadow mode: action recorded, not executed"})
+            self.traces.append({"tool": tool, "args": args, "turn": turn, "shadow": True,
+                                "verdict": verdict.model_dump() if verdict else None,
+                                "ok": True})
+            return result
+
+        # 4. Execute against core-api (the same APIs the UI uses).
         result = await self._dispatch(tenant_id, conversation_id, tool, args, turn)
         result.verdict = verdict
         self.traces.append({"tool": tool, "args": args, "turn": turn,

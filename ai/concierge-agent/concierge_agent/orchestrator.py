@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from . import config
+from .redact import prepare_for_inference
 from .reply_pipeline import run_pipeline
 from .tools import ToolExecutor
 
@@ -109,6 +110,14 @@ class Orchestrator:
         ctx.turn += 1
         actions: list[dict[str, Any]] = []
 
+        # PII redaction + untrusted-content delimiting BEFORE inference
+        # (AI spec 7 guardrails): the model never sees raw PII; tool calls
+        # still receive original values via ctx (phone anchors, etc.).
+        safe_text, redaction_map = prepare_for_inference(inbound_text)
+        if redaction_map:
+            actions.append({"redaction": "pii",
+                            "kinds": sorted({m["kind"] for m in redaction_map})})
+
         # Rate & budget caps: anomalies degrade to human-only (AI spec 4.1).
         if ctx.spend_cents > config.CONVERSATION_BUDGET_CENTS:
             return await self._escalate(ctx, TRIGGER_POLICY, "conversation budget exceeded", actions)
@@ -120,7 +129,7 @@ class Orchestrator:
             return await self._escalate(ctx, TRIGGER_SENTIMENT,
                                         "negative sentiment detected", actions)
 
-        intent = self._classify(inbound_text)
+        intent = self._classify(safe_text)
 
         # High-value verticals route to a human owner — AI drafts, human owns.
         if intent == "high_value_intent" or ctx.vip_flagged and intent == "booking_intent":

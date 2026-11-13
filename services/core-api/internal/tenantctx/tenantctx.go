@@ -24,10 +24,13 @@ func WithTenant(ctx context.Context, tenantID string) context.Context {
 }
 
 // Middleware enforces presence of a tenant on all /v1/ routes except
-// platform-admin and health endpoints.
+// platform-admin, health endpoints, and chauffeur trip links (token-authed:
+// the HMAC-signed token carries the tenant, verified in the trip handler).
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/v1/") && !strings.HasPrefix(r.URL.Path, "/v1/platform/") {
+		if strings.HasPrefix(r.URL.Path, "/v1/") &&
+			!strings.HasPrefix(r.URL.Path, "/v1/platform/") &&
+			!strings.HasPrefix(r.URL.Path, "/v1/trips/") {
 			id := r.Header.Get("X-Tenant-ID")
 			if id == "" {
 				httpx.WriteError(w, httpx.ErrForbidden)

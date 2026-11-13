@@ -45,10 +45,18 @@ func (svc *ClientService) Resolve(ctx context.Context, tenantID, phone, email, n
 }
 
 func (svc *ClientService) Get(ctx context.Context, tenantID, id string) (*model.Client, error) {
-	return svc.s.Store.Clients().Get(ctx, tenantID, id)
+	c, err := svc.s.Store.Clients().Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	// Sensitive read: audit-logged (Master Spec section 13).
+	svc.s.Audit.Log(ctx, tenantID, "api", "client.read", "client", id, nil)
+	return c, nil
 }
 
 // SavePreference stores a structured preference with consent provenance.
+// VIP clients get field-level encryption at rest (Master Spec section 13);
+// the returned copy is plaintext, the stored row carries enc:v1: ciphertext.
 func (svc *ClientService) SavePreference(ctx context.Context, tenantID, clientID, key, value, consentScope, sourceQuote, recordedBy string) (*model.Preference, error) {
 	if key == "" || value == "" {
 		return nil, httpx.ErrValidation
@@ -62,15 +70,42 @@ func (svc *ClientService) SavePreference(ctx context.Context, tenantID, clientID
 		ConsentScope: consentScope, SourceQuote: sourceQuote, RecordedBy: recordedBy,
 		RecordedAt: svc.s.Now(),
 	}
-	if err := svc.s.Store.Clients().SavePreference(ctx, p); err != nil {
+	stored := *p
+	if c, err := svc.s.Store.Clients().Get(ctx, tenantID, clientID); err == nil && c.VIPFlagged() && svc.s.Cipher.Enabled() {
+		enc, err := svc.s.Cipher.Encrypt(value)
+		if err != nil {
+			return nil, err // fail closed: never store VIP plaintext by accident
+		}
+		stored.Value = enc
+		stored.Encrypted = true
+	}
+	if err := svc.s.Store.Clients().SavePreference(ctx, &stored); err != nil {
 		return nil, err
 	}
-	svc.s.Events.Emit(ctx, tenantID, "client", clientID, "preference.saved", map[string]any{"key": key})
+	p.Encrypted = stored.Encrypted
+	svc.s.Events.Emit(ctx, tenantID, "client", clientID, "preference.saved",
+		map[string]any{"key": key, "encrypted": stored.Encrypted})
 	return p, nil
 }
 
 func (svc *ClientService) Preferences(ctx context.Context, tenantID, clientID string) ([]model.Preference, error) {
-	return svc.s.Store.Clients().Preferences(ctx, tenantID, clientID)
+	prefs, err := svc.s.Store.Clients().Preferences(ctx, tenantID, clientID)
+	if err != nil {
+		return nil, err
+	}
+	// Sensitive read: audit-logged; VIP values are decrypted for the caller.
+	svc.s.Audit.Log(ctx, tenantID, "api", "preferences.read", "client", clientID,
+		map[string]any{"count": len(prefs)})
+	for i := range prefs {
+		if prefs[i].Encrypted {
+			pt, err := svc.s.Cipher.Decrypt(prefs[i].Value)
+			if err != nil {
+				return nil, err // fail closed rather than serve ciphertext
+			}
+			prefs[i].Value = pt
+		}
+	}
+	return prefs, nil
 }
 
 // DeletePreferences implements the DSAR cascade for preference memory

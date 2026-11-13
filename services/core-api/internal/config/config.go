@@ -20,6 +20,7 @@ type Config struct {
 	AmadeusBase      string // CE_AMADEUS_BASE_URL: default test.api.amadeus.com
 	AmadeusID        string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
 	AmadeusSecret    string // CE_AMADEUS_CLIENT_SECRET
+	AgentURL         string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
 }
 
 func getenv(k, def string) string {
@@ -48,5 +49,6 @@ func Load() Config {
 		AmadeusBase:      getenv("CE_AMADEUS_BASE_URL", ""),
 		AmadeusID:        getenv("CE_AMADEUS_CLIENT_ID", ""),
 		AmadeusSecret:    getenv("CE_AMADEUS_CLIENT_SECRET", ""),
+		AgentURL:         getenv("CE_AGENT_URL", "http://localhost:8100"),
 	}
 }

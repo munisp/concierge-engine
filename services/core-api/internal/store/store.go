@@ -158,6 +158,23 @@ type ReferralStore interface {
 	Update(ctx context.Context, r *model.Referral) error
 }
 
+// ------------------------------------------------------------- Phase 4 stores
+
+// CaseStore persists the case-management aggregate. Create is idempotent on
+// (tenant, IdempotencyKey). Overdue lists open-state cases past their SLA.
+type CaseStore interface {
+	Create(ctx context.Context, c *model.Case) error
+	Get(ctx context.Context, tenantID, id string) (*model.Case, error)
+	Update(ctx context.Context, c *model.Case) error
+	List(ctx context.Context, tenantID, state, kind string) ([]model.Case, error)
+	Overdue(ctx context.Context, tenantID string, now time.Time) ([]model.Case, error)
+	AddTask(ctx context.Context, t *model.CaseTask) error
+	Tasks(ctx context.Context, tenantID, caseID string) ([]model.CaseTask, error)
+	UpdateTask(ctx context.Context, t *model.CaseTask) error
+	AddNote(ctx context.Context, n *model.CaseNote) error
+	Notes(ctx context.Context, tenantID, caseID string) ([]model.CaseNote, error)
+}
+
 type Store interface {
 	Tenants() TenantStore
 	Clients() ClientStore
@@ -178,5 +195,6 @@ type Store interface {
 	ApiKeys() ApiKeyStore
 	Webhooks() WebhookStore
 	Referrals() ReferralStore
+	Cases() CaseStore
 	Close()
 }

@@ -48,3 +48,11 @@ button.danger { background: #7a1f1f; }
 .board-event { font-family: monospace; font-size: 0.8rem; padding: 0.3rem 0;
   border-bottom: 1px dashed var(--line); }
 .error { color: #7a1f1f; font-size: 0.85rem; }
+.kpis { font-size: 0.9rem; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0.5rem 0.8rem; background: #fff; }
+.form-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+.form-row input { flex: 1; min-width: 160px; }
+.notice { border: 1px solid var(--accent); border-radius: 4px;
+  padding: 0.5rem 0.8rem; background: #fdf8ee; font-size: 0.9rem; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: #f6f3ec; }

@@ -47,6 +47,10 @@ type memory struct {
 	webhookDlvs   map[string]*model.WebhookDelivery
 	referrals     map[string]*model.Referral
 	referralIdem  map[string]string
+	cases         map[string]*model.Case
+	caseIdem      map[string]string
+	caseTasks     map[string]*model.CaseTask
+	caseNotes     map[string][]model.CaseNote
 	payouts       map[string]*model.Payout
 	payoutIdem    map[string]string
 	audit         []model.AuditEntry
@@ -83,6 +87,10 @@ func NewMemory() Store {
 		webhookDlvs:   map[string]*model.WebhookDelivery{},
 		referrals:     map[string]*model.Referral{},
 		referralIdem:  map[string]string{},
+		cases:         map[string]*model.Case{},
+		caseIdem:      map[string]string{},
+		caseTasks:     map[string]*model.CaseTask{},
+		caseNotes:     map[string][]model.CaseNote{},
 	}
 }
 
@@ -107,6 +115,7 @@ func (m *memory) Audit() AuditStore                { return &memAudit{m} }
 func (m *memory) ApiKeys() ApiKeyStore             { return &memApiKeys{m} }
 func (m *memory) Webhooks() WebhookStore           { return &memWebhooks{m} }
 func (m *memory) Referrals() ReferralStore         { return &memReferrals{m} }
+func (m *memory) Cases() CaseStore                 { return &memCases{m} }
 
 // ------------------------------------------------------------- tenants
 type memTenants struct{ m *memory }

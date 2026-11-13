@@ -54,6 +54,7 @@ func main() {
 		AmadeusBase:   cfg.AmadeusBase,
 		AmadeusID:     cfg.AmadeusID,
 		AmadeusSecret: cfg.AmadeusSecret,
+		AgentURL:      cfg.AgentURL,
 		Now:           time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {

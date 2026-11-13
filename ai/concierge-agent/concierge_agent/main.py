@@ -9,10 +9,12 @@ from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from .inference import ModelRouter
 from .orchestrator import Orchestrator, TurnContext
 
-app = FastAPI(title="concierge-agent", version="0.1.0")
+app = FastAPI(title="concierge-agent", version="0.2.0")
 orchestrator = Orchestrator()
+router = ModelRouter()
 
 
 class TurnRequest(BaseModel):
@@ -56,3 +58,45 @@ async def handle_turn(req: TurnRequest) -> dict:
 def traces() -> dict:
     # Every tool call: inputs, outputs, latency, policy verdicts (AI spec 3.2).
     return {"traces": orchestrator.tools.traces[-200:]}
+
+
+# ------------------------------------------------------------- case assist (Phase 4)
+# Deterministic contract for core-api's case management: the engine field
+# reports which path produced the answer (ollama/qwen or rules) so the audit
+# trail and evals stay honest about model provenance.
+
+class TriageRequest(BaseModel):
+    text: str
+
+
+class SummarizeRequest(BaseModel):
+    timeline: list[str]
+
+
+class NextActionRequest(BaseModel):
+    case_state: str
+    summary: str
+
+
+@app.post("/v1/ai/triage")
+def triage(req: TriageRequest) -> dict:
+    return router.triage(req.text)
+
+
+@app.post("/v1/ai/summarize")
+def summarize(req: SummarizeRequest) -> dict:
+    return {"summary": router.summarize(req.timeline)}
+
+
+@app.post("/v1/ai/next-action")
+def next_action(req: NextActionRequest) -> dict:
+    return router.next_action(req.case_state, req.summary)
+
+
+@app.get("/v1/ai/health")
+def ai_health() -> dict:
+    return {
+        "ollama": {"base": router.ollama.base, "model": router.ollama.model,
+                   "reachable": router.ollama.healthy()},
+        "fallback": "deterministic rules (always available)",
+    }

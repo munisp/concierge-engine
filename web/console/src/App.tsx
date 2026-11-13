@@ -1,6 +1,7 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import Admin from "./pages/Admin";
 import Capture from "./pages/Capture";
+import Cases from "./pages/Cases";
 import Chauffeur from "./pages/Chauffeur";
 import Console from "./pages/Console";
 import Corporate from "./pages/Corporate";
@@ -16,6 +17,7 @@ export default function App() {
         <span className="brand">Concierge Engine</span>
         <Link to="/capture">Book</Link>
         <Link to="/console">Concierge console</Link>
+        <Link to="/cases">Cases</Link>
         <Link to="/dispatch">Dispatch board</Link>
         <Link to="/partners">Partners</Link>
         <Link to="/referrals">Referrals</Link>
@@ -28,6 +30,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/capture" replace />} />
           <Route path="/capture" element={<Capture />} />
           <Route path="/console" element={<Console />} />
+          <Route path="/cases" element={<Cases />} />
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/partners" element={<Partners />} />
           <Route path="/referrals" element={<Referrals />} />

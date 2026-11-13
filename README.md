@@ -92,4 +92,10 @@ tracking), ML v0 gold layer (LTV/churn/pricing heuristics with traceable
 rules), new-entrant instant-on, UAE residency, SOC 2 control mapping
 (`docs/soc2-control-map.md`).
 
+**Phase 4 — delivered (see `docs/phase4.md`).** Self-hosted inference via
+Ollama (llama.cpp) serving Qwen with PII redaction before inference and a
+deterministic rule floor; next-generation case management on top of the CRM
+(AI-triaged cases with priority SLA clocks, state machine, tasks, timeline,
+engine-provenance metrics), console Cases page.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

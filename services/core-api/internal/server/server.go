@@ -122,6 +122,9 @@ func New(svc *domain.Services) http.Handler {
 	// Phase 3: public API keys, webhooks marketplace, referrals, GDS, instant-on
 	h.registerPhase3(mux)
 
+	// Phase 4: case management (CRM stays the identity spine; cases are the work)
+	h.registerPhase4(mux)
+
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
 

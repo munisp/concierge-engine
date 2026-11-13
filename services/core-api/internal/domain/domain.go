@@ -27,6 +27,7 @@ type Deps struct {
 	AmadeusBase   string // CE_AMADEUS_BASE_URL (test.api.amadeus.com default)
 	AmadeusID     string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
 	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
+	AgentURL      string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
 	Now           func() time.Time
 }
 
@@ -48,6 +49,7 @@ type Services struct {
 	Referrals     *ReferralService
 	GDS           *GDSService
 	InstantOn     *InstantOnService
+	Cases         *CaseService
 	Supply        *SupplyService
 	Trips         *TripService
 	Audit         *AuditService
@@ -97,6 +99,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Referrals = &ReferralService{s: s}
 	s.GDS = NewGDSService(s, NewAmadeusAdapter(deps.AmadeusBase, deps.AmadeusID, deps.AmadeusSecret))
 	s.InstantOn = &InstantOnService{s: s}
+	s.Cases = &CaseService{s: s, assist: NewCaseAssistClient(deps.AgentURL)}
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)

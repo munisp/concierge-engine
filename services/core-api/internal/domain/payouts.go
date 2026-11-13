@@ -167,7 +167,10 @@ func (svc *PayoutService) HandleCallback(ctx context.Context, tenantID, transfer
 	}
 	switch kind {
 	case "transfer.fulfilled":
-		return svc.settleFulfilled(ctx, p)
+		if err := svc.settleFulfilled(ctx, p); err != nil {
+			return nil, err
+		}
+		return p, nil
 	case "transfer.aborted", "transfer.timeout":
 		return svc.compensate(ctx, p, kind)
 	default:

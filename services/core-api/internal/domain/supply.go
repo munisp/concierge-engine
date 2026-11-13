@@ -17,15 +17,15 @@ import (
 
 // CharterOption is the normalized supply record the quote engine consumes.
 type CharterOption struct {
-	Source       string  `json:"source"`        // avinode | mock
-	OptionID     string  `json:"option_id"`     // external ref (empty-leg id / tail quote ref)
-	AircraftType string  `json:"aircraft_type"` // e.g. "Cessna Citation XLS"
-	From         string  `json:"from"`          // ICAO/IATA
-	To           string  `json:"to"`
-	DepartureAt  string  `json:"departure_at"`  // RFC3339
-	PriceMinor   int64   `json:"price_minor"`
-	Currency     string  `json:"currency"`
-	EmptyLeg     bool    `json:"empty_leg"`
+	Source       string `json:"source"`        // avinode | mock
+	OptionID     string `json:"option_id"`     // external ref (empty-leg id / tail quote ref)
+	AircraftType string `json:"aircraft_type"` // e.g. "Cessna Citation XLS"
+	From         string `json:"from"`          // ICAO/IATA
+	To           string `json:"to"`
+	DepartureAt  string `json:"departure_at"` // RFC3339
+	PriceMinor   int64  `json:"price_minor"`
+	Currency     string `json:"currency"`
+	EmptyLeg     bool   `json:"empty_leg"`
 }
 
 // CharterSupply is the adapter port. Implementations: AvinodeAdapter (live,

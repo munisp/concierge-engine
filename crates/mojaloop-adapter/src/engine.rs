@@ -53,7 +53,6 @@ pub struct Transfer {
 #[derive(Debug)]
 pub enum EngineError {
     QuoteNotFound,
-    QuoteExpired,
     InvalidTransition,
 }
 
@@ -114,7 +113,10 @@ impl Engine {
         let gross = (amount_minor as f64 * rate).round() as i64;
         let fees = std::cmp::max(100, gross * self.fx_bps / 10_000);
         let receive = gross - fees;
-        let key = format!("quote:{}:{}:{}:{}", payee_ref, amount_minor, currency, receive);
+        let key = format!(
+            "quote:{}:{}:{}:{}",
+            payee_ref, amount_minor, currency, receive
+        );
         let q = Quote {
             quote_id: deterministic_id("q", &key),
             payee_ref: payee_ref.to_string(),
@@ -186,7 +188,12 @@ impl Engine {
         event_id: &str,
         kind: &str,
     ) -> Result<(Transfer, bool), EngineError> {
-        if !self.seen_events.lock().unwrap().insert(event_id.to_string()) {
+        if !self
+            .seen_events
+            .lock()
+            .unwrap()
+            .insert(event_id.to_string())
+        {
             if let Some(t) = self.get(transfer_id) {
                 return Ok((t, false)); // duplicate event: replay-safe
             }
@@ -265,8 +272,12 @@ mod tests {
     fn transfer_idempotent_on_key() {
         let e = Engine::new(Duration::from_secs(900));
         let q = e.quote("fsiop-safari", 5000, "NGN");
-        let t1 = e.transfer(&q.quote_id, "payout:p1", "p1", "tenant", "http://core/cb").unwrap();
-        let t2 = e.transfer(&q.quote_id, "payout:p1", "p1", "tenant", "http://core/cb").unwrap();
+        let t1 = e
+            .transfer(&q.quote_id, "payout:p1", "p1", "tenant", "http://core/cb")
+            .unwrap();
+        let t2 = e
+            .transfer(&q.quote_id, "payout:p1", "p1", "tenant", "http://core/cb")
+            .unwrap();
         assert_eq!(t1.transfer_id, t2.transfer_id);
         assert!(t1.transfer_id.starts_with("tr-"));
     }
@@ -275,17 +286,25 @@ mod tests {
     fn callbacks_are_idempotent_and_absorbing() {
         let e = Engine::new(Duration::from_secs(900));
         let q = e.quote("fsiop-safari", 5000, "KES");
-        let t = e.transfer(&q.quote_id, "payout:p2", "p2", "tenant", "http://core/cb").unwrap();
+        let t = e
+            .transfer(&q.quote_id, "payout:p2", "p2", "tenant", "http://core/cb")
+            .unwrap();
 
-        let (t, is_new) = e.apply_callback(&t.transfer_id, "evt-1", "transfer.fulfilled").unwrap();
+        let (t, is_new) = e
+            .apply_callback(&t.transfer_id, "evt-1", "transfer.fulfilled")
+            .unwrap();
         assert!(is_new);
         assert_eq!(t.state, TransferState::Fulfilled);
 
         // Same event replayed: no-op.
-        let (_, is_new) = e.apply_callback(&t.transfer_id, "evt-1", "transfer.fulfilled").unwrap();
+        let (_, is_new) = e
+            .apply_callback(&t.transfer_id, "evt-1", "transfer.fulfilled")
+            .unwrap();
         assert!(!is_new);
         // Different event on terminal state: absorbing.
-        let (t, is_new) = e.apply_callback(&t.transfer_id, "evt-2", "transfer.aborted").unwrap();
+        let (t, is_new) = e
+            .apply_callback(&t.transfer_id, "evt-2", "transfer.aborted")
+            .unwrap();
         assert!(!is_new);
         assert_eq!(t.state, TransferState::Fulfilled);
     }
@@ -294,12 +313,17 @@ mod tests {
     fn sweep_times_out_stale_transfers() {
         let e = Engine::new(Duration::from_millis(0));
         let q = e.quote("fsiop-safari", 5000, "EUR");
-        let t = e.transfer(&q.quote_id, "payout:p3", "p3", "tenant", "http://core/cb").unwrap();
+        let t = e
+            .transfer(&q.quote_id, "payout:p3", "p3", "tenant", "http://core/cb")
+            .unwrap();
         std::thread::sleep(Duration::from_millis(2));
         let timed_out = e.sweep();
         assert_eq!(timed_out.len(), 1);
         assert_eq!(timed_out[0].transfer_id, t.transfer_id);
-        assert_eq!(e.get(&t.transfer_id).unwrap().state, TransferState::TimedOut);
+        assert_eq!(
+            e.get(&t.transfer_id).unwrap().state,
+            TransferState::TimedOut
+        );
         // Second sweep: nothing new.
         assert!(e.sweep().is_empty());
     }

@@ -16,6 +16,10 @@ func (svc *CatalogService) Add(ctx context.Context, c *model.CatalogService) (*m
 	if c.ID == "" {
 		c.ID = NewID()
 	}
+	// A service you add is live by default — deactivation is a separate,
+	// deliberate operation. Without this, POST /v1/catalog creates an entry
+	// that is invisible to the quote engine (List filters on Active).
+	c.Active = true
 	if err := svc.s.Store.Catalog().Add(ctx, c); err != nil {
 		return nil, err
 	}

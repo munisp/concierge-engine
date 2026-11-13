@@ -4,23 +4,23 @@ package model
 import "time"
 
 type Tenant struct {
-	ID               string         `json:"id"`
-	Slug             string         `json:"slug"`
-	Name             string         `json:"name"`
-	Archetype        string         `json:"archetype"` // flagship | smb | new_entrant
-	Brand            map[string]any `json:"brand"`
-	PricingRules     PricingRules   `json:"pricing_rules"`
-	SLAConfig        SLAConfig      `json:"sla_config"`
-	AutonomyDial     int            `json:"autonomy_dial"` // 0 draft-only .. 3 full-auto
-	Tier2LimitMinor  int64          `json:"tier2_limit_minor"`
-	CreatedAt        time.Time      `json:"created_at"`
+	ID              string         `json:"id"`
+	Slug            string         `json:"slug"`
+	Name            string         `json:"name"`
+	Archetype       string         `json:"archetype"` // flagship | smb | new_entrant
+	Brand           map[string]any `json:"brand"`
+	PricingRules    PricingRules   `json:"pricing_rules"`
+	SLAConfig       SLAConfig      `json:"sla_config"`
+	AutonomyDial    int            `json:"autonomy_dial"` // 0 draft-only .. 3 full-auto
+	Tier2LimitMinor int64          `json:"tier2_limit_minor"`
+	CreatedAt       time.Time      `json:"created_at"`
 }
 
 type PricingRules struct {
-	Currency          string  `json:"currency"`
-	DepositPct        float64 `json:"deposit_pct"`         // e.g. 0.30
-	QuoteTTLSeconds   int64   `json:"quote_ttl_seconds"`   // default 3600
-	PlatformFeePct    float64 `json:"platform_fee_pct"`    // take rate 0.02–0.05
+	Currency           string  `json:"currency"`
+	DepositPct         float64 `json:"deposit_pct"`       // e.g. 0.30
+	QuoteTTLSeconds    int64   `json:"quote_ttl_seconds"` // default 3600
+	PlatformFeePct     float64 `json:"platform_fee_pct"`  // take rate 0.02–0.05
 	PerKMAdjustmentPct float64 `json:"per_km_adjustment_pct"`
 }
 
@@ -29,7 +29,7 @@ type SLAConfig struct {
 }
 
 type Client struct {
-	ID          string            `json:"id"`
+	ID          string         `json:"id"`
 	TenantID    string         `json:"tenant_id"`
 	FullName    string         `json:"full_name,omitempty"`
 	Email       string         `json:"email,omitempty"`

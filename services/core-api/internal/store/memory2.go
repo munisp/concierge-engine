@@ -208,6 +208,7 @@ func (s *memPayouts) List(_ context.Context, tenantID string) ([]model.Payout, e
 
 // ------------------------------------------------------------- audit
 type memAudit struct{ m *memory }
+
 func (s *memAudit) Log(_ context.Context, e *model.AuditEntry) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()

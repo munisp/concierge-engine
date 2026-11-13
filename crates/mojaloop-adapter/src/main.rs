@@ -17,8 +17,7 @@ mod http_api;
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -42,7 +41,11 @@ async fn main() {
                 tick.tick().await;
                 for t in engine.sweep() {
                     engine
-                        .notify_core(&t, &format!("timeout:{}", t.transfer_id), "transfer.timeout")
+                        .notify_core(
+                            &t,
+                            &format!("timeout:{}", t.transfer_id),
+                            "transfer.timeout",
+                        )
                         .await;
                 }
             }
@@ -55,5 +58,7 @@ async fn main() {
         .expect("invalid listen address");
     tracing::info!(%addr, "mojaloop-adapter listening");
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
-    axum::serve(listener, http_api::router(engine)).await.expect("serve");
+    axum::serve(listener, http_api::router(engine))
+        .await
+        .expect("serve");
 }

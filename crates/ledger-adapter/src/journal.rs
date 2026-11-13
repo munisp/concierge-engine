@@ -41,7 +41,10 @@ impl Ledger for DevJournal {
         }
         let transfer_id = deterministic_id(&p.idempotency_key);
         {
-            let seen = self.seen.lock().map_err(|e| LedgerError::Backend(e.to_string()))?;
+            let seen = self
+                .seen
+                .lock()
+                .map_err(|e| LedgerError::Backend(e.to_string()))?;
             if seen.contains_key(&p.idempotency_key) {
                 return Ok(PostingResult {
                     transfer_id,
@@ -49,14 +52,21 @@ impl Ledger for DevJournal {
                 });
             }
         }
-        let mut seen = self.seen.lock().map_err(|e| LedgerError::Backend(e.to_string()))?;
+        let mut seen = self
+            .seen
+            .lock()
+            .map_err(|e| LedgerError::Backend(e.to_string()))?;
         seen.insert(p.idempotency_key.clone(), transfer_id.clone());
         let mut balances = self
             .balances
             .lock()
             .map_err(|e| LedgerError::Backend(e.to_string()))?;
         let debit_key = (p.tenant_id.clone(), p.debit_code.code(), p.currency.clone());
-        let credit_key = (p.tenant_id.clone(), p.credit_code.code(), p.currency.clone());
+        let credit_key = (
+            p.tenant_id.clone(),
+            p.credit_code.code(),
+            p.currency.clone(),
+        );
         *balances.entry(debit_key).or_insert(0) -= p.amount_minor;
         *balances.entry(credit_key).or_insert(0) += p.amount_minor;
         Ok(PostingResult {
@@ -105,8 +115,18 @@ mod tests {
         assert_eq!(r1.transfer_id, r2.transfer_id);
         assert!(!r1.duplicate);
         assert!(r2.duplicate);
-        assert_eq!(j.balance("taylor", LedgerCode::TenantRevenue, "EUR").await.unwrap(), 9700);
-        assert_eq!(j.balance("taylor", LedgerCode::ClientClearing, "EUR").await.unwrap(), -9700);
+        assert_eq!(
+            j.balance("taylor", LedgerCode::TenantRevenue, "EUR")
+                .await
+                .unwrap(),
+            9700
+        );
+        assert_eq!(
+            j.balance("taylor", LedgerCode::ClientClearing, "EUR")
+                .await
+                .unwrap(),
+            -9700
+        );
     }
 
     #[test]

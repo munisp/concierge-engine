@@ -146,6 +146,21 @@ func (svc *BookingService) QuoteRequest(ctx context.Context, tenantID, requestID
 			map[string]any{"sla_seconds": tenant.SLAConfig.QuoteSLASeconds})
 		return nil, false, nil
 	}
+	// Advance the state machine to QUOTING before pricing — a fresh request
+	// sits in CAPTURING; re-quotes may arrive from NEGOTIATING.
+	switch r.State {
+	case model.StateNew:
+		if _, err := svc.Transition(ctx, tenantID, r.ID, model.StateCapturing); err != nil {
+			return nil, false, err
+		}
+		if _, err := svc.Transition(ctx, tenantID, r.ID, model.StateQuoting); err != nil {
+			return nil, false, err
+		}
+	case model.StateCapturing, model.StateNegotiating:
+		if _, err := svc.Transition(ctx, tenantID, r.ID, model.StateQuoting); err != nil {
+			return nil, false, err
+		}
+	}
 	q := &model.Quote{
 		ID: NewID(), TenantID: tenantID, RequestID: requestID, Version: 1,
 		Origin: "INSTANT", TotalMinor: total, DepositMinor: deposit, Currency: currency,
@@ -154,8 +169,10 @@ func (svc *BookingService) QuoteRequest(ctx context.Context, tenantID, requestID
 	if err := svc.s.Store.Quotes().Create(ctx, q); err != nil {
 		return nil, false, err
 	}
-	if _, err := svc.Transition(ctx, tenantID, requestID, model.StateAwaitingPayment); err != nil {
-		return nil, false, err
+	if r.State != model.StateAwaitingPayment {
+		if _, err := svc.Transition(ctx, tenantID, requestID, model.StateAwaitingPayment); err != nil {
+			return nil, false, err
+		}
 	}
 	svc.s.Events.Emit(ctx, tenantID, "quote", q.ID, "quote.created",
 		map[string]any{"total_minor": total, "currency": currency, "origin": "INSTANT"})

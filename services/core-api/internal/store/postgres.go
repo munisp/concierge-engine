@@ -694,7 +694,7 @@ func (s pgDispatch) ListAssignments(ctx context.Context, tenantID string) ([]mod
 	out := []model.Assignment{}
 	for rows.Next() {
 		var a model.Assignment
-	var sla *time.Time
+		var sla *time.Time
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.BookingID, &a.FleetResourceID, &a.CrewMemberID,
 			&a.PartnerID, &a.Status, &sla, &a.CreatedAt); err != nil {
 			return nil, err

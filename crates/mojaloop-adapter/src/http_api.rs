@@ -36,7 +36,10 @@ async fn create_quote(
     Json(input): Json<QuoteIn>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     if input.amount_minor <= 0 {
-        return Err((StatusCode::UNPROCESSABLE_ENTITY, "amount must be positive".into()));
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "amount must be positive".into(),
+        ));
     }
     let q = engine.quote(&input.payee_ref, input.amount_minor, &input.currency);
     Ok(Json(serde_json::to_value(q).map_err(err500)?))
@@ -106,11 +109,13 @@ async fn scheme_callback(
         .apply_callback(&input.transfer_id, &input.event_id, &input.kind)
         .map_err(|e| match e {
             EngineError::QuoteNotFound => (StatusCode::NOT_FOUND, "transfer not found".into()),
-            EngineError::InvalidTransition => {
-                (StatusCode::UNPROCESSABLE_ENTITY, "unknown callback kind".into())
-            }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "engine error".into()),
+            EngineError::InvalidTransition => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "unknown callback kind".into(),
+            ),
         })?;
+    let transfer_id = t.transfer_id.clone();
+    let state = t.state;
     if is_new {
         let engine = engine.clone();
         let event_id = input.event_id.clone();
@@ -118,8 +123,8 @@ async fn scheme_callback(
         tokio::spawn(async move { engine.notify_core(&t, &event_id, &kind).await });
     }
     Ok(Json(serde_json::json!({
-        "transfer_id": t.transfer_id,
-        "state": t.state,
+        "transfer_id": transfer_id,
+        "state": state,
         "forwarded": is_new,
     })))
 }

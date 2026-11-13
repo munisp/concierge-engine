@@ -46,7 +46,7 @@ type MLTransferRequest struct {
 
 type MLTransferResponse struct {
 	TransferID string `json:"transfer_id"`
-	State      string  `json:"state"`
+	State      string `json:"state"`
 }
 
 var ErrMojaloopUnavailable = fmt.Errorf("mojaloop adapter unavailable")

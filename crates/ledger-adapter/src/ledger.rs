@@ -58,8 +58,12 @@ pub struct PostingResult {
 pub trait Ledger: Send + Sync {
     async fn post(&self, p: &Posting) -> Result<PostingResult, LedgerError>;
     /// Balance of (tenant, account code, currency) in minor units.
-    async fn balance(&self, tenant_id: &str, code: LedgerCode, currency: &str)
-        -> Result<i64, LedgerError>;
+    async fn balance(
+        &self,
+        tenant_id: &str,
+        code: LedgerCode,
+        currency: &str,
+    ) -> Result<i64, LedgerError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,15 +74,15 @@ pub enum LedgerError {
     Backend(String),
 }
 
-pub fn router<L: Ledger + 'static>(ledger: Arc<L>) -> Router {
+pub fn router<L: Ledger + ?Sized + 'static>(ledger: Arc<L>) -> Router {
     Router::new()
         .route("/healthz", axum::routing::get(|| async { "ok" }))
-        .route("/v1/postings", post(post))
+        .route("/v1/postings", post(post_entry))
         .route("/v1/balances", post(balance))
         .with_state(ledger)
 }
 
-async fn post<L: Ledger>(
+async fn post_entry<L: Ledger + ?Sized>(
     State(ledger): State<Arc<L>>,
     Json(p): Json<Posting>,
 ) -> Result<Json<PostingResult>, (axum::http::StatusCode, String)> {
@@ -109,7 +113,7 @@ struct BalanceQuery {
     currency: String,
 }
 
-async fn balance<L: Ledger>(
+async fn balance<L: Ledger + ?Sized>(
     State(ledger): State<Arc<L>>,
     Json(q): Json<BalanceQuery>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {

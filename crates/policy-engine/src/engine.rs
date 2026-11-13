@@ -75,12 +75,14 @@ impl Default for TenantPolicyDefaults {
 }
 
 /// Marker type documenting the default policy values (overridable per tenant).
+/// Referenced by tests; kept as the single source of truth for defaults.
+#[allow(dead_code)]
 pub struct TenantPolicyDefaults;
 
+#[allow(dead_code)] // exercised by tests; single source of truth for defaults
 impl TenantPolicyDefaults {
     pub const TIER2_LIMIT_MINOR: i64 = 50_000;
     pub const VALUE_ESCALATION_MINOR: i64 = 500_000; // €5,000 default
-    pub const TIER2_SAMPLE_RATE_DENOM: u32 = 10; // sample 1/10 of TIER-2 allows
 }
 
 pub struct PolicyEngine {
@@ -102,7 +104,9 @@ impl PolicyEngine {
             // TIER-0: read-only
             "resolve_client" | "get_preferences" | "search_availability" => Tier::Tier0,
             // TIER-1: reversible drafts
-            "create_service_request" | "update_service_request" | "save_preference"
+            "create_service_request"
+            | "update_service_request"
+            | "save_preference"
             | "draft_itinerary" => Tier::Tier1,
             // TIER-2: money-adjacent
             "price_quote" | "create_payment_link" | "send_message" | "assign_booking" => {
@@ -244,8 +248,8 @@ mod tests {
 
     fn policy() -> TenantPolicy {
         TenantPolicy {
-            tier2_limit_minor: 50_000,
-            value_escalation_minor: 500_000,
+            tier2_limit_minor: TenantPolicyDefaults::TIER2_LIMIT_MINOR,
+            value_escalation_minor: TenantPolicyDefaults::VALUE_ESCALATION_MINOR,
             autonomy_dial: 2,
         }
     }

@@ -278,7 +278,7 @@ func TestPayoutSagaFulfilAndCompensate(t *testing.T) {
 		t.Fatalf("execute broken: %+v", p)
 	}
 	transfer1 := p.TransferID
-	p, err = s.Payouts.HandleCallback(ctx, tenantID, transferID, "transfer.fulfilled")
+	p, err = s.Payouts.HandleCallback(ctx, tenantID, transfer1, "transfer.fulfilled")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestPayoutSagaFulfilAndCompensate(t *testing.T) {
 		t.Fatalf("state %q", p.State)
 	}
 	// Absorbing state: replayed callback is a no-op, not an error.
-	if _, err := s.Payouts.HandleCallback(ctx, tenantID, transferID, "transfer.fulfilled"); err != nil {
+	if _, err := s.Payouts.HandleCallback(ctx, tenantID, transfer1, "transfer.fulfilled"); err != nil {
 		t.Fatal("callback replay not idempotent")
 	}
 

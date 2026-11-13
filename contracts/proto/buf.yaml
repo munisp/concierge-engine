@@ -3,5 +3,9 @@ modules:
   - path: .
 lint:
   use: [STANDARD]
+  # Enum values intentionally mirror the services' wire strings ("CAPTURING",
+  # "LEDGER_CLIENT_CLEARING", ...) which are serialized over JSON/Kafka by the
+  # hand-written Go/Rust adapters; renaming them would desync the runtime.
+  except: [ENUM_VALUE_PREFIX]
 breaking:
   use: [FILE]

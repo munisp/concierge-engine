@@ -48,7 +48,7 @@ func (c *PolicyClient) Evaluate(ctx context.Context, tenantID, conversationID, a
 	body, _ := json.Marshal(actionRequest{
 		TenantID: tenantID, ConversationID: conversationID, Actor: actor, Tool: tool,
 		ArgsJSON: argsJSON, RequestState: state, EstimatedValueMinor: estValue,
-		Currency: currency, VIPFlagged: vip, IdempotencyKey: idempotencyKey,
+		Currency: currency, VIPFlagged: vip, IdempotencyKey: idem,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/evaluate", bytes.NewReader(body))
 	if err != nil {

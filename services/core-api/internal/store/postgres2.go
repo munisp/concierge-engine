@@ -421,6 +421,7 @@ func (s pgBookings) List(ctx context.Context, tenantID string) ([]model.Booking,
 
 // ------------------------------------------------------------- audit
 type pgAudit struct{ p *postgres }
+
 func (s pgAudit) Log(ctx context.Context, e *model.AuditEntry) error {
 	detail, _ := json.Marshal(e.Detail)
 	tx, err := s.p.tenantTx(ctx, e.TenantID)

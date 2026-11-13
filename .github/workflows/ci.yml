@@ -45,11 +45,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # buf module root is contracts/proto (buf.yaml v2 lives there); running
+      # from the repo root breaks imports. lint only — no BSR push.
       - uses: bufbuild/buf-action@v1
         with:
-          buf_username: ${{ secrets.BUF_USERNAME }}
-          buf_token: ${{ secrets.BUF_TOKEN }}
-        env:
-          BUF_INPUT_HTTPS_USERNAME: ${{ secrets.BUF_USERNAME }}
-          BUF_INPUT_HTTPS_PASSWORD: ${{ secrets.BUF_TOKEN }}
-      - run: buf lint contracts/proto
+          input: contracts/proto
+          lint: true
+          breaking: false

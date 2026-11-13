@@ -63,12 +63,14 @@ async fn reply_check(
     // Factuality: every numeric claim must match tool outputs verbatim.
     for claim in &check.numeric_claims {
         if !check.allowed_values.iter().any(|v| claim.contains(v)) {
-            reasons.push(format!("factuality: numeric claim '{claim}' not in tool outputs"));
+            reasons.push(format!(
+                "factuality: numeric claim '{claim}' not in tool outputs"
+            ));
         }
     }
     // Privacy: cross-client leakage guard — replies must not embed other
     // conversations' identifiers (heuristic: foreign conversation refs).
-    if check.body.contains(&format!("conv:")) && !check.body.contains(&check.conversation_id) {
+    if check.body.contains("conv:") && !check.body.contains(&check.conversation_id) {
         reasons.push("privacy: foreign conversation reference".to_string());
     }
 

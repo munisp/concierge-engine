@@ -41,7 +41,8 @@ async fn main() {
         }
     };
 
-    let app = ledger::router(std::sync::Arc::from(backend));
+    let backend: std::sync::Arc<dyn ledger::Ledger> = std::sync::Arc::from(backend);
+    let app = ledger::router(backend);
     let addr = std::env::var("LEDGER_ADAPTER_ADDR").unwrap_or_else(|_| "0.0.0.0:8210".into());
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
     tracing::info!(%addr, "ledger-adapter listening");

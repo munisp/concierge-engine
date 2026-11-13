@@ -286,10 +286,10 @@ func (h *handlers) listCatalog(w http.ResponseWriter, r *http.Request) {
 // ------------------------------------------------------------- booking
 func (h *handlers) createRequest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ClientID       string             `json:"client_id"`
-		ConversationID string             `json:"conversation_id"`
+		ClientID       string              `json:"client_id"`
+		ConversationID string              `json:"conversation_id"`
 		Items          []model.ServiceItem `json:"items"`
-		IdempotencyKey string             `json:"idempotency_key"`
+		IdempotencyKey string              `json:"idempotency_key"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		httpx.WriteError(w, err)

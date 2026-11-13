@@ -1,0 +1,50 @@
+:root {
+  --ink: #0e1116;
+  --paper: #faf9f7;
+  --accent: #8a6d3b;
+  --line: #e5e0d8;
+  font-family: "Georgia", "Times New Roman", serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+.shell { min-height: 100vh; }
+.nav {
+  display: flex; gap: 1.5rem; align-items: center;
+  padding: 1rem 2rem; border-bottom: 1px solid var(--line);
+}
+.nav .brand { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.nav a { color: var(--ink); text-decoration: none; font-size: 0.95rem; }
+.nav a:hover { color: var(--accent); }
+main { padding: 2rem; max-width: 1080px; margin: 0 auto; }
+h1 { font-weight: 400; font-size: 2rem; }
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  padding: 1.25rem; margin-bottom: 1rem;
+}
+label { display: block; font-size: 0.85rem; margin: 0.6rem 0 0.2rem; }
+input, select, textarea {
+  width: 100%; padding: 0.55rem; border: 1px solid var(--line);
+  border-radius: 4px; font: inherit; background: #fff;
+}
+button {
+  background: var(--ink); color: var(--paper); border: none;
+  padding: 0.7rem 1.4rem; border-radius: 4px; cursor: pointer; font: inherit;
+}
+button:hover { background: var(--accent); }
+button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+button.danger { background: #7a1f1f; }
+.muted { color: #777; font-size: 0.85rem; }
+.row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 220px; }
+.badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
+  font-size: 0.75rem; border: 1px solid var(--line); }
+.badge.OPEN { border-color: var(--accent); color: var(--accent); }
+.thread { max-height: 320px; overflow-y: auto; border: 1px solid var(--line);
+  border-radius: 4px; padding: 0.75rem; background: #fff; }
+.msg { margin-bottom: 0.6rem; }
+.msg .who { font-size: 0.75rem; color: #888; }
+.msg.CLIENT { text-align: left; }
+.msg.AI, .msg.HUMAN_STAFF { text-align: right; }
+.board-event { font-family: monospace; font-size: 0.8rem; padding: 0.3rem 0;
+  border-bottom: 1px dashed var(--line); }
+.error { color: #7a1f1f; font-size: 0.85rem; }

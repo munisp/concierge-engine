@@ -17,6 +17,12 @@ run-policy:
 run-ledger:
 	cd crates/ledger-adapter && cargo run
 
+run-mojaloop:
+	cd crates/mojaloop-adapter && cargo run
+
+seo:
+	python3 scripts/build_seo_pages.py
+
 run-ai:
 	cd ai/concierge-agent && uvicorn concierge_agent.main:app --port 8100 --reload
 
@@ -31,6 +37,7 @@ test:
 	cd crates && cargo test --workspace
 	cd ai/concierge-agent && python -m pytest -q
 	cd ai/whatsapp-adapter && python -m pytest -q
+	python -m pytest analytics/tests -q
 
 build:
 	cd services/core-api && go build ./...

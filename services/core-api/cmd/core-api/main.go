@@ -40,10 +40,22 @@ func main() {
 	defer st.Close()
 
 	svc := domain.NewServices(st, domain.Deps{
-		PolicyURL: cfg.PolicyEngineURL,
-		LedgerURL: cfg.LedgerAdapterURL,
-		Now:       time.Now,
+		PolicyURL:   cfg.PolicyEngineURL,
+		LedgerURL:   cfg.LedgerAdapterURL,
+		MojaloopURL: cfg.MojaloopURL,
+		AvinodeURL:  cfg.AvinodeURL,
+		AvinodeKey:  cfg.AvinodeKey,
+		FieldKeyB64: cfg.FieldKeyB64,
+		TripSecret:  cfg.TripSecret,
+		PublicBase:  cfg.PublicBase,
+		Now:         time.Now,
 	})
+	if cfg.FieldKeyB64 == "" {
+		log.Println("WARNING: CE_FIELD_KEY not set — VIP field-level encryption disabled (dev only)")
+	}
+	if cfg.TripSecret == "" {
+		log.Println("WARNING: CE_TRIP_SECRET not set — using dev chauffeur-link secret")
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,

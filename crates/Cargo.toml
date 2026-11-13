@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["policy-engine", "ledger-adapter", "ingestion-parser"]
+members = ["policy-engine", "ledger-adapter", "ingestion-parser", "mojaloop-adapter"]
 
 [workspace.package]
 edition = "2021"

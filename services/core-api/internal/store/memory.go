@@ -38,6 +38,13 @@ type memory struct {
 	handoffs      map[string]*model.HandoffItem
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
+	partners      map[string]*model.Partner
+	corporate     map[string]*model.CorporateAccount
+	invoices      map[string]*model.CorporateInvoice
+	invoiceIdem   map[string]string
+	payouts       map[string]*model.Payout
+	payoutIdem    map[string]string
+	audit         []model.AuditEntry
 }
 
 func NewMemory() Store {
@@ -60,6 +67,12 @@ func NewMemory() Store {
 		conversations: map[string]*model.Conversation{},
 		messages:      map[string][]model.Message{},
 		handoffs:      map[string]*model.HandoffItem{},
+		partners:      map[string]*model.Partner{},
+		corporate:     map[string]*model.CorporateAccount{},
+		invoices:      map[string]*model.CorporateInvoice{},
+		invoiceIdem:   map[string]string{},
+		payouts:       map[string]*model.Payout{},
+		payoutIdem:    map[string]string{},
 	}
 }
 
@@ -77,6 +90,10 @@ func (m *memory) Conversations() ConversationStore { return &memConversations{m}
 func (m *memory) Handoffs() HandoffStore           { return &memHandoffs{m} }
 func (m *memory) Outbox() OutboxStore              { return &memOutbox{m} }
 func (m *memory) Attribution() AttributionStore    { return &memAttribution{m} }
+func (m *memory) Partners() PartnerStore           { return &memPartners{m} }
+func (m *memory) Corporate() CorporateStore        { return &memCorporate{m} }
+func (m *memory) Payouts() PayoutStore             { return &memPayouts{m} }
+func (m *memory) Audit() AuditStore                { return &memAudit{m} }
 
 // ------------------------------------------------------------- tenants
 type memTenants struct{ m *memory }

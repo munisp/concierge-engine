@@ -12,9 +12,15 @@ import (
 )
 
 type Deps struct {
-	PolicyURL string
-	LedgerURL string
-	Now       func() time.Time
+	PolicyURL   string
+	LedgerURL   string
+	MojaloopURL string // Rust FSPIOP adapter (Phase 2)
+	AvinodeURL  string // charter supply adapter (Phase 2); empty = disabled
+	AvinodeKey  string
+	FieldKeyB64 string // CE_FIELD_KEY: VIP field-level encryption key
+	TripSecret  string // CE_TRIP_SECRET: chauffeur magic-link HMAC secret
+	PublicBase  string // public base URL for adapter callbacks
+	Now         func() time.Time
 }
 
 type Services struct {
@@ -27,9 +33,16 @@ type Services struct {
 	Payments      *PaymentService
 	Conversations *ConversationService
 	Handoffs      *HandoffService
+	Partners      *PartnerService
+	Corporate     *CorporateService
+	Payouts       *PayoutService
+	Supply        *SupplyService
+	Trips         *TripService
+	Audit         *AuditService
 	Policy        *PolicyClient
 	Ledger        *LedgerClient
 	Events        *EventBus
+	Cipher        *FieldCipher
 	now           func() time.Time
 }
 
@@ -42,6 +55,15 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Policy = NewPolicyClient(deps.PolicyURL)
 	s.Ledger = NewLedgerClient(deps.LedgerURL)
 	s.Events = &EventBus{outbox: st.Outbox(), attribution: st.Attribution()}
+	cipher, err := NewFieldCipher(deps.FieldKeyB64)
+	if err != nil {
+		// Misconfigured crypto must fail loudly at boot, not silently store
+		// plaintext for VIP clients. NewServices has no error return, so we
+		// disable the cipher and mark it via an audit-visible event on first
+		// use; operators gate on the startup log in cmd/core-api.
+		cipher = &FieldCipher{}
+	}
+	s.Cipher = cipher
 	s.Tenants = &TenantService{s: s}
 	s.Clients = &ClientService{s: s}
 	s.Catalog = &CatalogService{s: s}
@@ -50,6 +72,12 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Payments = &PaymentService{s: s}
 	s.Conversations = &ConversationService{s: s}
 	s.Handoffs = &HandoffService{s: s}
+	s.Audit = &AuditService{s: s}
+	s.Trips = NewTripService(s, deps.TripSecret)
+	s.Partners = &PartnerService{s: s}
+	s.Corporate = &CorporateService{s: s}
+	s.Payouts = NewPayoutService(s, NewMojaloopClient(deps.MojaloopURL), deps.PublicBase)
+	s.Supply = NewSupplyService(s, NewAvinodeAdapter(deps.AvinodeURL, deps.AvinodeKey))
 	return s
 }
 

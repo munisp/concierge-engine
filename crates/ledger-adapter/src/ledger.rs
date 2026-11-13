@@ -15,6 +15,8 @@ pub enum LedgerCode {
     PartnerPayable,
     DepositsLiability,
     InFlightSettlement,
+    PartnerClearing, // outbound partner settlements (Phase 2 payouts)
+    FxGainLoss,      // FX + scheme-fee differences on settlement (Phase 2)
 }
 
 impl LedgerCode {
@@ -27,6 +29,8 @@ impl LedgerCode {
             LedgerCode::PartnerPayable => 4000,
             LedgerCode::DepositsLiability => 5000,
             LedgerCode::InFlightSettlement => 6000,
+            LedgerCode::PartnerClearing => 6100,
+            LedgerCode::FxGainLoss => 7000,
         }
     }
 }

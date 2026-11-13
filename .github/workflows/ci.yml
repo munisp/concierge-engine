@@ -29,7 +29,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r ai/concierge-agent/requirements.txt -r ai/whatsapp-adapter/requirements.txt pytest
-      - run: python -m pytest ai/concierge-agent/tests ai/whatsapp-adapter/tests -q
+      - run: cd ai/concierge-agent && python -m pytest tests -q
+      - run: cd ai/whatsapp-adapter && python -m pytest tests -q
+      - run: python -m pytest analytics/tests -q
 
   web:
     runs-on: ubuntu-latest

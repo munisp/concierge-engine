@@ -57,6 +57,7 @@ type Preference struct {
 	ClientID     string    `json:"client_id"`
 	Key          string    `json:"key"`
 	Value        string    `json:"value"`
+	Encrypted    bool      `json:"encrypted,omitempty"` // VIP field-level encryption (Spec section 13)
 	ConsentScope string    `json:"consent_scope"`
 	SourceQuote  string    `json:"source_quote,omitempty"`
 	RecordedBy   string    `json:"recorded_by"`

@@ -16,6 +16,8 @@ enum LedgerCode {
   LEDGER_PARTNER_PAYABLE = 4;    // owed to partner suppliers
   LEDGER_DEPOSITS_LIABILITY = 5; // client deposits held
   LEDGER_IN_FLIGHT_SETTLEMENT = 6; // Mojaloop in-flight (Phase 2+)
+  LEDGER_PARTNER_CLEARING = 7;     // outbound partner settlements (Phase 2)
+  LEDGER_FX_GAIN_LOSS = 8;         // FX + scheme-fee differences (Phase 2)
 }
 
 message Posting {

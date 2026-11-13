@@ -47,6 +47,7 @@ type BookingStore interface {
 	Create(ctx context.Context, b *model.Booking) error
 	Get(ctx context.Context, tenantID, id string) (*model.Booking, error)
 	UpdateState(ctx context.Context, tenantID, id, state string) error
+	List(ctx context.Context, tenantID string) ([]model.Booking, error)
 }
 
 type DispatchStore interface {
@@ -93,6 +94,39 @@ type AttributionStore interface {
 	Track(ctx context.Context, e *model.AttributionEvent) error
 }
 
+// ---------------------------------------------------------- Phase 2 stores
+
+type PartnerStore interface {
+	Create(ctx context.Context, p *model.Partner) error
+	Get(ctx context.Context, tenantID, id string) (*model.Partner, error)
+	List(ctx context.Context, tenantID string) ([]model.Partner, error)
+	Update(ctx context.Context, p *model.Partner) error
+}
+
+type CorporateStore interface {
+	CreateAccount(ctx context.Context, a *model.CorporateAccount) error
+	GetAccount(ctx context.Context, tenantID, id string) (*model.CorporateAccount, error)
+	ListAccounts(ctx context.Context, tenantID string) ([]model.CorporateAccount, error)
+	CreateInvoice(ctx context.Context, inv *model.CorporateInvoice) error // idempotent on IdempotencyKey
+	GetInvoice(ctx context.Context, tenantID, id string) (*model.CorporateInvoice, error)
+	UpdateInvoiceState(ctx context.Context, tenantID, id, state string) error
+	ListInvoices(ctx context.Context, tenantID, accountID string) ([]model.CorporateInvoice, error)
+}
+
+type PayoutStore interface {
+	Create(ctx context.Context, p *model.Payout) error // idempotent on IdempotencyKey
+	Get(ctx context.Context, tenantID, id string) (*model.Payout, error)
+	GetByTransfer(ctx context.Context, tenantID, transferID string) (*model.Payout, error)
+	Update(ctx context.Context, p *model.Payout) error
+	List(ctx context.Context, tenantID string) ([]model.Payout, error)
+}
+
+// AuditStore is append-only (Master Spec section 13).
+type AuditStore interface {
+	Log(ctx context.Context, e *model.AuditEntry) error
+	List(ctx context.Context, tenantID string, limit int) ([]model.AuditEntry, error)
+}
+
 type Store interface {
 	Tenants() TenantStore
 	Clients() ClientStore
@@ -106,5 +140,9 @@ type Store interface {
 	Handoffs() HandoffStore
 	Outbox() OutboxStore
 	Attribution() AttributionStore
+	Partners() PartnerStore
+	Corporate() CorporateStore
+	Payouts() PayoutStore
+	Audit() AuditStore
 	Close()
 }

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corporate_account.schema.json",
+  "title": "CorporateAccount",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1 },
+    "billing_email": { "type": "string", "format": "email" },
+    "payment_terms_days": { "type": "integer", "minimum": 0, "default": 30 },
+    "credit_limit_minor": { "type": "integer", "minimum": 0 },
+    "currency": { "type": "string", "minLength": 3, "maxLength": 3, "default": "EUR" }
+  },
+  "additionalProperties": false
+}

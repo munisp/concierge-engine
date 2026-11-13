@@ -62,3 +62,38 @@ metadata:
 spec:
   selector: { app: ledger-adapter }
   ports: [{ port: 8210, targetPort: 8210 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mojaloop-adapter
+  namespace: concierge-engine
+  labels: { app: mojaloop-adapter }
+spec:
+  replicas: 1   # saga state is in-memory in Phase 2; singleton keeps callback ordering simple
+  selector:
+    matchLabels: { app: mojaloop-adapter }
+  template:
+    metadata:
+      labels: { app: mojaloop-adapter }
+    spec:
+      containers:
+        - name: mojaloop-adapter
+          image: ghcr.io/munisp/concierge-engine/mojaloop-adapter:latest
+          ports: [{ containerPort: 8220 }]
+          env:
+            - name: MOJALOOP_TRANSFER_TTL_SECS
+              value: "900"
+            - name: CE_ML_SWEEP_SECS
+              value: "5"
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mojaloop-adapter
+  namespace: concierge-engine
+spec:
+  selector: { app: mojaloop-adapter }
+  ports: [{ port: 8220, targetPort: 8220 }]

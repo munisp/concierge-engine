@@ -4,6 +4,8 @@ package server
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/httpx"
@@ -75,6 +77,43 @@ func New(svc *domain.Services) http.Handler {
 
 	// attribution (M1)
 	mux.HandleFunc("POST /v1/attribution", h.trackAttribution)
+
+	// chauffeur app v1: magic-link trip view (token-authed, no tenant header)
+	mux.HandleFunc("GET /v1/trips/{token}", h.getTrip)
+	mux.HandleFunc("POST /v1/trips/{token}/status", h.tripAdvance)
+	mux.HandleFunc("POST /v1/trips/{token}/geostamps", h.tripGeoStamp)
+	mux.HandleFunc("GET /v1/dispatch/assignments/{id}/chauffeur-link", h.chauffeurLink)
+
+	// partner network (Phase 2)
+	mux.HandleFunc("POST /v1/partners", h.createPartner)
+	mux.HandleFunc("GET /v1/partners", h.listPartners)
+	mux.HandleFunc("PUT /v1/partners/{id}/status", h.setPartnerStatus)
+	mux.HandleFunc("GET /v1/partners/metrics", h.partnerMetrics)
+
+	// corporate accounts & consolidated invoicing (Phase 2)
+	mux.HandleFunc("POST /v1/corporate/accounts", h.createCorporateAccount)
+	mux.HandleFunc("GET /v1/corporate/accounts", h.listCorporateAccounts)
+	mux.HandleFunc("POST /v1/corporate/accounts/{id}/invoices", h.generateInvoice)
+	mux.HandleFunc("GET /v1/corporate/accounts/{id}/invoices", h.listInvoices)
+	mux.HandleFunc("POST /v1/corporate/invoices/{id}/mark-paid", h.markInvoicePaid)
+
+	// partner payouts via Mojaloop saga (Phase 2, Master Spec section 11.3)
+	mux.HandleFunc("POST /v1/payouts", h.createPayout)
+	mux.HandleFunc("GET /v1/payouts", h.listPayouts)
+	mux.HandleFunc("POST /v1/payouts/{id}/quote", h.quotePayout)
+	mux.HandleFunc("POST /v1/payouts/{id}/execute", h.executePayout)
+	mux.HandleFunc("POST /v1/payouts/{id}/compensate", h.compensatePayout)
+	mux.HandleFunc("POST /v1/payouts/callbacks/mojaloop", h.payoutCallback)
+
+	// sensitive-read audit log (Master Spec section 13)
+	mux.HandleFunc("GET /v1/audit", h.listAudit)
+
+	// charter supply adapters (Phase 2: Avinode; mock fallback in dev)
+	mux.HandleFunc("GET /v1/supply/charter/search", h.charterSearch)
+
+	// platform: outbox feed for the lakehouse bronze landing (Phase 2)
+	mux.HandleFunc("GET /v1/platform/outbox/unpublished", h.outboxUnpublished)
+	mux.HandleFunc("POST /v1/platform/outbox/published", h.outboxMarkPublished)
 
 	return tenantctx.Middleware(mux)
 }
@@ -606,4 +645,309 @@ func (h *handlers) trackAttribution(w http.ResponseWriter, r *http.Request) {
 	e.TenantID = tenantOf(r)
 	h.svc.Events.Track(r.Context(), &e)
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "tracked"})
+}
+
+// ------------------------------------------------------------- chauffeur trips (v1)
+func (h *handlers) getTrip(w http.ResponseWriter, r *http.Request) {
+	view, err := h.svc.Trips.View(r.Context(), r.PathValue("token"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, view)
+}
+
+func (h *handlers) tripAdvance(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if err := h.svc.Trips.Advance(r.Context(), r.PathValue("token"), body.Status); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": body.Status})
+}
+
+func (h *handlers) tripGeoStamp(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Kind     string  `json:"kind"`
+		Lat      float64 `json:"lat"`
+		Lng      float64 `json:"lng"`
+		Accuracy float64 `json:"accuracy_m"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if err := h.svc.Trips.Stamp(r.Context(), r.PathValue("token"), body.Kind, body.Lat, body.Lng, body.Accuracy); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, map[string]string{"status": "stamped"})
+}
+
+func (h *handlers) chauffeurLink(w http.ResponseWriter, r *http.Request) {
+	token := h.svc.Trips.TokenFor(tenantOf(r), r.PathValue("id"))
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{
+		"token": token,
+		"url":   "/chauffeur?token=" + token, // served by web/console (PWA)
+	})
+}
+
+// ------------------------------------------------------------- partners (Phase 2)
+func (h *handlers) createPartner(w http.ResponseWriter, r *http.Request) {
+	var p model.Partner
+	if err := httpx.Decode(r, &p); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	p.TenantID = tenantOf(r)
+	created, err := h.svc.Partners.Create(r.Context(), &p)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, created)
+}
+
+func (h *handlers) listPartners(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.Partners.List(r.Context(), tenantOf(r))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+func (h *handlers) setPartnerStatus(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	p, err := h.svc.Partners.SetStatus(r.Context(), tenantOf(r), r.PathValue("id"), body.Status)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
+func (h *handlers) partnerMetrics(w http.ResponseWriter, r *http.Request) {
+	m, err := h.svc.Partners.Metrics(r.Context(), tenantOf(r))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, m)
+}
+
+// ------------------------------------------------------------- corporate (Phase 2)
+func (h *handlers) createCorporateAccount(w http.ResponseWriter, r *http.Request) {
+	var a model.CorporateAccount
+	if err := httpx.Decode(r, &a); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	a.TenantID = tenantOf(r)
+	created, err := h.svc.Corporate.CreateAccount(r.Context(), &a)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, created)
+}
+
+func (h *handlers) listCorporateAccounts(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.Corporate.ListAccounts(r.Context(), tenantOf(r))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+func (h *handlers) generateInvoice(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		PeriodStart    time.Time `json:"period_start"`
+		PeriodEnd      time.Time `json:"period_end"`
+		IdempotencyKey string    `json:"idempotency_key"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	inv, err := h.svc.Corporate.GenerateInvoice(r.Context(), tenantOf(r), r.PathValue("id"),
+		body.PeriodStart, body.PeriodEnd, body.IdempotencyKey)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, inv)
+}
+
+func (h *handlers) listInvoices(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.Corporate.ListInvoices(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+func (h *handlers) markInvoicePaid(w http.ResponseWriter, r *http.Request) {
+	inv, err := h.svc.Corporate.MarkInvoicePaid(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, inv)
+}
+
+// ------------------------------------------------------------- payouts (Phase 2)
+func (h *handlers) createPayout(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		PartnerID      string `json:"partner_id"`
+		BookingID      string `json:"booking_id"`
+		AmountMinor    int64  `json:"amount_minor"`
+		Currency       string `json:"currency"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	p, err := h.svc.Payouts.Create(r.Context(), tenantOf(r), body.PartnerID, body.BookingID,
+		body.AmountMinor, body.Currency, body.IdempotencyKey)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, p)
+}
+
+func (h *handlers) listPayouts(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.Payouts.List(r.Context(), tenantOf(r))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+func (h *handlers) quotePayout(w http.ResponseWriter, r *http.Request) {
+	p, err := h.svc.Payouts.Quote(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
+func (h *handlers) executePayout(w http.ResponseWriter, r *http.Request) {
+	p, err := h.svc.Payouts.Execute(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
+func (h *handlers) compensatePayout(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	p, err := h.svc.Payouts.Compensate(r.Context(), tenantOf(r), r.PathValue("id"), body.Reason)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
+// payoutCallback: Mojaloop adapter notifications (FSPIOP fulfil/abort/timeout,
+// normalized by the Rust adapter). Idempotent via absorbing saga states.
+func (h *handlers) payoutCallback(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		TransferID string `json:"transfer_id"`
+		EventID    string `json:"event_id"`
+		Kind       string `json:"kind"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	p, err := h.svc.Payouts.HandleCallback(r.Context(), tenantOf(r), body.TransferID, body.Kind)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
+// ------------------------------------------------------------- audit (Spec section 13)
+func (h *handlers) listAudit(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.Audit.List(r.Context(), tenantOf(r), 200)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+// ------------------------------------------------------------- charter supply (Phase 2)
+func (h *handlers) charterSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	pax, _ := strconv.Atoi(q.Get("passengers"))
+	if pax <= 0 {
+		pax = 2
+	}
+	date := time.Now()
+	if d := q.Get("date"); d != "" {
+		if parsed, err := time.Parse("2006-01-02", d); err == nil {
+			date = parsed
+		}
+	}
+	options, err := h.svc.Supply.SearchCharter(r.Context(), tenantOf(r),
+		q.Get("from"), q.Get("to"), date, pax)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, options)
+}
+
+// ------------------------------------------------------------- platform outbox feed
+func (h *handlers) outboxUnpublished(w http.ResponseWriter, r *http.Request) {
+	events, err := h.svc.Store.Outbox().Unpublished(r.Context(), 500)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, events)
+}
+
+func (h *handlers) outboxMarkPublished(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if err := h.svc.Store.Outbox().MarkPublished(r.Context(), body.IDs); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "published"})
 }

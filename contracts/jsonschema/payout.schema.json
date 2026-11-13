@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payout.schema.json",
+  "title": "Payout",
+  "description": "Partner settlement saga (Master Spec section 11.3). Money truth in TigerBeetle; this tracks saga state.",
+  "type": "object",
+  "required": ["partner_id", "amount_minor", "currency", "idempotency_key"],
+  "properties": {
+    "partner_id": { "type": "string", "format": "uuid" },
+    "booking_id": { "type": "string", "format": "uuid" },
+    "amount_minor": { "type": "integer", "exclusiveMinimum": 0 },
+    "currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+    "rail": { "enum": ["MOJALOOP", "MANUAL"] },
+    "state": { "enum": ["PENDING", "QUOTED", "IN_FLIGHT", "SETTLED", "COMPENSATED", "FAILED"] },
+    "quote_id": { "type": "string" },
+    "transfer_id": { "type": "string" },
+    "fx_rate": { "type": "number" },
+    "receive_minor": { "type": "integer" },
+    "fees_minor": { "type": "integer" },
+    "idempotency_key": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

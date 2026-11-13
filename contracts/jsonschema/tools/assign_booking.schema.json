@@ -1,0 +1,47 @@
+{
+  "$id": "assign_booking.schema.json",
+  "tool": "assign_booking",
+  "description": "Ops-persona tool: suggest + execute assignments, re-route on disruption.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "booking_id": {
+        "type": "string"
+      },
+      "fleet_resource_id": {
+        "type": "string"
+      },
+      "crew_member_id": {
+        "type": "string"
+      },
+      "partner_id": {
+        "type": "string"
+      },
+      "idempotency_key": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "booking_id",
+      "idempotency_key"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "assignment_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "assignment_id"
+    ]
+  }
+}

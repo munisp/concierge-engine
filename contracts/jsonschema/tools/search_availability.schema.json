@@ -1,0 +1,41 @@
+{
+  "$id": "search_availability.schema.json",
+  "tool": "search_availability",
+  "description": "Fleet/partner availability for ground; supplier APIs (Avinode etc.) per integration phase.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "service_item.schema.json"
+        }
+      }
+    },
+    "required": [
+      "tenant_id",
+      "items"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "available": {
+        "type": "boolean"
+      },
+      "options": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "required": [
+      "available",
+      "options"
+    ]
+  }
+}

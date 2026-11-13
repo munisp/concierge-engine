@@ -1,0 +1,52 @@
+{
+  "$id": "escalate_to_human.schema.json",
+  "tool": "escalate_to_human",
+  "description": "Package context and open a handoff queue item. Also used proactively by the policy engine.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "conversation_id": {
+        "type": "string"
+      },
+      "trigger": {
+        "type": "string",
+        "enum": [
+          "VALUE",
+          "CONFIDENCE",
+          "SENTIMENT",
+          "POLICY",
+          "SLA"
+        ]
+      },
+      "reason": {
+        "type": "string"
+      },
+      "pending_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "conversation_id",
+      "trigger",
+      "reason"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "handoff_id": {
+        "type": "string"
+      },
+      "brief_rendered_ms": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "handoff_id"
+    ]
+  }
+}

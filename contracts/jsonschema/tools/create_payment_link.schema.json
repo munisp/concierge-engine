@@ -1,0 +1,49 @@
+{
+  "$id": "create_payment_link.schema.json",
+  "tool": "create_payment_link",
+  "description": "Hosted payment link; amount, deposit %, expiry from policy. NEVER executes a charge.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "quote_id": {
+        "type": "string"
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "FULL",
+          "DEPOSIT_BALANCE",
+          "PREAUTH_CAPTURE",
+          "MILESTONE",
+          "INVOICE"
+        ]
+      },
+      "idempotency_key": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "quote_id",
+      "mode",
+      "idempotency_key"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "payment_url": {
+        "type": "string"
+      },
+      "expires_at": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "payment_url"
+    ]
+  }
+}

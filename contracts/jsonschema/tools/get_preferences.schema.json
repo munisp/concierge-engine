@@ -1,0 +1,58 @@
+{
+  "$id": "get_preferences.schema.json",
+  "tool": "get_preferences",
+  "description": "Structured, consent-scoped preference read (vehicle class, routes, amenities, privacy flags).",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "client_id": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "client_id"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "preferences": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "consent_scope": {
+              "type": "string"
+            },
+            "source_quote": {
+              "type": "string"
+            },
+            "recorded_at": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "value"
+          ]
+        }
+      }
+    },
+    "required": [
+      "preferences"
+    ]
+  }
+}

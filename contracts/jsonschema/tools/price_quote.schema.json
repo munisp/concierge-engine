@@ -1,0 +1,55 @@
+{
+  "$id": "price_quote.schema.json",
+  "tool": "price_quote",
+  "description": "Pricing rules engine -> instant quote for tenant-configured auto-quotable shapes.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "service_item.schema.json"
+        }
+      }
+    },
+    "required": [
+      "tenant_id",
+      "items"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "quote_id": {
+        "type": "string"
+      },
+      "total_minor": {
+        "type": "integer"
+      },
+      "currency": {
+        "type": "string"
+      },
+      "deposit_minor": {
+        "type": "integer"
+      },
+      "expires_at": {
+        "type": "integer"
+      },
+      "origin": {
+        "type": "string",
+        "enum": [
+          "INSTANT",
+          "HUMAN"
+        ]
+      }
+    },
+    "required": [
+      "quote_id",
+      "total_minor",
+      "currency"
+    ]
+  }
+}

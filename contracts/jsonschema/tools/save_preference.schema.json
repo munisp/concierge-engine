@@ -1,0 +1,45 @@
+{
+  "$id": "save_preference.schema.json",
+  "tool": "save_preference",
+  "description": "Write a structured preference extracted from conversation; staff-visible and correctable.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "client_id": {
+        "type": "string"
+      },
+      "key": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      },
+      "consent_scope": {
+        "type": "string"
+      },
+      "source_quote": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "client_id",
+      "key",
+      "value"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "saved": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "saved"
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$id": "create_service_request.schema.json",
+  "tool": "create_service_request",
+  "description": "Create the atomic request object linked to the conversation; amendments versioned.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "client_id": {
+        "type": "string"
+      },
+      "conversation_id": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "service_item.schema.json"
+        }
+      },
+      "idempotency_key": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "client_id",
+      "items",
+      "idempotency_key"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "request_id": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "request_id",
+      "state"
+    ]
+  }
+}

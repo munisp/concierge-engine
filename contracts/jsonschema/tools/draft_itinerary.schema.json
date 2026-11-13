@@ -1,0 +1,44 @@
+{
+  "$id": "draft_itinerary.schema.json",
+  "tool": "draft_itinerary",
+  "description": "Compose itinerary draft from templates + preferences + live supply.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "client_id": {
+        "type": "string"
+      },
+      "brief": {
+        "type": "string"
+      },
+      "template_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "tenant_id",
+      "client_id",
+      "brief"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "proposal_id": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "proposal_id"
+    ]
+  }
+}

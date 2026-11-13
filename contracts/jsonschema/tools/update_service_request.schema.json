@@ -1,0 +1,44 @@
+{
+  "$id": "update_service_request.schema.json",
+  "tool": "update_service_request",
+  "description": "Versioned amendment to an existing request.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "request_id": {
+        "type": "string"
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "service_item.schema.json"
+        }
+      },
+      "idempotency_key": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "request_id",
+      "idempotency_key"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "version": {
+        "type": "integer"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "version"
+    ]
+  }
+}

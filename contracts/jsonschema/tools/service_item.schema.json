@@ -1,0 +1,59 @@
+{
+  "$id": "service_item.schema.json",
+  "type": "object",
+  "properties": {
+    "vertical": {
+      "type": "string",
+      "enum": [
+        "CHAUFFEUR_POINT_TO_POINT",
+        "CHAUFFEUR_HOURLY",
+        "AIRPORT_MEET_GREET",
+        "HELICOPTER",
+        "PRIVATE_JET",
+        "SECURITY_DETAIL",
+        "EVENT_ACCESS",
+        "YACHT",
+        "CURATED_PACKAGE"
+      ]
+    },
+    "pickup_address": {
+      "type": "string"
+    },
+    "pickup_lat": {
+      "type": "number"
+    },
+    "pickup_lng": {
+      "type": "number"
+    },
+    "dropoff_address": {
+      "type": "string"
+    },
+    "dropoff_lat": {
+      "type": "number"
+    },
+    "dropoff_lng": {
+      "type": "number"
+    },
+    "pickup_at": {
+      "type": "integer"
+    },
+    "passengers": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "vehicle_class": {
+      "type": "string"
+    },
+    "hours": {
+      "type": "integer"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "vertical",
+    "pickup_address",
+    "pickup_at"
+  ]
+}

@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package concierge.booking.v1;
+
+option go_package = "concierge-engine/gen/booking/v1;bookingv1";
+
+// The atomic demand object (Master Spec §6, M3): a basket of service items
+// across verticals with one price, one payment, one timeline.
+message ServiceRequest {
+  string id = 1;
+  string tenant_id = 2;
+  string client_id = 3;
+  string conversation_id = 4;          // provenance: which thread spawned it
+  repeated ServiceItem items = 5;
+  RequestState state = 6;
+  string idempotency_key = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+enum Vertical {
+  VERTICAL_UNSPECIFIED = 0;
+  VERTICAL_CHAUFFEUR_POINT_TO_POINT = 1;
+  VERTICAL_CHAUFFEUR_HOURLY = 2;
+  VERTICAL_AIRPORT_MEET_GREET = 3;
+  VERTICAL_HELICOPTER = 4;
+  VERTICAL_PRIVATE_JET = 5;
+  VERTICAL_SECURITY_DETAIL = 6;
+  VERTICAL_EVENT_ACCESS = 7;
+  VERTICAL_YACHT = 8;
+  VERTICAL_CURATED_PACKAGE = 9;
+}
+
+enum RequestState {
+  REQUEST_STATE_UNSPECIFIED = 0;
+  NEW = 1;
+  CAPTURING = 2;
+  QUOTING = 3;
+  NEGOTIATING = 4;
+  AWAITING_PAYMENT = 5;
+  CONFIRMED = 6;
+  IN_SERVICE = 7;
+  COMPLETED = 8;
+  FOLLOW_UP = 9;
+  ESCALATED = 10;   // human-owned; re-enters at any state with full context
+  CANCELLED = 11;
+}
+
+message ServiceItem {
+  string id = 1;
+  Vertical vertical = 2;
+  string pickup_address = 3;
+  double pickup_lat = 4;
+  double pickup_lng = 5;
+  string dropoff_address = 6;
+  double dropoff_lat = 7;
+  double dropoff_lng = 8;
+  int64 pickup_at = 9;                 // epoch seconds
+  int32 passengers = 10;
+  string vehicle_class = 11;           // e.g. business, first, suv
+  int32 hours = 12;                    // for hourly/as-directed
+  string notes = 13;
+  map<string, string> attributes = 14;
+}
+
+message Money {
+  int64 amount_minor = 1;  // minor units (cents)
+  string currency = 2;     // ISO 4217
+}
+
+message Quote {
+  string id = 1;
+  string request_id = 2;
+  string tenant_id = 3;
+  int32 version = 4;
+  Money total = 5;
+  Money deposit = 6;
+  repeated QuoteLine lines = 7;
+  int64 expires_at = 8;
+  QuoteOrigin origin = 9;              // INSTANT (rules engine) or HUMAN
+  string policy_verdict_id = 10;       // link to policy-engine decision
+}
+
+enum QuoteOrigin {
+  QUOTE_ORIGIN_UNSPECIFIED = 0;
+  QUOTE_ORIGIN_INSTANT = 1;
+  QUOTE_ORIGIN_HUMAN = 2;
+}
+
+message QuoteLine {
+  string description = 1;
+  Money amount = 2;
+  string item_id = 3;
+}

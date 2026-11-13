@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package concierge.dispatch.v1;
+
+option go_package = "concierge-engine/gen/dispatch/v1;dispatchv1";
+
+enum TripStatus {
+  TRIP_STATUS_UNSPECIFIED = 0;
+  ASSIGNED = 1;
+  EN_ROUTE_TO_PICKUP = 2;
+  ARRIVED = 3;
+  PASSENGER_ON_BOARD = 4;
+  IN_TRIP = 5;
+  COMPLETED_TRIP = 6;
+  NO_SHOW = 7;
+  CANCELLED_TRIP = 8;
+}
+
+message Assignment {
+  string id = 1;
+  string tenant_id = 2;
+  string booking_id = 3;
+  string fleet_resource_id = 4;   // vehicle/aircraft
+  string crew_member_id = 5;      // chauffeur/pilot
+  string partner_id = 6;          // set when routed to partner network
+  TripStatus status = 7;
+  int64 sla_deadline = 8;
+}
+
+message GeoStamp {
+  string assignment_id = 1;
+  double lat = 2;
+  double lng = 3;
+  double accuracy_m = 4;
+  int64 at = 5;
+  string kind = 6;  // pickup_arrival | pob | dropoff | pod
+}
+
+message FlightWatch {
+  string tenant_id = 1;
+  string booking_id = 2;
+  string flight_number = 3;
+  int64 scheduled_arrival = 4;
+  int64 estimated_arrival = 5;
+  string status = 6;  // scheduled | enroute | delayed | landed | cancelled
+}

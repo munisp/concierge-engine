@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["policy-engine", "ledger-adapter", "ingestion-parser"]
+
+[workspace.package]
+edition = "2021"
+license = "BUSL-1.1"
+
+[profile.release]
+lto = true
+codegen-units = 1

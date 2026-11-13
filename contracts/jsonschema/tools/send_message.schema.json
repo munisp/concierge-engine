@@ -1,0 +1,41 @@
+{
+  "$id": "send_message.schema.json",
+  "tool": "send_message",
+  "description": "The ONLY outbound path; every message passes the reply guardrail pipeline before the adapter fires.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tenant_id": {
+        "type": "string"
+      },
+      "conversation_id": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "channel": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "tenant_id",
+      "conversation_id",
+      "body"
+    ]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "message_id": {
+        "type": "string"
+      },
+      "delivered": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "message_id"
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package concierge.conversation.v1;
+
+option go_package = "concierge-engine/gen/conversation/v1;conversationv1";
+
+// Channel-agnostic unified conversation model (Master Spec §6 M2, §8).
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  WHATSAPP = 1;
+  INSTAGRAM_DM = 2;
+  MESSENGER = 3;
+  WEB_CHAT = 4;
+  SMS = 5;
+  EMAIL = 6;
+  VOICE_TRANSCRIPT = 7;
+  API = 8;
+}
+
+enum AuthorKind {
+  AUTHOR_KIND_UNSPECIFIED = 0;
+  CLIENT = 1;
+  AI = 2;
+  HUMAN_STAFF = 3;
+  SYSTEM = 4;
+}
+
+message Conversation {
+  string id = 1;
+  string tenant_id = 2;
+  string client_id = 3;
+  Channel channel = 4;
+  string state = 5;               // booking/v1 RequestState name
+  string autonomy_dial = 6;       // 0=draft-only .. 3=full auto (tenant config)
+  string external_thread_ref = 7; // BSP thread id etc.
+}
+
+message Message {
+  string id = 1;
+  string conversation_id = 2;
+  string tenant_id = 3;
+  AuthorKind author = 4;
+  string body = 5;                // PII-redacted before any LLM inference
+  string raw_ref = 6;             // pointer to encrypted raw store
+  int64 sent_at = 7;
+  string policy_verdict_id = 8;   // for outbound messages
+  map<string, string> attachments = 9;
+}

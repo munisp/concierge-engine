@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package concierge.policy.v1;
+
+option go_package = "concierge-engine/gen/policy/v1;policyv1";
+
+// Deterministic action tiers (AI Concierge Spec §4.1).
+enum Tier {
+  TIER_UNSPECIFIED = 0;
+  TIER_0 = 1;  // read-only, always allowed
+  TIER_1 = 2;  // reversible: draft request/quote, save preference — auto-execute
+  TIER_2 = 3;  // money-adjacent: send quote/payment link, small discount — auto within limits, sampled
+  TIER_3 = 4;  // consequential: refund, waiver, charge execution, SLA penalty — human-only
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED = 0;
+  ALLOW = 1;
+  ALLOW_SAMPLED = 2;  // allow + sample for human review
+  REQUIRE_APPROVAL = 3;
+  DENY = 4;
+}
+
+message ActionRequest {
+  string tenant_id = 1;
+  string conversation_id = 2;
+  string actor = 3;                 // ai | staff:<id> | system
+  string tool = 4;                  // tool name per AI tool catalog
+  string args_json = 5;             // raw tool arguments
+  string request_state = 6;         // conversation state-machine state
+  int64 estimated_value_minor = 7;  // estimated booking value, for value routing
+  string currency = 8;
+  bool vip_flagged = 9;
+  string idempotency_key = 10;
+}
+
+message PolicyVerdict {
+  string verdict_id = 1;
+  Tier tier = 2;
+  Verdict verdict = 3;
+  repeated string reasons = 4;
+  string evaluated_by = 5;          // policy engine version
+  int64 evaluated_at = 6;
+}

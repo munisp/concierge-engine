@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package concierge.payments.v1;
+
+option go_package = "concierge-engine/gen/payments/v1;paymentsv1";
+
+import "concierge/booking/v1/booking.proto";
+
+// Money truth lives in TigerBeetle (Master Spec §11). These messages describe
+// the ledger postings; the Rust ledger-adapter executes them idempotently.
+enum LedgerCode {
+  LEDGER_CODE_UNSPECIFIED = 0;
+  LEDGER_CLIENT_CLEARING = 1;    // client payments in transit from PSP
+  LEDGER_TENANT_REVENUE = 2;     // net tenant revenue
+  LEDGER_PLATFORM_FEES = 3;      // platform take rate
+  LEDGER_PARTNER_PAYABLE = 4;    // owed to partner suppliers
+  LEDGER_DEPOSITS_LIABILITY = 5; // client deposits held
+  LEDGER_IN_FLIGHT_SETTLEMENT = 6; // Mojaloop in-flight (Phase 2+)
+}
+
+message Posting {
+  LedgerCode debit_code = 1;
+  LedgerCode credit_code = 2;
+  concierge.booking.v1.Money amount = 3;
+  string tenant_id = 4;
+  string booking_id = 5;
+  string idempotency_key = 6;    // retries never double-post
+}
+
+message SplitSettlement {
+  string booking_id = 1;
+  string tenant_id = 2;
+  repeated Posting postings = 3; // platform fee / tenant share / partner share
+}
+
+enum PaymentMode {
+  PAYMENT_MODE_UNSPECIFIED = 0;
+  PAYMENT_MODE_FULL = 1;
+  PAYMENT_MODE_DEPOSIT_BALANCE = 2;   // deposit now, balance on completion
+  PAYMENT_MODE_PREAUTH_CAPTURE = 3;   // pre-auth + post-trip capture
+  PAYMENT_MODE_MILESTONE = 4;         // milestone billing for packages
+  PAYMENT_MODE_INVOICE = 5;           // corporate monthly billing
+}

@@ -65,8 +65,17 @@ make run-web       # Vite dev server for web/console
 
 ## Phase status
 
-Phase 1 (MVP, months 0–6) scope per `concierge-engine-phase1-plan.xlsx`: tenant core +
-admin, white-label web + WhatsApp capture, quote & booking engine (ground vertical),
-dispatch board + chauffeur app v1, Stripe payments on TigerBeetle, SEO foundation,
-AI concierge v0–v1, K8s/Dapr/APISIX/Keycloak/Kafka/Temporal foundations.
-Deferred components and un-defer triggers are tracked in `docs/deferred-register.md`.
+**Phase 1 (MVP) — delivered.** Tenant core + admin, white-label web + WhatsApp
+capture, quote & booking engine (ground vertical), dispatch board + chauffeur
+app v1 (token-authed trip PWA), Stripe-style payments on TigerBeetle, SEO
+foundation (static tenant×vertical landing pages), AI concierge v0–v1 with
+guardrails + HITL, K8s/Dapr/APISIX/Keycloak/Kafka/Temporal foundations,
+VIP field-level encryption + sensitive-read audit log (§13).
+
+**Phase 2 — delivered (see `docs/phase2.md`).** Mojaloop FSPIOP adapter +
+cross-border partner payout saga with compensation, partner network with
+fill-rate KPIs, corporate accounts + consolidated invoicing, charter supply
+port (Avinode-ready, mock fallback), lakehouse bronze/silver (`analytics/`),
+AI v2 (PII redaction before inference, shadow mode, judged evals).
+
+Deferred components and un-defer triggers: `docs/deferred-register.md`.

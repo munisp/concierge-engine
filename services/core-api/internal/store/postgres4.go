@@ -16,7 +16,8 @@ import (
 	"concierge-engine/services/core-api/internal/model"
 )
 
-func (p *postgres) Cases() CaseStore { return pgCases{p} }
+func (p *postgres) Cases() CaseStore           { return pgCases{p} }
+func (p *postgres) Embeddings() EmbeddingStore { return pgEmbeddings{p} }
 
 type pgCases struct{ p *postgres }
 
@@ -258,6 +259,53 @@ func (s pgCases) Notes(ctx context.Context, tenantID, caseID string) ([]model.Ca
 			return nil, err
 		}
 		out = append(out, n)
+	}
+	return out, tx.Commit()
+}
+
+// ------------------------------------------------------------- embeddings (jsonb; pgvector at scale)
+type pgEmbeddings struct{ p *postgres }
+
+func (s pgEmbeddings) StoreEmbedding(ctx context.Context, tenantID, caseID string, vec []float32) error {
+	b, _ := json.Marshal(vec)
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO case_embeddings (tenant_id, case_id, embedding) VALUES ($1,$2,$3)
+		 ON CONFLICT (tenant_id, case_id) DO UPDATE SET embedding=$3, created_at=now()`,
+		tenantID, caseID, b)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s pgEmbeddings) All(ctx context.Context, tenantID string) (map[string][]float32, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT case_id, embedding FROM case_embeddings`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]float32{}
+	for rows.Next() {
+		var caseID string
+		var b []byte
+		if err := rows.Scan(&caseID, &b); err != nil {
+			return nil, err
+		}
+		var vec []float32
+		if err := json.Unmarshal(b, &vec); err == nil {
+			out[caseID] = vec
+		}
 	}
 	return out, tx.Commit()
 }

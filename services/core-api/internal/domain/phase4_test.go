@@ -198,3 +198,82 @@ func TestCaseMetrics(t *testing.T) {
 		t.Fatalf("metrics wrong: %+v", m)
 	}
 }
+
+func TestCaseSLATenantOverride(t *testing.T) {
+	base := time.Now()
+	s := testServices(t, Deps{Now: func() time.Time { return base }})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+
+	// Tenant overrides P2 to 2 hours (default 4h).
+	tenant, err := s.Tenants.Get(ctx, tenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant.SLAConfig.CaseSLAHours = map[string]int{"P2": 2}
+	if _, err := s.Tenants.UpdateConfig(ctx, tenant); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := s.Cases.Open(ctx, tenantID, "", "Late pickup", "driver late, complaint", "")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if got := c.SLADueAt.Sub(base); got != 2*time.Hour {
+		t.Fatalf("tenant SLA override not applied: due in %v", got)
+	}
+}
+
+func TestCaseSimilarRecall(t *testing.T) {
+	// Fake agent with embeddings: semantic-ish vectors distinguishing
+	// transport cases from billing cases.
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Text string `json:"text"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		vec := []float32{0.9, 0.1} // transport cluster
+		if strings.Contains(body.Text, "invoice") || strings.Contains(body.Text, "refund") || strings.Contains(body.Text, "billing") {
+			vec = []float32{0.1, 0.9} // money cluster
+		}
+		json.NewEncoder(w).Encode(map[string]any{"embedding": vec, "engine": "ollama/nomic-embed-text"})
+	}))
+	defer fake.Close()
+
+	s := testServices(t, Deps{AgentURL: fake.URL})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+
+	carA, _ := s.Cases.Open(ctx, tenantID, "", "Car to Schiphol", "book airport transfer", "")
+	if _, err := s.Cases.Open(ctx, tenantID, "", "Refund question", "invoice dispute billing", ""); err != nil {
+		t.Fatal(err)
+	}
+	carB, err := s.Cases.Open(ctx, tenantID, "", "Car to Eindhoven", "book another airport transfer", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sim, err := s.Cases.Similar(ctx, tenantID, carB.ID, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sim) != 2 {
+		t.Fatalf("expected 2 similar cases, got %d", len(sim))
+	}
+	// The other transport case must outrank the billing case.
+	if sim[0].CaseID != carA.ID {
+		t.Fatalf("ranking wrong: %+v", sim)
+	}
+	if sim[0].Score <= sim[1].Score {
+		t.Fatalf("scores not descending: %+v", sim)
+	}
+
+	// No embeddings stored -> empty, no error.
+	s2 := testServices(t, Deps{})
+	t2 := seedTenant(t, s2)
+	cx, _ := s2.Cases.Open(ctx, t2, "", "X", "book car", "")
+	out, err := s2.Cases.Similar(ctx, t2, cx.ID, 5)
+	if err != nil || len(out) != 0 {
+		t.Fatalf("no embeddings must mean no recall, got %+v, %v", out, err)
+	}
+}

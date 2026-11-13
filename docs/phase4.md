@@ -86,6 +86,36 @@ owner, priority, SLA clock, tasks and timeline.
   (provenance flows through), assist-down fallback to `core-rules`,
   metrics, cross-tenant isolation.
 
+## Phase 4b — SLA sweeper, per-tenant SLAs, semantic recall
+
+Follow-up wave on the case system:
+
+- **Background SLA sweeper**: `cmd/core-api` runs a 1-minute ticker that
+  calls `CaseService.ScanSLA` for every tenant — breaches surface within a
+  minute without an operator hitting `POST /v1/cases/sla-scan`. The manual
+  endpoint stays for on-demand checks and tests.
+- **Per-tenant SLA overrides**: `SLAConfig.CaseSLAHours` (`{"P1": 1, ...}`)
+  — a tenant's map overrides the defaults per priority; anything unset
+  falls through to P1=1h/P2=4h/P3=24h/P4=72h. UAE hosts can run tighter
+  VIP clocks without forking code.
+- **Semantic similar-case recall**: on open, the case title+summary is
+  embedded via the agent's new `POST /v1/ai/embed` (Ollama
+  `CE_OLLAMA_EMBED_MODEL`, default `nomic-embed-text`) and stored in
+  `case_embeddings` (migration `0005_case_embeddings.sql`, FORCE RLS,
+  jsonb vector). `GET /v1/cases/{id}/similar?limit=5` cosine-ranks past
+  cases in the tenant — grounded institutional memory for triage, and the
+  console shows them under "Similar past cases". Embedding failure is
+  advisory: the case still opens, similarity just degrades gracefully.
+  pgvector stays the scale-out path (un-defer trigger: tenant crosses
+  ~50k cases or recall latency hurts).
+
+- **Real-model smoke evidence**: `docs/eval-qwen3-smoke.md` — full eval
+  battery against a live Ollama daemon (`qwen3:0.6b`, sandbox-sized):
+  triage/summarize/next-action/embed with engine provenance on every
+  response, redaction confirmed against the real model, embedding
+  cosine-sanity table. Found and fixed one contract gap (summarize now
+  carries its engine label end-to-end).
+
 ## Honesty notes
 
 - `qwen3:8b` is the default, not the only option — any Ollama-served model

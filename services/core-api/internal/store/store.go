@@ -175,6 +175,15 @@ type CaseStore interface {
 	Notes(ctx context.Context, tenantID, caseID string) ([]model.CaseNote, error)
 }
 
+// EmbeddingStore holds per-case semantic vectors (Phase 4 similar-case
+// recall). Vectors are internal — never API-exposed raw. Postgres stores
+// them as jsonb; pgvector is the scale-out path (deferred-register).
+type EmbeddingStore interface {
+	StoreEmbedding(ctx context.Context, tenantID, caseID string, vec []float32) error
+	// All returns caseID -> vector for the tenant.
+	All(ctx context.Context, tenantID string) (map[string][]float32, error)
+}
+
 type Store interface {
 	Tenants() TenantStore
 	Clients() ClientStore
@@ -196,5 +205,6 @@ type Store interface {
 	Webhooks() WebhookStore
 	Referrals() ReferralStore
 	Cases() CaseStore
+	Embeddings() EmbeddingStore
 	Close()
 }

@@ -79,6 +79,29 @@ func main() {
 	defer stopDispatch()
 	go svc.Webhooks.RunDispatcher(dispatchCtx, 15*time.Second)
 
+	// Phase 4: background case-SLA sweeper — every minute, escalate overdue
+	// open cases per tenant (Taylor's SLA promise is operational, not manual).
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-dispatchCtx.Done():
+				return
+			case <-ticker.C:
+				tenants, err := svc.Tenants.List(dispatchCtx)
+				if err != nil {
+					continue
+				}
+				for _, t := range tenants {
+					if n, err := svc.Cases.ScanSLA(dispatchCtx, t.ID); err == nil && n > 0 {
+						log.Printf("case SLA sweep: tenant %s — %d escalated", t.Slug, n)
+					}
+				}
+			}
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           server.New(svc),

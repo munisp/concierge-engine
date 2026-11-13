@@ -106,13 +106,18 @@ def test_triage_rule_fallback_on_garbage_json(fake_ollama):
 def test_summarize_and_next_action_fallbacks():
     provider = OllamaProvider(base="http://127.0.0.1:9", model="qwen3:8b", timeout=1)
     router = ModelRouter(ollama=provider)
-    assert "No activity" in router.summarize([])
-    assert "quote created" in router.summarize(["case opened", "quote created"])
+    assert "No activity" in router.summarize([])["summary"]
+    assert "quote created" in router.summarize(["case opened", "quote created"])["summary"]
+    assert router.summarize(["case opened"])["engine"] == "rules"
     nxt = router.next_action("WAITING_PARTNER", "partner silent 2h")
     assert nxt["engine"] == "rules" and "partner" in nxt["action"].lower()
 
 
 def test_endpoints():
+    from concierge_agent import main
+    # pin to a dead daemon: this test asserts the rules-floor contract and
+    # must hold whether or not the dev box has Ollama running
+    main.router = ModelRouter(ollama=OllamaProvider(base="http://127.0.0.1:9", model="qwen3:8b", timeout=1))
     client = TestClient(app)
     # rules path (no ollama in CI) — contract stability for core-api
     r = client.post("/v1/ai/triage", json={"text": "need a quote for a transfer"})
@@ -120,8 +125,23 @@ def test_endpoints():
     body = r.json()
     assert body["kind"] == "booking" and body["engine"] == "rules"
     r = client.post("/v1/ai/summarize", json={"timeline": ["opened", "quoted"]})
-    assert r.status_code == 200 and r.json()["summary"]
+    assert r.status_code == 200 and r.json()["summary"] and r.json()["engine"] == "rules"
     r = client.post("/v1/ai/next-action", json={"case_state": "OPEN", "summary": "new case"})
     assert r.status_code == 200 and r.json()["action"]
     r = client.get("/v1/ai/health")
     assert r.status_code == 200 and "ollama" in r.json()
+    # embed degrades to 503 without a daemon — core-api treats it as advisory
+    r = client.post("/v1/ai/embed", json={"text": "airport transfer"})
+    assert r.status_code == 503
+
+
+def test_embed_against_fake_daemon(fake_ollama):
+    provider, fake = fake_ollama
+    fake.queue.append({"data": [{"embedding": [0.1, 0.2, 0.3]}]})
+    router = ModelRouter(ollama=provider)
+    vec, engine = router.embed("VIP client ada@example.com needs a car")
+    assert vec == [0.1, 0.2, 0.3]
+    assert engine.startswith("ollama/")
+    # redaction applies to embeddings too — the daemon saw no raw email
+    sent = json.dumps(fake.seen)
+    assert "ada@example.com" not in sent

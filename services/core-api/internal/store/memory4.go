@@ -150,3 +150,30 @@ func (s *memCases) Notes(_ context.Context, tenantID, caseID string) ([]model.Ca
 	}
 	return out, nil
 }
+
+// ------------------------------------------------------------- embeddings
+type memEmbeddings struct{ m *memory }
+
+func (s *memEmbeddings) StoreEmbedding(_ context.Context, tenantID, caseID string, vec []float32) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if s.m.embeddings[tenantID] == nil {
+		s.m.embeddings[tenantID] = map[string][]float32{}
+	}
+	cp := make([]float32, len(vec))
+	copy(cp, vec)
+	s.m.embeddings[tenantID][caseID] = cp
+	return nil
+}
+
+func (s *memEmbeddings) All(_ context.Context, tenantID string) (map[string][]float32, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	out := map[string][]float32{}
+	for caseID, vec := range s.m.embeddings[tenantID] {
+		cp := make([]float32, len(vec))
+		copy(cp, vec)
+		out[caseID] = cp
+	}
+	return out, nil
+}

@@ -21,6 +21,7 @@ type Case = {
 
 type Task = { id: string; title: string; done: boolean };
 type Note = { id: string; author: string; body: string; created_at: string };
+type Similar = { case_id: string; title: string; kind: string; state: string; score: number };
 
 type Metrics = {
   open: number;
@@ -50,6 +51,7 @@ export default function Cases() {
   const [selected, setSelected] = useState<Case | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [similar, setSimilar] = useState<Similar[]>([]);
   const [aiSummary, setAiSummary] = useState("");
   const [nextAction, setNextAction] = useState("");
   const [filter, setFilter] = useState("");
@@ -80,6 +82,7 @@ export default function Cases() {
     try {
       setTasks(await api.get<Task[]>(`/v1/cases/${c.id}/tasks`));
       setNotes(await api.get<Note[]>(`/v1/cases/${c.id}/notes`));
+      setSimilar(await api.get<Similar[]>(`/v1/cases/${c.id}/similar?limit=5`) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "detail load failed");
     }
@@ -257,6 +260,19 @@ export default function Cases() {
               <li key={n.id}><b>{n.author}</b>: {n.body} <i>({new Date(n.created_at).toLocaleString()})</i></li>
             ))}
           </ul>
+
+          {similar.length > 0 && (
+            <>
+              <h3>Similar past cases</h3>
+              <ul>
+                {similar.map((s) => (
+                  <li key={s.case_id}>
+                    {(s.score * 100).toFixed(0)}% — {s.title} <code>{s.state}</code>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
     </div>

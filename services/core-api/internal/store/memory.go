@@ -51,6 +51,7 @@ type memory struct {
 	caseIdem      map[string]string
 	caseTasks     map[string]*model.CaseTask
 	caseNotes     map[string][]model.CaseNote
+	embeddings    map[string]map[string][]float32 // tenantID -> caseID -> vector
 	payouts       map[string]*model.Payout
 	payoutIdem    map[string]string
 	audit         []model.AuditEntry
@@ -91,6 +92,7 @@ func NewMemory() Store {
 		caseIdem:      map[string]string{},
 		caseTasks:     map[string]*model.CaseTask{},
 		caseNotes:     map[string][]model.CaseNote{},
+		embeddings:    map[string]map[string][]float32{},
 	}
 }
 
@@ -116,6 +118,7 @@ func (m *memory) ApiKeys() ApiKeyStore             { return &memApiKeys{m} }
 func (m *memory) Webhooks() WebhookStore           { return &memWebhooks{m} }
 func (m *memory) Referrals() ReferralStore         { return &memReferrals{m} }
 func (m *memory) Cases() CaseStore                 { return &memCases{m} }
+func (m *memory) Embeddings() EmbeddingStore       { return &memEmbeddings{m} }
 
 // ------------------------------------------------------------- tenants
 type memTenants struct{ m *memory }

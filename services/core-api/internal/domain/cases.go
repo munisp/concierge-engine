@@ -15,7 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -72,14 +74,18 @@ func (c *CaseAssistClient) Triage(ctx context.Context, text string) (*triageResu
 	return &out, nil
 }
 
-func (c *CaseAssistClient) Summarize(ctx context.Context, timeline []string) (string, error) {
+func (c *CaseAssistClient) Summarize(ctx context.Context, timeline []string) (string, string, error) {
 	var out struct {
 		Summary string `json:"summary"`
+		Engine  string `json:"engine"`
 	}
 	if err := c.post(ctx, "/v1/ai/summarize", map[string]any{"timeline": timeline}, &out); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return out.Summary, nil
+	if out.Engine == "" {
+		out.Engine = "assist"
+	}
+	return out.Summary, out.Engine, nil
 }
 
 type nextActionResult struct {
@@ -95,6 +101,22 @@ func (c *CaseAssistClient) NextAction(ctx context.Context, state, summary string
 		return nil, err
 	}
 	return &out, nil
+}
+
+// Embed fetches a semantic vector for text (Ollama embeddings model).
+// Advisory: callers treat an error as "semantic memory unavailable".
+func (c *CaseAssistClient) Embed(ctx context.Context, text string) ([]float32, error) {
+	var out struct {
+		Embedding []float32 `json:"embedding"`
+		Engine    string    `json:"engine"`
+	}
+	if err := c.post(ctx, "/v1/ai/embed", map[string]string{"text": text}, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Embedding) == 0 {
+		return nil, fmt.Errorf("empty embedding")
+	}
+	return out.Embedding, nil
 }
 
 // ------------------------------------------------------------- case service
@@ -137,22 +159,35 @@ func (svc *CaseService) Open(ctx context.Context, tenantID, clientID, title, tex
 	}
 	now := svc.s.Now()
 	kind, priority, summary, engine := svc.triage(ctx, text)
-	due := now.Add(caseSLAHours[priority])
 	c := &model.Case{
 		ID: NewID(), TenantID: tenantID, ClientID: clientID, Title: title,
 		Kind: kind, Priority: priority, State: model.CaseOpen,
 		Summary: summary, TriageEngine: engine,
-		SLADueAt: due, IdempotencyKey: idem, CreatedAt: now, UpdatedAt: now,
+		SLADueAt:       now.Add(svc.slaFor(ctx, tenantID, priority)),
+		IdempotencyKey: idem, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := svc.s.Store.Cases().Create(ctx, c); err != nil {
-		if err == httpx.ErrConflict {
-			return nil, err
-		}
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "case", c.ID, "case.opened",
 		map[string]any{"kind": kind, "priority": priority, "engine": engine})
+	// Semantic memory: embed title+summary so similar-case recall works.
+	// Advisory — embedding failure never blocks intake.
+	if emb, err := svc.embed(ctx, title+"\n"+summary); err == nil && len(emb) > 0 {
+		_ = svc.s.Store.Embeddings().StoreEmbedding(ctx, tenantID, c.ID, emb)
+	}
 	return c, nil
+}
+
+// slaFor resolves the SLA clock: tenant override (SLAConfig.CaseSLAHours)
+// beats the platform default.
+func (svc *CaseService) slaFor(ctx context.Context, tenantID, priority string) time.Duration {
+	if t, err := svc.s.Store.Tenants().Get(ctx, tenantID); err == nil {
+		if h := t.SLAConfig.CaseSLAHours[priority]; h > 0 {
+			return time.Duration(h) * time.Hour
+		}
+	}
+	return caseSLAHours[priority]
 }
 
 // triage resolves kind/priority/summary: concierge-agent (local Qwen) first,
@@ -369,8 +404,8 @@ func (svc *CaseService) Summarize(ctx context.Context, tenantID, id string) (str
 		timeline = append(timeline, n.Author+": "+n.Body)
 	}
 	if svc.assist != nil {
-		if s, err := svc.assist.Summarize(ctx, timeline); err == nil && s != "" {
-			return s, "assist", nil // the agent's engine label lives in its traces
+		if s, eng, err := svc.assist.Summarize(ctx, timeline); err == nil && s != "" {
+			return s, eng, nil
 		}
 	}
 	// core floor: last timeline entries joined
@@ -411,6 +446,89 @@ func coreNextAction(state string) string {
 	default:
 		return "Review the case"
 	}
+}
+
+// embed is the advisory embedding helper: assist client first, nil on any
+// failure (semantic memory is a bonus, never a blocker).
+func (svc *CaseService) embed(ctx context.Context, text string) ([]float32, error) {
+	if svc.assist == nil {
+		return nil, fmt.Errorf("assist disabled")
+	}
+	return svc.assist.Embed(ctx, text)
+}
+
+// SimilarCase is one ranked recall hit.
+type SimilarCase struct {
+	CaseID     string  `json:"case_id"`
+	Title      string  `json:"title"`
+	Kind       string  `json:"kind"`
+	State      string  `json:"state"`
+	Score      float64 `json:"score"` // cosine similarity 0..1
+	ResolvedAt string  `json:"resolved_at,omitempty"`
+}
+
+// Similar recalls the tenant's most similar past cases by cosine similarity
+// over stored embeddings — how a new incident finds its precedent. Returns
+// nil when semantic memory is unavailable (no embeddings stored / daemon
+// down at intake).
+func (svc *CaseService) Similar(ctx context.Context, tenantID, caseID string, limit int) ([]SimilarCase, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 5
+	}
+	all, err := svc.s.Store.Embeddings().All(ctx, tenantID)
+	if err != nil || len(all) < 2 {
+		return nil, err
+	}
+	self, ok := all[caseID]
+	if !ok {
+		return nil, nil // this case was opened without an embedding
+	}
+	type hit struct {
+		id    string
+		score float64
+	}
+	hits := []hit{}
+	for id, vec := range all {
+		if id == caseID {
+			continue
+		}
+		if s := cosine(self, vec); s > 0 {
+			hits = append(hits, hit{id, s})
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
+	if len(hits) > limit {
+		hits = hits[:limit]
+	}
+	out := []SimilarCase{}
+	for _, h := range hits {
+		c, err := svc.s.Store.Cases().Get(ctx, tenantID, h.id)
+		if err != nil {
+			continue
+		}
+		sc := SimilarCase{CaseID: c.ID, Title: c.Title, Kind: c.Kind, State: c.State, Score: h.score}
+		if !c.ResolvedAt.IsZero() {
+			sc.ResolvedAt = c.ResolvedAt.Format(time.RFC3339)
+		}
+		out = append(out, sc)
+	}
+	return out, nil
+}
+
+func cosine(a, b []float32) float64 {
+	if len(a) == 0 || len(a) != len(b) {
+		return 0
+	}
+	var dot, na, nb float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+		na += float64(a[i]) * float64(a[i])
+		nb += float64(b[i]) * float64(b[i])
+	}
+	if na == 0 || nb == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(na) * math.Sqrt(nb))
 }
 
 // ScanSLA escalates open cases past their SLA clock. Called by the platform

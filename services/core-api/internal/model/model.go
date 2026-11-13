@@ -32,6 +32,9 @@ type PricingRules struct {
 
 type SLAConfig struct {
 	QuoteSLASeconds int64 `json:"quote_sla_seconds"` // Taylor's 1-hour promise: 3600
+	// CaseSLAHours optionally overrides the platform defaults per priority
+	// (P1=1, P2=4, P3=24, P4=72). Zero values fall back to the default.
+	CaseSLAHours map[string]int `json:"case_sla_hours,omitempty"`
 }
 
 type Client struct {

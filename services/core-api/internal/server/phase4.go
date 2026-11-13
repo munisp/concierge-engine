@@ -6,6 +6,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 
 	"concierge-engine/services/core-api/internal/httpx"
 )
@@ -25,6 +26,7 @@ func (h *handlers) registerPhase4(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/cases/{id}/notes", h.listCaseNotes)
 	mux.HandleFunc("GET /v1/cases/{id}/summary", h.caseSummary)
 	mux.HandleFunc("GET /v1/cases/{id}/next-action", h.caseNextAction)
+	mux.HandleFunc("GET /v1/cases/{id}/similar", h.similarCases)
 	mux.HandleFunc("POST /v1/cases/sla-scan", h.caseSLAScan)
 }
 
@@ -211,4 +213,14 @@ func (h *handlers) caseSLAScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]int{"escalated": n})
+}
+
+func (h *handlers) similarCases(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	list, err := h.svc.Cases.Similar(r.Context(), tenantOf(r), r.PathValue("id"), limit)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
 }

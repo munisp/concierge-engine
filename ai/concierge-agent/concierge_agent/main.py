@@ -78,6 +78,22 @@ class NextActionRequest(BaseModel):
     summary: str
 
 
+class EmbedRequest(BaseModel):
+    text: str
+
+
+@app.post("/v1/ai/embed")
+def embed(req: EmbedRequest) -> dict:
+    """Semantic vector for case recall. 503 when the daemon is down — the
+    caller (core-api) treats that as "semantic memory unavailable"."""
+    try:
+        vec, engine = router.embed(req.text)
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"embedding": vec, "engine": engine}
+
+
 @app.post("/v1/ai/triage")
 def triage(req: TriageRequest) -> dict:
     return router.triage(req.text)
@@ -85,7 +101,7 @@ def triage(req: TriageRequest) -> dict:
 
 @app.post("/v1/ai/summarize")
 def summarize(req: SummarizeRequest) -> dict:
-    return {"summary": router.summarize(req.timeline)}
+    return router.summarize(req.timeline)
 
 
 @app.post("/v1/ai/next-action")

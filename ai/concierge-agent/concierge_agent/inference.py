@@ -78,6 +78,29 @@ class OllamaProvider:
             raise InferenceError("ollama returned no choices")
         return str(choices[0].get("message", {}).get("content", "")).strip()
 
+    def embed(self, text: str, model: Optional[str] = None) -> list[float]:
+        """OpenAI-compatible embeddings (CE_OLLAMA_EMBED_MODEL, default
+        nomic-embed-text). Raises InferenceError on any failure — semantic
+        memory is advisory, callers degrade silently."""
+        body = json.dumps({
+            "model": model or config.OLLAMA_EMBED_MODEL,
+            "input": text,
+        }).encode()
+        req = urllib.request.Request(
+            f"{self.base}/v1/embeddings", data=body,
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            raise InferenceError(f"ollama embed {e.code}") from e
+        except OSError as e:
+            raise InferenceError(f"ollama unreachable: {e}") from e
+        rows = data.get("data") or []
+        if not rows or not rows[0].get("embedding"):
+            raise InferenceError("ollama returned no embedding")
+        return [float(x) for x in rows[0]["embedding"]]
+
 
 class InferenceError(RuntimeError):
     pass
@@ -138,16 +161,16 @@ class ModelRouter:
         out["redacted_kinds"] = sorted({m["kind"] for m in mapping})
         return out
 
-    def summarize(self, timeline: list[str]) -> str:
+    def summarize(self, timeline: list[str]) -> dict[str, str]:
         safe, _ = prepare_for_inference("\n".join(timeline))
         if self.ollama.healthy():
             try:
                 out = self.ollama.chat(SUMMARIZE_SYSTEM, safe, max_tokens=256)
                 if out:
-                    return out
+                    return {"summary": out, "engine": f"ollama/{self.ollama.model}"}
             except InferenceError:
                 pass
-        return _rule_summary(timeline)
+        return {"summary": _rule_summary(timeline), "engine": "rules"}
 
     def next_action(self, case_state: str, summary: str) -> dict[str, str]:
         safe, _ = prepare_for_inference(f"state: {case_state}\n{summary}")
@@ -162,6 +185,14 @@ class ModelRouter:
                 pass
         return {"action": _rule_next_action(case_state),
                 "rationale": "deterministic fallback", "engine": "rules"}
+
+    def embed(self, text: str) -> tuple[list[float], str]:
+        """Semantic vector for case recall. Redaction still applies — the
+        embed model is inference too. Raises when the daemon is down so
+        callers can skip semantic memory rather than store junk."""
+        safe, _ = prepare_for_inference(text)
+        vec = self.ollama.embed(safe)
+        return vec, f"ollama/{config.OLLAMA_EMBED_MODEL}"
 
     async def draft_reply(self, intent: str, text: str) -> str:
         """Orchestrator drafting path: hosted > local Qwen > mock rules."""

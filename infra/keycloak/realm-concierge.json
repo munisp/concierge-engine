@@ -1,0 +1,28 @@
+{
+  "realm": "concierge",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "core-api",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true
+    },
+    {
+      "clientId": "console",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:3000/*"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "tenant-owner" },
+      { "name": "concierge" },
+      { "name": "dispatcher" },
+      { "name": "chauffeur" },
+      { "name": "viewer" }
+    ]
+  }
+}

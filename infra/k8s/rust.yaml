@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-engine
+  namespace: concierge-engine
+  labels: { app: policy-engine }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: policy-engine }
+  template:
+    metadata:
+      labels: { app: policy-engine }
+    spec:
+      containers:
+        - name: policy-engine
+          image: ghcr.io/munisp/concierge-engine/policy-engine:latest
+          ports: [{ containerPort: 8200 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-engine
+  namespace: concierge-engine
+spec:
+  selector: { app: policy-engine }
+  ports: [{ port: 8200, targetPort: 8200 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-adapter
+  namespace: concierge-engine
+  labels: { app: ledger-adapter }
+spec:
+  replicas: 1   # singleton: ordered posting stream; scale via TB cluster, not replicas
+  selector:
+    matchLabels: { app: ledger-adapter }
+  template:
+    metadata:
+      labels: { app: ledger-adapter }
+    spec:
+      containers:
+        - name: ledger-adapter
+          image: ghcr.io/munisp/concierge-engine/ledger-adapter:latest
+          ports: [{ containerPort: 8210 }]
+          env:
+            - name: TB_ADDRESSES
+              value: "tigerbeetle:3000"
+            - name: TB_CLUSTER
+              value: "0"
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-adapter
+  namespace: concierge-engine
+spec:
+  selector: { app: ledger-adapter }
+  ports: [{ port: 8210, targetPort: 8210 }]

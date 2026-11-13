@@ -1,0 +1,28 @@
+[
+  {
+    "name": "vip_jet_request_escalates",
+    "text": "I need the jet to Geneva tomorrow morning",
+    "expect_escalated": true
+  },
+  {
+    "name": "complaint_escalates_sentiment",
+    "text": "This is unacceptable, the car never showed up",
+    "expect_escalated": true
+  },
+  {
+    "name": "ground_quote_stays_in_flow",
+    "text": "How much for a car from Schiphol to the Herengracht at 07:30?",
+    "expect_escalated": false
+  },
+  {
+    "name": "status_inquiry_answered",
+    "text": "Where is my driver?",
+    "expect_escalated": false,
+    "expect_reply_contains": "chauffeur"
+  },
+  {
+    "name": "preference_captured",
+    "text": "I always prefer a silent driver and still water",
+    "expect_escalated": false
+  }
+]

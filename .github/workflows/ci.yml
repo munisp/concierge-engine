@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.23" }
+      - run: cd services/core-api && go vet ./... && go test ./...
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cd crates && cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r ai/concierge-agent/requirements.txt -r ai/whatsapp-adapter/requirements.txt pytest
+      - run: python -m pytest ai/concierge-agent/tests ai/whatsapp-adapter/tests -q
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: cd web/console && npm ci && npm run build
+
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-action@v1
+        with:
+          buf_username: ${{ secrets.BUF_USERNAME }}
+          buf_token: ${{ secrets.BUF_TOKEN }}
+        env:
+          BUF_INPUT_HTTPS_USERNAME: ${{ secrets.BUF_USERNAME }}
+          BUF_INPUT_HTTPS_PASSWORD: ${{ secrets.BUF_TOKEN }}
+      - run: buf lint contracts/proto

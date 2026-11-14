@@ -27,6 +27,7 @@ OCR_URL = os.getenv("CE_OCR_URL", "")
 OCR_API_KEY = os.getenv("CE_OCR_API_KEY", "")
 OCR_TIMEOUT = float(os.getenv("CE_OCR_TIMEOUT", "20"))
 META_ACCESS_TOKEN = os.getenv("CE_META_ACCESS_TOKEN", "")
+INFOBIP_API_KEY = os.getenv("CE_INFOBIP_API_KEY", "")
 
 _MIME_EXT = {
     "image/jpeg": ".jpg",
@@ -119,3 +120,23 @@ async def fetch_meta_media(media_id: str, token: Optional[str] = None,
         blob = await client.get(url, headers=auth)
         blob.raise_for_status()
         return blob.content, mime
+
+
+async def fetch_media(ref: str, mime_hint: str = "") -> tuple[bytes, str]:
+    """Provider-agnostic media fetch: Infobip hands us a download URL,
+    Meta hands us a media id for the two-step flow."""
+    if ref.startswith("http://") or ref.startswith("https://"):
+        return await fetch_url_media(ref, mime_hint)
+    return await fetch_meta_media(ref)
+
+
+async def fetch_url_media(url: str, mime_hint: str = "") -> tuple[bytes, str]:
+    """Direct media URL download (Infobip content.url). The mime comes from
+    the response Content-Type; the hint only applies when the server is
+    silent."""
+    headers = {"Authorization": f"App {INFOBIP_API_KEY}"} if INFOBIP_API_KEY else None
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(url, headers=headers)
+        r.raise_for_status()
+        mime = r.headers.get("content-type", "").split(";")[0].strip() or mime_hint
+        return r.content, mime

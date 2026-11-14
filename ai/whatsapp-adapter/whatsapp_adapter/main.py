@@ -32,8 +32,12 @@ class WebhookMessage(BaseModel):
     text: str
     external_ref: str = ""
     display_name: str = ""
-    media_id: str = ""      # channel media handle (Meta media id) — triggers OCR
+    media_id: str = ""      # channel media handle (Meta media id or BSP URL) — triggers extraction
     media_mime: str = ""
+    latitude: Optional[float] = None   # dropped-pin / shared location
+    longitude: Optional[float] = None
+    location_name: str = ""
+    location_address: str = ""
 
 
 class OutboundRequest(BaseModel):
@@ -63,12 +67,12 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     media_result: dict[str, Any] = {}
     text = msg.text
     if msg.media_id:
-        from .ocr import fetch_meta_media, ocr_image
+        from .ocr import fetch_media, ocr_image
         from .transcribe import transcribe_audio
         from .video import video_to_text
 
         try:
-            data, mime = await fetch_meta_media(msg.media_id)
+            data, mime = await fetch_media(msg.media_id, msg.media_mime)
             mime = mime or msg.media_mime
             if mime.startswith("audio/"):
                 extracted = transcribe_audio(data, mime)
@@ -89,7 +93,21 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
             media_result = {"engine": "none",
                             "detail": f"media unavailable: {exc.__class__.__name__}"}
     if not text:
-        text = "[media received — no text extracted]"
+        text = "[media received — no text extracted]" if msg.media_id else ""
+
+    # Dropped pins: fold the location into the text so conversation, agent,
+    # and intake all see it. The geo serviceability check runs advisory
+    # against core-api after identity resolution (it needs the tenant
+    # header), and its verdict joins the text before anything is recorded.
+    has_location = msg.latitude is not None and msg.longitude is not None
+    geo_result: dict[str, Any] = {}
+    if has_location:
+        label = ", ".join(p for p in (msg.location_name, msg.location_address) if p)
+        loc_text = f"[location shared: {label + ' ' if label else ''}" \
+                   f"({msg.latitude:.5f},{msg.longitude:.5f})]"
+        text = f"{text}\n{loc_text}" if text else loc_text
+    if not text:
+        text = "[message received — no text]"
 
     # Identity resolution: phone is the anchor (WhatsApp spec 5.1).
     import httpx
@@ -100,6 +118,20 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
             "phone": msg.contact, "name": msg.display_name})
         resolved.raise_for_status()
         client_id = resolved.json()["client"]["id"]
+
+        if has_location:
+            try:
+                chk = await client.get("/v1/geo/check", params={
+                    "lat": msg.latitude, "lng": msg.longitude})
+                chk.raise_for_status()
+                geo = chk.json()
+                geo_result = {"serviceable": geo.get("serviceable", False),
+                              "areas": geo.get("areas", [])}
+                verdict = "yes" if geo.get("serviceable") else "no"
+                area_names = ", ".join(a.get("name", "") for a in geo.get("areas", []))
+                text += f" → serviceable: {verdict}" + (f" ({area_names})" if area_names else "")
+            except Exception:
+                geo_result = {"serviceable": None, "detail": "geo check unavailable"}
 
         conv = await client.post("/v1/conversations", json={
             "client_id": client_id, "channel": "WHATSAPP",
@@ -142,7 +174,8 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     if result.get("reply"):
         await _deliver(msg.tenant_id, msg.contact, result["reply"], None)
     return {"conversation_id": conversation["id"], "client_id": client_id,
-            "agent": result, "intake": intake_result, "media": media_result}
+            "agent": result, "intake": intake_result, "media": media_result,
+            "geo": geo_result}
 
 
 def _stable_idem(tenant_id: str, contact: str, text: str) -> str:
@@ -295,7 +328,20 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         external_ref=msg.get("id", ""),
                         display_name=contacts.get(contact, "")))
                     processed += 1
-                # remaining types (location, contacts, reactions, ...): next iteration
+                elif mtype == "location":
+                    loc = msg.get("location", {})
+                    lat, lng = loc.get("latitude"), loc.get("longitude")
+                    if lat is None or lng is None:
+                        continue
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact, text="",
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, ""),
+                        latitude=lat, longitude=lng,
+                        location_name=loc.get("name", ""),
+                        location_address=loc.get("address", "")))
+                    processed += 1
+                # remaining types (contacts, reactions, ...): next iteration
     return {"processed": processed}
 
 
@@ -305,3 +351,62 @@ def tenant_of_phone(phone_id: str, tenant_map: dict[str, str]) -> str:
     if phone_id in tenant_map:
         return tenant_map[phone_id]
     return os.getenv("CE_META_DEFAULT_TENANT", "")
+
+
+# ---------------------------------------------------------------------------
+# Infobip inbound webhook (BSP path). Infobip posts {"results": [...]} with
+# message.type TEXT|IMAGE|VIDEO|AUDIO|DOCUMENT|LOCATION; media arrives as a
+# direct content URL (downloaded with the App-key auth) rather than Meta's
+# two-step id flow. Tenant resolution mirrors the Meta path: receiver number
+# -> tenant map (CE_INFOBIP_TENANT_MAP), else CE_INFOBIP_DEFAULT_TENANT.
+# ---------------------------------------------------------------------------
+
+def _infobip_tenant(receiver: str) -> str:
+    raw = os.getenv("CE_INFOBIP_TENANT_MAP", "")  # "receiver:tenant_id,..."
+    for pair in raw.split(","):
+        if ":" in pair:
+            number, tenant_id = pair.split(":", 1)
+            if number.strip() == receiver:
+                return tenant_id.strip()
+    return os.getenv("CE_INFOBIP_DEFAULT_TENANT", "")
+
+
+@app.post("/webhooks/whatsapp/infobip")
+async def infobip_inbound(request: Request) -> dict[str, Any]:
+    payload = await request.json()
+    processed = 0
+    for result in payload.get("results", []):
+        message = result.get("message", {})
+        mtype = str(message.get("type", "")).upper()
+        contact = result.get("from", "")
+        tenant_id = _infobip_tenant(str(result.get("to", "")))
+        if not contact or not tenant_id:
+            continue
+        ref = str(result.get("messageId", ""))
+        if mtype == "TEXT":
+            text = message.get("text", "")
+            if not text:
+                continue
+            await inbound(WebhookMessage(tenant_id=tenant_id, contact=contact,
+                                         text=text, external_ref=ref))
+            processed += 1
+        elif mtype in ("IMAGE", "VIDEO", "AUDIO", "DOCUMENT"):
+            await inbound(WebhookMessage(
+                tenant_id=tenant_id, contact=contact,
+                text=message.get("caption", ""),
+                external_ref=ref,
+                media_id=message.get("url", ""),  # direct download URL
+                media_mime=""))
+            processed += 1
+        elif mtype == "LOCATION":
+            lat, lng = message.get("latitude"), message.get("longitude")
+            if lat is None or lng is None:
+                continue
+            await inbound(WebhookMessage(
+                tenant_id=tenant_id, contact=contact, text="",
+                external_ref=ref, latitude=lat, longitude=lng,
+                location_name=message.get("name", ""),
+                location_address=message.get("address", "")))
+            processed += 1
+        # other types: not normalized yet — skipped honestly
+    return {"processed": processed}

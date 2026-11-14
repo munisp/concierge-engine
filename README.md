@@ -146,4 +146,12 @@ intake, real ffmpeg-rendered fixture gate in CI; interactive replies
 ids kept for provenance — the webhook now handles every message type the
 platform itself can send.
 
+**Phase 10 — delivered (see `docs/phase10.md`).** Location messages →
+dropped pins fold into intake text with an advisory serviceability verdict
+from the geo service (`→ serviceable: yes (area)`; geo failure never
+invents a verdict); Infobip inbound parity — `POST /webhooks/whatsapp/
+infobip` normalizes text/media/location, media fetches are provider-
+agnostic (`fetch_media`: direct URL + App-key auth for BSPs, Meta two-step
+for ids), so all Phase 7–9 extraction works on BSP media unchanged.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

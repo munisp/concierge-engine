@@ -55,6 +55,9 @@ func main() {
 		AmadeusID:     cfg.AmadeusID,
 		AmadeusSecret: cfg.AmadeusSecret,
 		AgentURL:      cfg.AgentURL,
+		WhatsAppURL:   cfg.WhatsAppURL,
+		GeocodeURL:    cfg.GeocodeURL,
+		GeocodeKey:    cfg.GeocodeKey,
 		Now:           time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {

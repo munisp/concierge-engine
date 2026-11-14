@@ -159,3 +159,21 @@ def test_triage_rules_override_complaint_miskind(fake_ollama):
     assert out["kind"] == "incident" and out["priority"] == "P2"
     assert "rules-override" in out["reason"]
     assert out["engine"] == "ollama/qwen3:8b"  # provenance stays honest: model spoke, rules escalated
+
+
+def test_draft_endpoint_rules_and_model():
+    # rules floor: no daemon -> empty draft, honest engine
+    r = TestClient(app).post("/v1/ai/draft", json={"intent": "case-reply", "text": "case: late driver"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["engine"] == "rules" and body["draft"] == ""
+
+
+def test_draft_against_fake_daemon(fake_ollama):
+    provider, fake = fake_ollama
+    fake.queue.append({"choices": [{"message": {"content": "So sorry — a replacement is en route."}}]})
+    router = ModelRouter(ollama=provider)
+    out = router.draft("case-reply", "case: late driver, client ada@example.com")
+    assert out["engine"] == "ollama/qwen3:8b" and "replacement" in out["draft"]
+    # redaction applies to drafting too
+    assert "ada@example.com" not in json.dumps(fake.seen)

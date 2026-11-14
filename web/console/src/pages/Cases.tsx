@@ -33,6 +33,9 @@ type Metrics = {
   sla_breached: number;
   avg_resolution_hours: number;
   ai_triage_share: number;
+  by_kind: Record<string, number>;
+  by_priority: Record<string, number>;
+  channel_intake: number;
 };
 
 const NEXT_STATES: Record<string, string[]> = {
@@ -54,6 +57,10 @@ export default function Cases() {
   const [similar, setSimilar] = useState<Similar[]>([]);
   const [aiSummary, setAiSummary] = useState("");
   const [nextAction, setNextAction] = useState("");
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [replyEngine, setReplyEngine] = useState("");
+  const [replyResult, setReplyResult] = useState("");
   const [filter, setFilter] = useState("");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -165,6 +172,34 @@ export default function Cases() {
     }
   }
 
+  async function draftReply() {
+    if (!selected) return;
+    try {
+      const res = await api.get<{ draft: string; engine: string }>(
+        `/v1/cases/${selected.id}/draft-reply`);
+      setReplyBody(res.draft);
+      setReplyEngine(res.engine);
+      setReplyResult("");
+      setReplyOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "draft failed");
+    }
+  }
+
+  async function sendReply() {
+    if (!selected) return;
+    try {
+      const res = await api.post<{ sent: boolean; recorded: boolean; detail: string }>(
+        `/v1/cases/${selected.id}/send-reply`,
+        { body: replyBody, operator: "console", engine: replyEngine });
+      setReplyResult(
+        `${res.sent ? "Sent to client" : "Recorded (not sent)"} — ${res.detail}`);
+      setNotes(await api.get<Note[]>(`/v1/cases/${selected.id}/notes`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "send failed");
+    }
+  }
+
   const overdue = (c: Case) =>
     !["RESOLVED", "CLOSED"].includes(c.state) && new Date(c.sla_due_at) < new Date();
 
@@ -178,7 +213,16 @@ export default function Cases() {
           Resolved {metrics.resolved} · Closed {metrics.closed} ·
           SLA breached {metrics.sla_breached} ·
           Avg resolution {metrics.avg_resolution_hours.toFixed(1)}h ·
-          AI triage {(metrics.ai_triage_share * 100).toFixed(0)}%
+          AI triage {(metrics.ai_triage_share * 100).toFixed(0)}% ·
+          Channel intake {metrics.channel_intake}
+        </p>
+      )}
+      {metrics && (
+        <p className="kpis">
+          Priority{" "}
+          {["P1", "P2", "P3", "P4"].map((p) => `${p}:${metrics.by_priority[p] ?? 0}`).join(" ")} ·
+          Kind{" "}
+          {Object.entries(metrics.by_kind).map(([k, n]) => `${k}:${n}`).join(" ")}
         </p>
       )}
 
@@ -233,9 +277,30 @@ export default function Cases() {
             ))}
             <button onClick={() => void summarize()}>AI summary</button>
             <button onClick={() => void suggestNext()}>Next action</button>
+            <button onClick={() => void draftReply()}>Draft reply</button>
           </div>
           {aiSummary && <p className="notice">{aiSummary}</p>}
           {nextAction && <p className="notice">{nextAction}</p>}
+
+          {replyOpen && (
+            <div>
+              <h3>Reply to client (operator approval required)</h3>
+              <p className="notice">Draft engine: <code>{replyEngine}</code> — edit freely; nothing sends until you approve.</p>
+              <div className="form-row">
+                <textarea
+                  rows={4}
+                  style={{ flex: 1 }}
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
+                />
+              </div>
+              <div className="form-row">
+                <button onClick={() => void sendReply()} disabled={!replyBody}>Approve & send</button>
+                <button onClick={() => setReplyOpen(false)}>Discard</button>
+              </div>
+              {replyResult && <p className="notice">{replyResult}</p>}
+            </div>
+          )}
 
           <h3>Tasks</h3>
           <div className="form-row">

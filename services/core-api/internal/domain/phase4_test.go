@@ -334,3 +334,112 @@ func TestCaseIntakeIdempotentReplay(t *testing.T) {
 		t.Fatalf("replay must not create a second case, metrics: %+v", m)
 	}
 }
+
+// ---- Phase 5b: drafted replies with operator approval --------------------
+
+func TestCaseDraftAndSendReply(t *testing.T) {
+	// Fake assist agent serving drafts; fake WhatsApp adapter recording sends.
+	draftSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{
+			"draft":  "Apologies for the delay — a replacement chauffeur is en route.",
+			"engine": "ollama/qwen3:4b"})
+	}))
+	defer draftSrv.Close()
+	var sent []map[string]string
+	waSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]string
+		json.NewDecoder(r.Body).Decode(&b)
+		sent = append(sent, b)
+		json.NewEncoder(w).Encode(map[string]string{"mode": "freeform"})
+	}))
+	defer waSrv.Close()
+
+	s := testServices(t, Deps{AgentURL: draftSrv.URL, WhatsAppURL: waSrv.URL})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+
+	// client with a phone + conversation, then a case linked to both
+	rr, err := s.Clients.Resolve(ctx, tenantID, "+971501234567", "", "Ada Vip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := rr.Client
+	conv, err := s.Conversations.Open(ctx, tenantID, cl.ID, "WHATSAPP", "wamid.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.Cases.Open(ctx, tenantID, cl.ID, "Late chauffeur",
+		"driver 40 minutes late, refund please", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Cases.Link(ctx, tenantID, c.ID, "", "", conv.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	draft, engine, err := s.Cases.DraftReply(ctx, tenantID, c.ID)
+	if err != nil || draft == "" || engine != "ollama/qwen3:4b" {
+		t.Fatalf("draft: %q (%s), %v", draft, engine, err)
+	}
+
+	res, err := s.Cases.SendReply(ctx, tenantID, c.ID, draft, "op-7", engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Sent || !res.Recorded {
+		t.Fatalf("reply must be sent + recorded: %+v", res)
+	}
+	if len(sent) != 1 || sent[0]["contact"] != "+971501234567" || sent[0]["body"] != draft {
+		t.Fatalf("adapter got wrong payload: %+v", sent)
+	}
+	// timeline holds the staff reply; case timeline holds the approval note
+	msgs, err := s.Conversations.Timeline(ctx, tenantID, conv.ID)
+	if err != nil || len(msgs) != 1 || msgs[0].Author != "HUMAN_STAFF" {
+		t.Fatalf("timeline: %+v, %v", msgs, err)
+	}
+	notes, _ := s.Cases.Notes(ctx, tenantID, c.ID)
+	if len(notes) != 1 || notes[0].Author != "operator:op-7" {
+		t.Fatalf("notes: %+v", notes)
+	}
+}
+
+func TestCaseSendReplyWithoutAdapter(t *testing.T) {
+	s := testServices(t, Deps{}) // no agent, no adapter
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+	c, err := s.Cases.Open(ctx, tenantID, "", "Refund", "driver late, refund please", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, engine, err := s.Cases.DraftReply(ctx, tenantID, c.ID)
+	if err != nil || draft != "" || engine != "rules" {
+		t.Fatalf("no-assist draft must be empty/rules: %q %s %v", draft, engine, err)
+	}
+	res, err := s.Cases.SendReply(ctx, tenantID, c.ID, "We are on it.", "op-1", "rules")
+	if err != nil || res.Sent || res.Recorded {
+		t.Fatalf("no adapter/conversation: recorded only expected: %+v %v", res, err)
+	}
+	if res.Detail == "" {
+		t.Fatal("detail must explain nothing was sent")
+	}
+}
+
+func TestCaseMetricsBreakdowns(t *testing.T) {
+	s := testServices(t, Deps{})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+	if _, err := s.Cases.Open(ctx, tenantID, "", "A", "driver late, refund please", "wa:m1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Cases.Open(ctx, tenantID, "", "B", "book a car tomorrow", "k2"); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Cases.Metrics(ctx, tenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ChannelIntake != 1 || m.ByKind["incident"] != 1 || m.ByKind["booking"] != 1 ||
+		m.ByPriority["P2"] != 1 || m.ByPriority["P3"] != 1 {
+		t.Fatalf("metrics breakdown wrong: %+v", m)
+	}
+}

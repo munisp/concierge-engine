@@ -82,6 +82,11 @@ class EmbedRequest(BaseModel):
     text: str
 
 
+class DraftRequest(BaseModel):
+    intent: str = "case-reply"
+    text: str  # case context (title, summary, recent notes)
+
+
 @app.post("/v1/ai/embed")
 def embed(req: EmbedRequest) -> dict:
     """Semantic vector for case recall. 503 when the daemon is down — the
@@ -107,6 +112,11 @@ def summarize(req: SummarizeRequest) -> dict:
 @app.post("/v1/ai/next-action")
 def next_action(req: NextActionRequest) -> dict:
     return router.next_action(req.case_state, req.summary)
+
+
+@app.post("/v1/ai/draft")
+def draft(req: DraftRequest) -> dict:
+    return router.draft(req.intent, req.text)
 
 
 @app.get("/v1/ai/health")

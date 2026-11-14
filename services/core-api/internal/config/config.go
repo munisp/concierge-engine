@@ -21,6 +21,9 @@ type Config struct {
 	AmadeusID        string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
 	AmadeusSecret    string // CE_AMADEUS_CLIENT_SECRET
 	AgentURL         string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
+	WhatsAppURL      string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
+	GeocodeURL       string // CE_GEOCODE_URL: Nominatim-compatible geocoder; empty = built-in gazetteer
+	GeocodeKey       string // CE_GEOCODE_API_KEY
 }
 
 func getenv(k, def string) string {
@@ -50,5 +53,8 @@ func Load() Config {
 		AmadeusID:        getenv("CE_AMADEUS_CLIENT_ID", ""),
 		AmadeusSecret:    getenv("CE_AMADEUS_CLIENT_SECRET", ""),
 		AgentURL:         getenv("CE_AGENT_URL", "http://localhost:8100"),
+		WhatsAppURL:      getenv("CE_WHATSAPP_ADAPTER_URL", ""),
+		GeocodeURL:       getenv("CE_GEOCODE_URL", ""),
+		GeocodeKey:       getenv("CE_GEOCODE_API_KEY", ""),
 	}
 }

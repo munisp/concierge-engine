@@ -119,11 +119,27 @@ func (c *CaseAssistClient) Embed(ctx context.Context, text string) ([]float32, e
 	return out.Embedding, nil
 }
 
+// Draft produces an operator-approval reply draft for a case.
+func (c *CaseAssistClient) Draft(ctx context.Context, intent, text string) (string, string, error) {
+	var out struct {
+		Draft  string `json:"draft"`
+		Engine string `json:"engine"`
+	}
+	if err := c.post(ctx, "/v1/ai/draft", map[string]string{"intent": intent, "text": text}, &out); err != nil {
+		return "", "", err
+	}
+	if out.Engine == "" {
+		out.Engine = "assist"
+	}
+	return out.Draft, out.Engine, nil
+}
+
 // ------------------------------------------------------------- case service
 
 type CaseService struct {
 	s      *Services
 	assist *CaseAssistClient
+	waURL  string // whatsapp-adapter base (CE_WHATSAPP_ADAPTER_URL); empty = no outbound
 }
 
 // SLA clocks by priority — P1 mirrors Taylor's 1-hour promise; the rest
@@ -215,6 +231,10 @@ func (svc *CaseService) Intake(ctx context.Context, tenantID, clientID, text, co
 	res := &IntakeResult{Kind: kind, Priority: priority, Engine: engine}
 	if !caseIntakeKinds[kind] && priority != "P1" && priority != "P2" {
 		res.Reason = "routine message — stays in conversation flow"
+		// Skips feed the analytics bronze stream so the intake funnel
+		// (offered vs opened) is measurable per tenant and channel.
+		svc.s.Events.Emit(ctx, tenantID, "case", conversationID, "case.intake_skipped",
+			map[string]any{"kind": kind, "priority": priority, "engine": engine})
 		return res, nil
 	}
 	res.Reason = "warrants accountable follow-up"
@@ -515,6 +535,104 @@ func coreNextAction(state string) string {
 	}
 }
 
+// DraftReply produces an operator-approval reply draft from the case context
+// (title, summary, recent notes). Advisory: returns the engine label; when
+// the model is unavailable the draft is empty and the operator writes from
+// scratch — nothing is ever sent without an explicit SendReply call.
+func (svc *CaseService) DraftReply(ctx context.Context, tenantID, id string) (string, string, error) {
+	c, err := svc.s.Store.Cases().Get(ctx, tenantID, id)
+	if err != nil {
+		return "", "", err
+	}
+	notes, err := svc.s.Store.Cases().Notes(ctx, tenantID, id)
+	if err != nil {
+		return "", "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "case: %s [%s/%s, state %s]\nsummary: %s\n", c.Title, c.Kind, c.Priority, c.State, c.Summary)
+	start := 0
+	if len(notes) > 5 {
+		start = len(notes) - 5
+	}
+	for _, n := range notes[start:] {
+		fmt.Fprintf(&b, "note %s: %s\n", n.Author, n.Body)
+	}
+	if svc.assist == nil {
+		return "", "rules", nil
+	}
+	draft, engine, err := svc.assist.Draft(ctx, "case-reply", b.String())
+	if err != nil {
+		return "", "rules", nil // advisory: empty draft on assist failure
+	}
+	return draft, engine, nil
+}
+
+// ReplyResult reports an approved outbound reply.
+type ReplyResult struct {
+	Sent     bool   `json:"sent"`     // delivered to the channel adapter
+	Recorded bool   `json:"recorded"` // appended to the conversation timeline
+	Engine   string `json:"engine"`   // draft provenance passed through by the operator
+	Detail   string `json:"detail"`
+}
+
+// SendReply is the operator-approval gate: the operator reviews/edits the
+// draft and posts it here; only then does anything reach the client. The
+// reply is appended to the linked conversation (HUMAN_STAFF), noted on the
+// case, audited, and — when CE_WHATSAPP_ADAPTER_URL is configured and the
+// client has a phone — handed to the WhatsApp adapter for delivery.
+func (svc *CaseService) SendReply(ctx context.Context, tenantID, id, body, operator, engine string) (*ReplyResult, error) {
+	if body == "" || operator == "" {
+		return nil, httpx.ErrValidation
+	}
+	c, err := svc.s.Store.Cases().Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	res := &ReplyResult{Engine: engine}
+
+	if c.ConversationID != "" {
+		m := &model.Message{
+			ID: NewID(), TenantID: tenantID, ConversationID: c.ConversationID,
+			Author: "HUMAN_STAFF", Body: body, SentAt: svc.s.Now(),
+		}
+		if err := svc.s.Store.Conversations().AppendMessage(ctx, m); err != nil {
+			return nil, err
+		}
+		res.Recorded = true
+	}
+
+	if svc.waURL != "" && c.ClientID != "" {
+		if cl, err := svc.s.Store.Clients().Get(ctx, tenantID, c.ClientID); err == nil && cl.Phone != "" {
+			payload, _ := json.Marshal(map[string]string{
+				"tenant_id": tenantID, "contact": cl.Phone, "body": body})
+			req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+				strings.TrimSuffix(svc.waURL, "/")+"/v1/send", strings.NewReader(string(payload)))
+			req.Header.Set("Content-Type", "application/json")
+			hc := &http.Client{Timeout: 10 * time.Second}
+			if resp, err := hc.Do(req); err == nil {
+				resp.Body.Close()
+				res.Sent = resp.StatusCode < 300
+				if !res.Sent {
+					res.Detail = fmt.Sprintf("channel adapter returned %d", resp.StatusCode)
+				}
+			} else {
+				res.Detail = "channel adapter unreachable: " + err.Error()
+			}
+		}
+	}
+	if !res.Sent && res.Detail == "" {
+		res.Detail = "recorded on the timeline; no channel adapter configured"
+	}
+
+	author := "operator:" + operator
+	_, _ = svc.AddNote(ctx, tenantID, id, author, "reply approved & sent: "+body)
+	svc.s.Audit.Log(ctx, tenantID, author, "case.reply_sent", "case", id,
+		map[string]any{"sent": res.Sent, "engine": engine})
+	svc.s.Events.Emit(ctx, tenantID, "case", id, "case.reply_sent",
+		map[string]any{"sent": res.Sent, "engine": engine})
+	return res, nil
+}
+
 // embed is the advisory embedding helper: assist client first, nil on any
 // failure (semantic memory is a bonus, never a blocker).
 func (svc *CaseService) embed(ctx context.Context, text string) ([]float32, error) {
@@ -625,15 +743,18 @@ func (svc *CaseService) ScanSLA(ctx context.Context, tenantID string) (int, erro
 
 // CaseMetrics is the operations KPI surface.
 type CaseMetrics struct {
-	Open           int     `json:"open"`
-	Triaged        int     `json:"triaged"`
-	InProgress     int     `json:"in_progress"`
-	Waiting        int     `json:"waiting"`
-	Resolved       int     `json:"resolved"`
-	Closed         int     `json:"closed"`
-	SLABreached    int     `json:"sla_breached"`
-	AvgResolutionH float64 `json:"avg_resolution_hours"`
-	AITriageShare  float64 `json:"ai_triage_share"` // fraction triaged by a model, not rules
+	Open           int            `json:"open"`
+	Triaged        int            `json:"triaged"`
+	InProgress     int            `json:"in_progress"`
+	Waiting        int            `json:"waiting"`
+	Resolved       int            `json:"resolved"`
+	Closed         int            `json:"closed"`
+	SLABreached    int            `json:"sla_breached"`
+	AvgResolutionH float64        `json:"avg_resolution_hours"`
+	AITriageShare  float64        `json:"ai_triage_share"` // fraction triaged by a model, not rules
+	ByKind         map[string]int `json:"by_kind"`
+	ByPriority     map[string]int `json:"by_priority"`
+	ChannelIntake  int            `json:"channel_intake"` // cases opened via channel intake (wa:* idem keys)
 }
 
 func (svc *CaseService) Metrics(ctx context.Context, tenantID string) (*CaseMetrics, error) {
@@ -641,11 +762,16 @@ func (svc *CaseService) Metrics(ctx context.Context, tenantID string) (*CaseMetr
 	if err != nil {
 		return nil, err
 	}
-	m := &CaseMetrics{}
+	m := &CaseMetrics{ByKind: map[string]int{}, ByPriority: map[string]int{}}
 	var totalResolution time.Duration
 	resolved := 0
 	ai := 0
 	for _, c := range list {
+		m.ByKind[c.Kind]++
+		m.ByPriority[c.Priority]++
+		if strings.HasPrefix(c.IdempotencyKey, "wa:") {
+			m.ChannelIntake++
+		}
 		switch c.State {
 		case model.CaseOpen:
 			m.Open++

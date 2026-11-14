@@ -28,6 +28,8 @@ func (h *handlers) registerPhase4(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/cases/{id}/summary", h.caseSummary)
 	mux.HandleFunc("GET /v1/cases/{id}/next-action", h.caseNextAction)
 	mux.HandleFunc("GET /v1/cases/{id}/similar", h.similarCases)
+	mux.HandleFunc("GET /v1/cases/{id}/draft-reply", h.draftCaseReply)
+	mux.HandleFunc("POST /v1/cases/{id}/send-reply", h.sendCaseReply)
 	mux.HandleFunc("POST /v1/cases/sla-scan", h.caseSLAScan)
 }
 
@@ -248,4 +250,35 @@ func (h *handlers) similarCases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, list)
+}
+
+// draftCaseReply: AI draft for operator review — never sends anything.
+func (h *handlers) draftCaseReply(w http.ResponseWriter, r *http.Request) {
+	draft, engine, err := h.svc.Cases.DraftReply(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"draft": draft, "engine": engine})
+}
+
+// sendCaseReply: the operator-approval gate — posts the (possibly edited)
+// reply to the conversation timeline and the WhatsApp channel adapter.
+func (h *handlers) sendCaseReply(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Body     string `json:"body"`
+		Operator string `json:"operator"`
+		Engine   string `json:"engine"` // draft provenance, if the operator used the draft
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	res, err := h.svc.Cases.SendReply(r.Context(), tenantOf(r), r.PathValue("id"),
+		body.Body, body.Operator, body.Engine)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
 }

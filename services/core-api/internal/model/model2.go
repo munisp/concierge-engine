@@ -16,6 +16,8 @@ type Partner struct {
 	QualityScore float64   `json:"quality_score"`
 	PayoutRail   string    `json:"payout_rail"` // MOJALOOP | MANUAL
 	PayoutRef    string    `json:"payout_ref,omitempty"`
+	Lat          float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
+	Lng          float64   `json:"lng,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 

@@ -28,6 +28,9 @@ type Deps struct {
 	AmadeusID     string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
 	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
 	AgentURL      string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
+	WhatsAppURL   string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
+	GeocodeURL    string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
+	GeocodeKey    string // CE_GEOCODE_API_KEY when the provider needs one
 	Now           func() time.Time
 }
 
@@ -50,6 +53,7 @@ type Services struct {
 	GDS           *GDSService
 	InstantOn     *InstantOnService
 	Cases         *CaseService
+	Geo           *GeoService
 	Supply        *SupplyService
 	Trips         *TripService
 	Audit         *AuditService
@@ -99,7 +103,8 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Referrals = &ReferralService{s: s}
 	s.GDS = NewGDSService(s, NewAmadeusAdapter(deps.AmadeusBase, deps.AmadeusID, deps.AmadeusSecret))
 	s.InstantOn = &InstantOnService{s: s}
-	s.Cases = &CaseService{s: s, assist: NewCaseAssistClient(deps.AgentURL)}
+	s.Cases = &CaseService{s: s, assist: NewCaseAssistClient(deps.AgentURL), waURL: deps.WhatsAppURL}
+	s.Geo = NewGeoService(s, deps.GeocodeURL, deps.GeocodeKey)
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)

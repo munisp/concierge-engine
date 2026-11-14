@@ -208,6 +208,23 @@ class ModelRouter:
         vec = self.ollama.embed(safe)
         return vec, f"ollama/{config.OLLAMA_EMBED_MODEL}"
 
+    def draft(self, intent: str, text: str) -> dict[str, str]:
+        """Sync drafting for operator-approved replies. Returns the draft and
+        its engine; an empty draft with engine 'rules' means the model was
+        unavailable and the operator writes from scratch."""
+        safe, _ = prepare_for_inference(text)
+        if self.ollama.healthy():
+            try:
+                out = self.ollama.chat(
+                    "You are a VIP concierge. Draft a brief, warm, precise reply. "
+                    "Never invent prices or availability. Intent: " + intent,
+                    safe, max_tokens=300)
+                if out:
+                    return {"draft": out, "engine": f"ollama/{self.ollama.model}"}
+            except InferenceError:
+                pass
+        return {"draft": "", "engine": "rules"}
+
     async def draft_reply(self, intent: str, text: str) -> str:
         """Orchestrator drafting path: hosted > local Qwen > mock rules."""
         safe, _ = prepare_for_inference(text)

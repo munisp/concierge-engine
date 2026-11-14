@@ -106,4 +106,16 @@ signals (stdlib, deterministic, model-labeled rows); real-model eval ladder
 (`docs/eval-qwen3-ladder.md`) with the `CE_OLLAMA_TIMEOUT` knob and thinking
 suppression for structured tasks.
 
+**Phase 6 — delivered (see `docs/phase6.md`).** Operator-approved case
+replies (AI draft → editable console textarea → approve & send over
+WhatsApp, HUMAN_STAFF timeline + audit, intake metrics breakdowns); full
+geo stack — PostGIS `geography(Polygon,4326)` service areas with RLS,
+ray-cast serviceability checks, haversine nearest-partner ranking,
+Nominatim-compatible geocoding with gazetteer fallback; Sedona spatial
+analytics (`ST_Contains` zone-ping gold table, stdlib fallback);
+one-command toolchain persistence across sandbox wipes
+(`scripts/bootstrap-toolchain.sh`); external-project assessment
+(oxirs/terrio deferred with triggers, MiniCPM-OCR queued as a Phase 7
+candidate — `docs/integration-assessment.md`).
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

@@ -95,6 +95,13 @@ type AttributionStore interface {
 	Track(ctx context.Context, e *model.AttributionEvent) error
 }
 
+// ---------------------------------------------------------- Phase 6 geo
+
+type GeoStore interface {
+	AddArea(ctx context.Context, a *model.ServiceArea) error
+	Areas(ctx context.Context, tenantID string) ([]model.ServiceArea, error)
+}
+
 // ---------------------------------------------------------- Phase 2 stores
 
 type PartnerStore interface {
@@ -206,5 +213,6 @@ type Store interface {
 	Referrals() ReferralStore
 	Cases() CaseStore
 	Embeddings() EmbeddingStore
+	Geo() GeoStore
 	Close()
 }

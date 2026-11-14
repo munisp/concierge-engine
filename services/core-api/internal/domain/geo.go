@@ -36,7 +36,7 @@ func NewGeoService(s *Services, geoURL, geoKey string) *GeoService {
 
 // CreateArea validates and stores a service-area polygon. At least 3
 // vertices; the ring is implicitly closed (first != last is fine).
-func (svc *GeoService) CreateArea(ctx context.Context, tenantID, name string, polygon [][2]float64) (*model.ServiceArea, error) {
+func (svc *GeoService) CreateArea(ctx context.Context, tenantID, name string, polygon [][2]float64, nameI18n map[string]string) (*model.ServiceArea, error) {
 	if name == "" || len(polygon) < 3 {
 		return nil, httpx.ErrValidation
 	}
@@ -46,7 +46,7 @@ func (svc *GeoService) CreateArea(ctx context.Context, tenantID, name string, po
 		}
 	}
 	a := &model.ServiceArea{ID: NewID(), TenantID: tenantID, Name: name,
-		Polygon: polygon, CreatedAt: svc.s.Now()}
+		Polygon: polygon, NameI18n: nameI18n, CreatedAt: svc.s.Now()}
 	if err := svc.s.Store.Geo().AddArea(ctx, a); err != nil {
 		return nil, err
 	}

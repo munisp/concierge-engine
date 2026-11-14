@@ -18,14 +18,15 @@ func (h *handlers) registerPhase6(mux *http.ServeMux) {
 
 func (h *handlers) createGeoArea(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name    string       `json:"name"`
-		Polygon [][2]float64 `json:"polygon"` // [lat,lng] ring
+		Name     string            `json:"name"`
+		Polygon  [][2]float64      `json:"polygon"`   // [lat,lng] ring
+		NameI18n map[string]string `json:"name_i18n"` // Phase 29: per-locale area names
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	a, err := h.svc.Geo.CreateArea(r.Context(), tenantOf(r), body.Name, body.Polygon)
+	a, err := h.svc.Geo.CreateArea(r.Context(), tenantOf(r), body.Name, body.Polygon, body.NameI18n)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

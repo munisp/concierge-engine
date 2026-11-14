@@ -97,6 +97,7 @@ export default function Settings() {
   const [siteDomains, setSiteDomains] = useState("");
   const [siteVerify, setSiteVerify] = useState("");
   const [siteLocale, setSiteLocale] = useState("");
+  const [siteLocales, setSiteLocales] = useState("");
   const [siteSocial, setSiteSocial] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -133,6 +134,7 @@ export default function Settings() {
     setSiteDomains((tenant.site_config?.custom_domains ?? []).join("\n"));
     setSiteVerify(tenant.site_config?.google_verification ?? "");
     setSiteLocale(tenant.site_config?.locale ?? "");
+    setSiteLocales((tenant.site_config?.locales ?? []).join(", "));
     setSiteSocial((tenant.site_config?.social_links ?? []).join("\n"));
     setLoaded(true);
   }, [tenant, loaded]);
@@ -256,6 +258,16 @@ export default function Settings() {
           placeholder="from Search Console → Settings → Ownership verification (HTML tag)" />
         <label>Site locale (BCP-47, e.g. en-GB)</label>
         <input value={siteLocale} onChange={(e) => setSiteLocale(e.target.value)} placeholder="en" />
+        <label>Content locales (comma-separated — first is the default, served at the
+          canonical URL; each additional locale gets its own URL tree with hreflang,
+          e.g. pt-PT, en)</label>
+        <input style={{ width: "100%" }} value={siteLocales}
+          onChange={(e) => setSiteLocales(e.target.value)} placeholder="pt-PT, en" />
+        <p className="muted">
+          Per-service and per-area translations are set on the catalog/geo resources
+          via the API (name_i18n / desc_i18n). Locales without full prose translations
+          render localized navigation with English guide text.
+        </p>
         <label>Social profile URLs (one per line — shown as sameAs to search engines)</label>
         <textarea rows={3} style={{ width: "100%" }} value={siteSocial}
           onChange={(e) => setSiteSocial(e.target.value)}
@@ -266,6 +278,8 @@ export default function Settings() {
             custom_domains: siteDomains.split("\n").map((d) => d.trim()).filter(Boolean),
             google_verification: siteVerify.trim(),
             locale: siteLocale.trim(),
+            locales: siteLocales.split(",").map((l) => l.trim()).filter(Boolean),
+            brand_i18n: tenant?.site_config?.brand_i18n, // preserved — edited via API
             social_links: siteSocial.split("\n").map((s) => s.trim()).filter(Boolean),
           },
         })} />

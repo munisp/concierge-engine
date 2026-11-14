@@ -8,6 +8,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -30,10 +31,11 @@ func (s pgGeo) AddArea(ctx context.Context, a *model.ServiceArea) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	nameI18n, _ := json.Marshal(a.NameI18n)
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO service_areas (id, tenant_id, name, geom, created_at)
-		 VALUES ($1, $2, $3, ST_GeogFromText($4), $5)`,
-		a.ID, a.TenantID, a.Name, wkt, a.CreatedAt)
+		`INSERT INTO service_areas (id, tenant_id, name, geom, created_at, name_i18n)
+		 VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6)`,
+		a.ID, a.TenantID, a.Name, wkt, a.CreatedAt, nameI18n)
 	if err != nil {
 		return err
 	}
@@ -47,7 +49,7 @@ func (s pgGeo) Areas(ctx context.Context, tenantID string) ([]model.ServiceArea,
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, name, ST_AsText(geom::geometry), created_at
+		`SELECT id, tenant_id, name, ST_AsText(geom::geometry), created_at, name_i18n
 		 FROM service_areas WHERE tenant_id = $1`, tenantID)
 	if err != nil {
 		return nil, err
@@ -57,10 +59,12 @@ func (s pgGeo) Areas(ctx context.Context, tenantID string) ([]model.ServiceArea,
 	for rows.Next() {
 		var a model.ServiceArea
 		var wkt string
-		if err := rows.Scan(&a.ID, &a.TenantID, &a.Name, &wkt, &a.CreatedAt); err != nil {
+		var nameI18n []byte
+		if err := rows.Scan(&a.ID, &a.TenantID, &a.Name, &wkt, &a.CreatedAt, &nameI18n); err != nil {
 			return nil, err
 		}
 		a.Polygon = parseWKTPolygon(wkt)
+		_ = json.Unmarshal(nameI18n, &a.NameI18n)
 		out = append(out, a)
 	}
 	return out, rows.Err()

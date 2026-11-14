@@ -358,11 +358,13 @@ func (s pgCatalog) Add(ctx context.Context, svc *model.CatalogService) error {
 		return err
 	}
 	defer tx.Rollback()
+	nameI18n, _ := json.Marshal(svc.NameI18n)
+	descI18n, _ := json.Marshal(svc.DescI18n)
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO catalog_services (id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		`INSERT INTO catalog_services (id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		svc.ID, svc.TenantID, svc.Vertical, svc.Name, svc.BaseMinor, svc.Currency,
-		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active)
+		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active, nameI18n, descI18n)
 	if err != nil {
 		return err
 	}
@@ -376,7 +378,7 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active
+		`SELECT id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n
 		 FROM catalog_services WHERE active ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -385,10 +387,14 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 	out := []model.CatalogService{}
 	for rows.Next() {
 		var svc model.CatalogService
+		var nameI18n, descI18n []byte
 		if err := rows.Scan(&svc.ID, &svc.TenantID, &svc.Vertical, &svc.Name, &svc.BaseMinor,
-			&svc.Currency, &svc.PerKMMinor, &svc.PerHourMinor, &svc.AutoQuotable, &svc.Active); err != nil {
+			&svc.Currency, &svc.PerKMMinor, &svc.PerHourMinor, &svc.AutoQuotable, &svc.Active,
+			&nameI18n, &descI18n); err != nil {
 			return nil, err
 		}
+		_ = json.Unmarshal(nameI18n, &svc.NameI18n)
+		_ = json.Unmarshal(descI18n, &svc.DescI18n)
 		out = append(out, svc)
 	}
 	if err := rows.Err(); err != nil {

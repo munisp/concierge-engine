@@ -427,4 +427,24 @@ partner-attributed booking links. Console Settings gains the Public site
 & SEO card. Migration 0021 (`tenants.site_config`, `GetByDomain` jsonb
 containment). 5 server + 1 pg tests.
 
+**Phase 29 — delivered (see `docs/phase29.md`).** Multi-locale site engine,
+premium redesign, AI concierge surfacing — reference tenant DDPortugal
+(Lisbon luxury tours). `site_config.locales` (first = default, canonical
+unprefixed URLs; alternates at `/site/{slug}/{locale}/...`, unconfigured
+prefixes 404) with a full hreflang cluster + per-locale canonicals and
+sitemap trees. Per-resource i18n (`name_i18n`/`desc_i18n` jsonb on catalog
+services and service areas, `brand_i18n` on tenants — migration 0022);
+chrome dictionaries for en/pt-PT/de/fr/es; guide + FAQ prose fully
+translated en + pt-PT, honest English-body degrade elsewhere (no
+machine-translated marketing copy). Template rebuilt to a top-player
+layout: hero with rating chip + dual CTA, monogram tour-card grid,
+conditional trust bar (claims render only when true), sticky mobile CTA,
+partner footer — pure SSR/CSS, no external assets. Every page carries a
+WhatsApp chat CTA wired to the AI concierge pipeline (intake →
+policy-gated agent turns → RAG similar-case recall → rule floor → human
+handoff → wamid receipts + SLA evidence). OG cards ascii-fold diacritics.
+`scripts/seed-ddportugal.sh` seeds the bilingual brownfield demo.
+Single-dispatcher routing under `/site/{slug}/` resolves locale prefixes
+manually (ServeMux wildcard/literal overlap). 4 server + 1 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

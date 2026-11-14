@@ -4,24 +4,27 @@ package server
 // tenant at /site/{slug}/ — the console SPA is client-rendered and
 // invisible to crawlers, so indexable marketing pages live here instead.
 //
-// Phase 28: optimization wave. Custom domains (host-based tenant
-// resolution so authority compounds on the tenant's own domain),
-// data-derived guide content (thin content is the #1 ranking risk),
-// expanded JSON-LD (Service/Breadcrumb/FAQ/Review/geo/sameAs/priceRange),
-// dynamic branded OG images, per-page unique titles, FAQ sections,
-// cache/ETag headers, sitemap lastmod + platform sitemap index, hreflang,
-// Search Console verification meta, and a public partner directory.
+// Phase 28: optimization wave — custom domains, data-derived guide
+// content, expanded JSON-LD, OG images, cache/ETag, sitemap lastmod +
+// platform index, hreflang, Search Console verification, partner
+// directory.
 //
-// Pages: landing, per-service booking pages, per-area programmatic pages
-// (generated from the tenant's real catalog × real service areas — data,
-// not thin content), partner directory, sitemap.xml, robots.txt. Every CTA
-// lands on the capture flow with channel=seo stamped, so organic arrivals
+// Phase 29: multi-locale engine + premium redesign. Each configured locale
+// gets its own URL tree (/site/{slug}/{locale}/...) with a full hreflang
+// cluster; names/descriptions resolve from per-resource i18n maps. The
+// template is rebuilt to a top-player layout (hero, card grid, trust bar,
+// sticky CTA) and every page carries a WhatsApp chat CTA routed into the
+// AI concierge — inquiries are answered by the agent with policy-gated
+// tools and human handoff, not a contact form.
+//
+// Pages: landing, per-service booking pages, per-area programmatic pages,
+// partner directory, link-in-bio, sitemap.xml, robots.txt. Every CTA lands
+// on the capture flow with channel=seo stamped, so organic arrivals
 // attribute correctly through first-touch inheritance and the acquisition
 // fee applies when they convert.
 //
 // Not tenant-middleware scoped: /site/ is public marketing content by
-// design (tenant name, catalog, service areas, VETTED partners). No client
-// data is ever rendered here.
+// design. No client data is ever rendered here.
 
 import (
 	"bytes"
@@ -38,15 +41,11 @@ import (
 )
 
 func (h *handlers) registerSite(mux *http.ServeMux) {
-	mux.HandleFunc("GET /site/{slug}/", h.siteLanding)
-	mux.HandleFunc("GET /site/{slug}/book/{serviceID}", h.siteService)
-	mux.HandleFunc("GET /site/{slug}/areas/{areaID}", h.siteArea)
-	mux.HandleFunc("GET /site/{slug}/links", h.siteLinks)
-	mux.HandleFunc("GET /site/{slug}/partners", h.sitePartners)
-	mux.HandleFunc("GET /site/{slug}/sitemap.xml", h.siteSitemap)
-	mux.HandleFunc("GET /site/{slug}/robots.txt", h.siteRobots)
-	mux.HandleFunc("GET /site/{slug}/og.png", h.siteOGLanding)
-	mux.HandleFunc("GET /site/{slug}/book/{serviceID}/og.png", h.siteOGService)
+	// One subtree handler for the whole tenant site. Go's ServeMux cannot
+	// express "/site/{slug}/{locale}/book/{id}" alongside
+	// "/site/{slug}/book/{id}" (wildcard and literal segments overlap), so
+	// the optional locale prefix is resolved by siteDispatch instead.
+	mux.HandleFunc("GET /site/{slug}/", h.siteDispatch)
 	// Platform-level sitemap index: one entry per tenant sitemap, so the
 	// operator submits a single URL to Search Console and every tenant
 	// (path-based or custom-domain) is discovered.
@@ -57,7 +56,64 @@ func (h *handlers) registerSite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /embed/{slug}", h.embedWidget)
 }
 
-// ---------------------------------------------------------- custom domains (Phase 28, lever #1)
+// siteReserved are the fixed first segments of the site surface — a first
+// segment that is not one of these is treated as a locale prefix and
+// validated against the tenant's configured locales.
+var siteReserved = map[string]bool{
+	"book": true, "areas": true, "links": true, "partners": true,
+	"sitemap.xml": true, "robots.txt": true, "og.png": true,
+}
+
+// siteDispatch routes /site/{slug}/... manually: optional {locale} prefix,
+// then the page kind. Unknown shapes 404; unconfigured locale prefixes 404
+// inside the handlers via requestLocale (no duplicate-content pages).
+func (h *handlers) siteDispatch(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	rest := strings.TrimPrefix(r.URL.Path, "/site/"+slug+"/")
+	segs := strings.Split(strings.Trim(rest, "/"), "/")
+	if segs[0] != "" && !siteReserved[segs[0]] {
+		r.SetPathValue("locale", segs[0])
+		segs = segs[1:]
+		if len(segs) == 0 {
+			segs = []string{""}
+		}
+	}
+	switch {
+	case len(segs) == 1 && segs[0] == "":
+		h.siteLanding(w, r)
+	case len(segs) == 1 && segs[0] == "links":
+		h.siteLinks(w, r)
+	case len(segs) == 1 && segs[0] == "partners":
+		h.sitePartners(w, r)
+	case len(segs) == 1 && segs[0] == "sitemap.xml":
+		if r.PathValue("locale") != "" {
+			httpx.WriteError(w, httpx.ErrNotFound)
+			return
+		}
+		h.siteSitemap(w, r)
+	case len(segs) == 1 && segs[0] == "robots.txt":
+		if r.PathValue("locale") != "" {
+			httpx.WriteError(w, httpx.ErrNotFound)
+			return
+		}
+		h.siteRobots(w, r)
+	case len(segs) == 1 && segs[0] == "og.png":
+		h.siteOGLanding(w, r)
+	case len(segs) == 2 && segs[0] == "book":
+		r.SetPathValue("serviceID", segs[1])
+		h.siteService(w, r)
+	case len(segs) == 3 && segs[0] == "book" && segs[2] == "og.png":
+		r.SetPathValue("serviceID", segs[1])
+		h.siteOGService(w, r)
+	case len(segs) == 2 && segs[0] == "areas":
+		r.SetPathValue("areaID", segs[1])
+		h.siteArea(w, r)
+	default:
+		httpx.WriteError(w, httpx.ErrNotFound)
+	}
+}
+
+// ---------------------------------------------------------- custom domains (Phase 28)
 
 // siteHostHeader carries the public origin of a resolved custom domain
 // (e.g. https://concierge.acme.com) from the rewrite middleware to the
@@ -73,8 +129,7 @@ func normalizeHost(hostport string) string {
 	if i := strings.LastIndex(h, ":"); i > -1 && !strings.Contains(h[i:], "]") {
 		h = h[:i]
 	}
-	h = strings.TrimPrefix(h, "www.")
-	return h
+	return strings.TrimPrefix(h, "www.")
 }
 
 // hostRewrite maps custom tenant domains onto the site surface. A request
@@ -122,13 +177,23 @@ func (h *handlers) siteBase(r *http.Request, slug string) string {
 	return h.svc.PublicBase() + "/site/" + slug
 }
 
+// localeBase appends the locale prefix for non-default locales
+// (Phase 29): the default locale keeps canonical unprefixed URLs.
+func localeBase(base string, t *model.Tenant, locale string) string {
+	if locale == defaultLocale(t) {
+		return base
+	}
+	return base + "/" + locale
+}
+
 // ---------------------------------------------------------- page model + template
 
 type siteServiceView struct {
 	Name       string
+	Desc       string
 	PriceLabel string
 	URL        string
-	Vertical   string
+	Initial    string // first letter, rendered as the card monogram
 }
 
 type siteAreaView struct {
@@ -148,8 +213,13 @@ type sitePartnerView struct {
 	BookURL   string
 }
 
+type hrefAlt struct {
+	Lang string
+	URL  string
+}
+
 type sitePage struct {
-	Title        string // unique per page (Phase 28) — falls back to TenantName — SubHead
+	Title        string
 	TenantName   string
 	Description  string
 	Canonical    string
@@ -162,14 +232,31 @@ type sitePage struct {
 	Services     []siteServiceView
 	Areas        []siteAreaView
 	Partners     []sitePartnerView
-	Sections     []string // data-derived guide paragraphs (thin-content fix)
+	Sections     []string
 	FAQs         []siteFAQ
 	CTA          string
 	CTALabel     string
-	// Phase 27: consented review aggregate — only publish-consented
-	// reviews, so the stars shown are exactly the evidence held.
-	ReviewCount int
-	ReviewAvg   string // e.g. "4.8"
+	// Phase 29: chrome + engagement
+	D              siteDict
+	HrefLangs      []hrefAlt
+	WhatsApp       string // wa.me link, empty when no number configured
+	PartnersURL    string
+	LinksURL       string
+	HomeURL        string
+	TrustedPayment bool   // claim "secure online payment" only when a rail is enabled
+	ReviewCount    int    // Phase 27: consented-only aggregate
+	ReviewAvg      string // e.g. "4.8"
+}
+
+// hreflangCluster builds the alternate set for a page path: every
+// configured locale plus x-default → the default-locale URL.
+func (h *handlers) hreflangCluster(t *model.Tenant, base, pagePath string) []hrefAlt {
+	var out []hrefAlt
+	for _, l := range tenantLocales(t) {
+		out = append(out, hrefAlt{Lang: l, URL: localeBase(base, t, l) + pagePath})
+	}
+	out = append(out, hrefAlt{Lang: "x-default", URL: localeBase(base, t, defaultLocale(t)) + pagePath})
+	return out
 }
 
 var siteTmpl = template.Must(template.New("site").Parse(`<!doctype html>
@@ -180,9 +267,8 @@ var siteTmpl = template.Must(template.New("site").Parse(`<!doctype html>
 <title>{{.Title}}</title>
 <meta name="description" content="{{.Description}}">
 <link rel="canonical" href="{{.Canonical}}">
-<link rel="alternate" hreflang="{{.Lang}}" href="{{.Canonical}}">
-<link rel="alternate" hreflang="x-default" href="{{.Canonical}}">
-{{if .Verification}}<meta name="google-site-verification" content="{{.Verification}}">{{end}}
+{{range .HrefLangs}}<link rel="alternate" hreflang="{{.Lang}}" href="{{.URL}}">
+{{end}}{{if .Verification}}<meta name="google-site-verification" content="{{.Verification}}">{{end}}
 <meta property="og:type" content="website">
 <meta property="og:title" content="{{.Title}}">
 <meta property="og:description" content="{{.Description}}">
@@ -192,43 +278,88 @@ var siteTmpl = template.Must(template.New("site").Parse(`<!doctype html>
 <meta name="twitter:image" content="{{.OGImage}}">{{else}}<meta name="twitter:card" content="summary">{{end}}
 <script type="application/ld+json">{{.JSONLD}}</script>
 <style>
-body{font-family:system-ui,-apple-system,sans-serif;margin:0;color:#1a1a1a;background:#fafafa}
-header{background:#0f1b2d;color:#fff;padding:48px 24px;text-align:center}
-header h1{margin:0 0 8px;font-size:2rem}
-header p{margin:0;opacity:.85}
-main{max-width:760px;margin:0 auto;padding:32px 20px}
-h2{font-size:1.2rem;border-bottom:2px solid #e5e5e5;padding-bottom:6px}
-ul{list-style:none;padding:0}
-li{padding:10px 0;border-bottom:1px solid #eee}
-a{color:#0b5fff;text-decoration:none}
-.cta{display:inline-block;background:#0b5fff;color:#fff;padding:14px 28px;border-radius:8px;font-weight:600;margin:24px 0}
-.cta:hover{background:#0946c0;color:#fff}
-.price{color:#555;font-size:.95rem}
-.guide{line-height:1.6;color:#333}
-dl dt{font-weight:600;margin-top:12px}
-dl dd{margin:4px 0 0;color:#444;line-height:1.5}
-footer{text-align:center;color:#888;font-size:.85rem;padding:24px}
+:root{--ink:#0e1626;--gold:#c9a227;--muted:#5b6672;--bg:#faf9f6}
+*{box-sizing:border-box}
+body{font-family:Georgia,'Times New Roman',serif;margin:0;color:var(--ink);background:var(--bg)}
+header{background:linear-gradient(160deg,#0e1626 0%,#1a2a44 100%);color:#fff;padding:72px 24px 56px;text-align:center}
+header .brand{font-size:2.6rem;letter-spacing:.12em;margin:0 0 10px;font-weight:400}
+header .tag{margin:0;opacity:.82;font-size:1.1rem;font-family:system-ui,sans-serif}
+.rating{display:inline-block;margin-top:16px;padding:6px 16px;border:1px solid var(--gold);border-radius:999px;color:var(--gold);font-family:system-ui,sans-serif;font-size:.9rem}
+.cta-row{margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;padding:14px 32px;border-radius:6px;font-weight:600;font-family:system-ui,sans-serif;text-decoration:none;font-size:1rem}
+.btn-primary{background:var(--gold);color:#0e1626}
+.btn-primary:hover{background:#dab43a}
+.btn-ghost{border:1px solid rgba(255,255,255,.5);color:#fff}
+.btn-ghost:hover{border-color:#fff}
+main{max-width:880px;margin:0 auto;padding:40px 20px 120px}
+.trust{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:-24px 0 32px}
+.trust span{background:#fff;border:1px solid #e8e2d2;border-radius:999px;padding:8px 16px;font-family:system-ui,sans-serif;font-size:.82rem;color:var(--muted)}
+h2{font-size:1.15rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #e3ddc9;padding-bottom:8px;font-family:system-ui,sans-serif;color:var(--muted)}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;list-style:none;padding:0}
+.cards li{background:#fff;border:1px solid #ece7d8;border-radius:10px;overflow:hidden;transition:box-shadow .15s}
+.cards li:hover{box-shadow:0 6px 24px rgba(14,22,38,.10)}
+.card-top{background:linear-gradient(135deg,#1a2a44,#0e1626);color:var(--gold);font-size:2rem;display:flex;align-items:center;justify-content:center;height:96px;letter-spacing:.1em}
+.card-body{padding:16px}
+.card-body .nm{font-size:1.05rem;margin:0 0 4px}
+.card-body .ds{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted);margin:0 0 12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-foot{display:flex;justify-content:space-between;align-items:center;font-family:system-ui,sans-serif}
+.card-foot .pr{color:var(--muted);font-size:.9rem}
+.card-foot a{color:#0e1626;font-weight:600;text-decoration:none;border-bottom:2px solid var(--gold)}
+.areas{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:10px}
+.areas li a{display:block;background:#fff;border:1px solid #e8e2d2;border-radius:999px;padding:10px 20px;color:var(--ink);text-decoration:none;font-family:system-ui,sans-serif;font-size:.9rem}
+.areas li a:hover{border-color:var(--gold)}
+.guide{line-height:1.7;color:#3a4350;font-size:1.02rem}
+dl dt{font-weight:600;margin-top:16px;font-size:1.02rem}
+dl dd{margin:6px 0 0;color:#4a5560;line-height:1.6;font-family:system-ui,sans-serif;font-size:.92rem}
+ul.plist{list-style:none;padding:0}
+ul.plist li{padding:12px 0;border-bottom:1px solid #eee;font-family:system-ui,sans-serif}
+.sticky{position:fixed;bottom:0;left:0;right:0;background:#0e1626;padding:12px 20px;display:flex;gap:10px;justify-content:center;z-index:50}
+.sticky .btn{padding:12px 24px;font-size:.95rem}
+footer{text-align:center;color:#8a8f98;font-size:.85rem;padding:32px 24px 110px;font-family:system-ui,sans-serif}
+footer a{color:#8a8f98}
+@media (max-width:640px){.cards{grid-template-columns:1fr}header .brand{font-size:2rem}}
+@media (min-width:900px){.sticky{display:none}}
 </style>
 </head>
 <body>
-<header><h1>{{.Heading}}</h1><p>{{.Description}}</p>{{if .ReviewCount}}<p>★ {{.ReviewAvg}} · {{.ReviewCount}} client reviews</p>{{end}}</header>
+<header>
+<h1 class="brand">{{.Heading}}</h1>
+<p class="tag">{{.Description}}</p>
+{{if .ReviewCount}}<span class="rating">★ {{.ReviewAvg}} · {{.ReviewCount}} {{.D.ClientReviews}}</span>{{end}}
+<div class="cta-row">
+<a class="btn btn-primary" href="{{.CTA}}">{{.CTALabel}}</a>
+{{if .WhatsApp}}<a class="btn btn-ghost" href="{{.WhatsApp}}">{{.D.ChatWhatsApp}}</a>{{end}}
+</div>
+</header>
 <main>
+<div class="trust">
+{{if .TrustedPayment}}<span>✓ {{.D.SecurePayment}}</span>{{end}}
+{{if .WhatsApp}}<span>✓ {{.D.WhatsAppConfirm}}</span>{{end}}
+{{if .ReviewCount}}<span>★ {{.ReviewAvg}} ({{.ReviewCount}})</span>{{end}}
+</div>
 {{range .Sections}}<p class="guide">{{.}}</p>{{end}}
-{{if .Services}}<h2>Services</h2><ul>{{range .Services}}
-<li><a href="{{.URL}}">{{.Name}}</a>{{if .PriceLabel}} <span class="price">— from {{.PriceLabel}}</span>{{end}}</li>
+{{if .Services}}<h2>{{.D.Services}}</h2><ul class="cards">{{range .Services}}
+<li><div class="card-top">{{.Initial}}</div><div class="card-body"><p class="nm">{{.Name}}</p>{{if .Desc}}<p class="ds">{{.Desc}}</p>{{end}}
+<div class="card-foot">{{if .PriceLabel}}<span class="pr">{{$.D.FromPrefix}} {{.PriceLabel}}</span>{{else}}<span></span>{{end}}<a href="{{.URL}}">{{$.D.BookNow}} →</a></div></div></li>
 {{end}}</ul>{{end}}
-{{if .Areas}}<h2>Where we operate</h2><ul>{{range .Areas}}
+{{if .Areas}}<h2>{{.D.WhereWeOperate}}</h2><ul class="areas">{{range .Areas}}
 <li><a href="{{.URL}}">{{.Name}}</a></li>
 {{end}}</ul>{{end}}
-{{if .Partners}}<h2>Our partners</h2><ul>{{range .Partners}}
-<li>{{.Name}}{{if .Verticals}} <span class="price">— {{.Verticals}}</span>{{end}}</li>
+{{if .Partners}}<h2>{{.D.OurPartners}}</h2><ul class="plist">{{range .Partners}}
+<li>{{.Name}}{{if .Verticals}} <span style="color:var(--muted)">— {{.Verticals}}</span>{{end}}</li>
 {{end}}</ul>{{end}}
-{{if .FAQs}}<h2>Common questions</h2><dl>{{range .FAQs}}
+{{if .FAQs}}<h2>{{.D.CommonQuestions}}</h2><dl>{{range .FAQs}}
 <dt>{{.Q}}</dt><dd>{{.A}}</dd>
 {{end}}</dl>{{end}}
-<a class="cta" href="{{.CTA}}">{{.CTALabel}}</a>
 </main>
-<footer>{{.TenantName}} — concierge, arranged end to end.</footer>
+<div class="sticky">
+<a class="btn btn-primary" href="{{.CTA}}">{{.CTALabel}}</a>
+{{if .WhatsApp}}<a class="btn btn-ghost" href="{{.WhatsApp}}">{{.D.ChatWhatsApp}}</a>{{end}}
+</div>
+<footer>
+{{.TenantName}} — {{.D.FooterTagline}}<br>
+<a href="{{.PartnersURL}}">{{.D.OurPartners}}</a>
+</footer>
 </body>
 </html>`))
 
@@ -255,15 +386,39 @@ func (h *handlers) siteData(r *http.Request) (*model.Tenant, []model.CatalogServ
 	return t, active, areas, nil
 }
 
-// basePage fills the cross-page fields from tenant config: lang, Search
-// Console verification meta, and the OG card URL.
-func (h *handlers) basePage(r *http.Request, t *model.Tenant, ogPath string) sitePage {
-	return sitePage{
+// requestLocale resolves the locale for this request: the {locale} path
+// segment when present (validated against tenant config), else the
+// tenant default. ok=false → handler must 404 (unconfigured locale).
+func requestLocale(r *http.Request, t *model.Tenant) (string, bool) {
+	if l := r.PathValue("locale"); l != "" {
+		if !validLocale(t, l) {
+			return "", false
+		}
+		return l, true
+	}
+	return defaultLocale(t), true
+}
+
+// basePage fills the cross-page fields from tenant config + locale:
+// lang, verification meta, OG card URL, chrome dictionary, WhatsApp chat
+// link, and the page-family URLs used by the template chrome.
+func (h *handlers) basePage(r *http.Request, t *model.Tenant, locale, ogPath string) sitePage {
+	base := localeBase(h.siteBase(r, t.Slug), t, locale)
+	p := sitePage{
 		TenantName:   t.Name,
-		Lang:         t.SiteConfig.Locale,
+		Lang:         locale,
 		Verification: t.SiteConfig.GoogleVerification,
 		OGImage:      h.siteBase(r, t.Slug) + ogPath,
+		D:            dictFor(locale),
+		HomeURL:      base + "/",
+		PartnersURL:  base + "/partners",
+		LinksURL:     base + "/links",
 	}
+	if n, _ := t.Brand["whatsapp_number"].(string); n != "" {
+		p.WhatsApp = "https://wa.me/" + strings.TrimPrefix(strings.TrimSpace(n), "+")
+	}
+	p.TrustedPayment = !(t.PaymentConfig.DisableStripe && t.PaymentConfig.DisablePaystack)
+	return p
 }
 
 func priceLabel(s model.CatalogService) string {
@@ -275,6 +430,29 @@ func priceLabel(s model.CatalogService) string {
 
 func perUnitLabel(currency string, minor int64) string {
 	return fmt.Sprintf("%s %.2f", currency, float64(minor)/100)
+}
+
+// serviceCards builds the card grid views with localized names, per-locale
+// descriptions (falling back to the localized vertical label), and
+// monogram initials.
+func serviceCards(t *model.Tenant, services []model.CatalogService, base, locale string) []siteServiceView {
+	var out []siteServiceView
+	for _, s := range services {
+		name := localizedServiceName(s, locale)
+		desc := localizedServiceDesc(s, locale)
+		if desc == "" {
+			desc = verticalLabel(s.Vertical, locale)
+		}
+		initial := "◆"
+		if r := []rune(strings.ToUpper(name)); len(r) > 0 {
+			initial = string(r[0])
+		}
+		out = append(out, siteServiceView{
+			Name: name, Desc: desc, PriceLabel: priceLabel(s), Initial: initial,
+			URL: fmt.Sprintf("%s/book/%s", base, s.ID),
+		})
+	}
+	return out
 }
 
 // captureURL builds the CTA into the booking funnel with seo attribution
@@ -319,10 +497,7 @@ func priceRange(services []model.CatalogService) string {
 	if lo == 0 {
 		return ""
 	}
-	if len(services) > 0 {
-		return fmt.Sprintf("%s %d-%d", services[0].Currency, lo/100, hi/100)
-	}
-	return ""
+	return fmt.Sprintf("%s %d-%d", services[0].Currency, lo/100, hi/100)
 }
 
 // areasCentroid averages the polygon vertices of all service areas into a
@@ -359,51 +534,6 @@ func joinNames(names []string, cap int) string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
-// ---------------------------------------------------------- guide content (Phase 28, lever #2)
-// Thin content is the top ranking risk for programmatic pages. These
-// sections are assembled strictly from real tenant data — services with
-// real prices, real areas, real payment rails — rules-generated, never
-// AI-invented copy.
-
-func serviceSections(t *model.Tenant, svc *model.CatalogService, areas []model.ServiceArea) []string {
-	vertical := strings.ToLower(strings.ReplaceAll(svc.Vertical, "_", " "))
-	intro := fmt.Sprintf("%s provides %s arranged end to end by %s. Every booking includes a dedicated concierge, live trip tracking and WhatsApp updates from confirmation to completion.",
-		t.Name, indefinite(vertical), t.Name)
-	if pl := priceLabel(*svc); pl != "" {
-		intro = fmt.Sprintf("%s provides %s from %s, arranged end to end. Every booking includes a dedicated concierge, live trip tracking and WhatsApp updates from confirmation to completion.",
-			t.Name, vertical, pl)
-	}
-	sections := []string{intro}
-	if len(areas) > 0 {
-		names := make([]string, 0, len(areas))
-		for _, a := range areas {
-			names = append(names, a.Name)
-		}
-		sections = append(sections, fmt.Sprintf("%s is available across %s. Coverage is verified per booking — if your pickup sits outside a listed area, your concierge will confirm availability before quoting.",
-			svc.Name, joinNames(names, 6)))
-	}
-	return sections
-}
-
-func areaSections(t *model.Tenant, area *model.ServiceArea, services []model.CatalogService) []string {
-	if len(services) == 0 {
-		return nil
-	}
-	parts := make([]string, 0, len(services))
-	for _, s := range services {
-		if pl := priceLabel(s); pl != "" {
-			parts = append(parts, fmt.Sprintf("%s (from %s)", s.Name, pl))
-		} else {
-			parts = append(parts, s.Name)
-		}
-	}
-	return []string{
-		fmt.Sprintf("%s operates %d concierge %s in %s: %s. Each is booked with live pricing and confirmed by a dedicated concierge on WhatsApp.",
-			t.Name, len(services), pluralizeCount(len(services), "service", "services"), area.Name, joinNames(parts, 8)),
-		fmt.Sprintf("Bookings in %s include driver or provider details shared before pickup, live trip tracking for the passenger, and post-trip receipts — all in one WhatsApp thread.", area.Name),
-	}
-}
-
 func pluralizeCount(n int, singular, plural string) string {
 	if n == 1 {
 		return singular
@@ -422,47 +552,7 @@ func indefinite(nounPhrase string) string {
 	return "a " + nounPhrase
 }
 
-// ---------------------------------------------------------- FAQs (Phase 28, lever #6)
-
-// faqsForService builds the FAQ block strictly from catalog/config truth.
-// Every answer is verifiable against the tenant's own records.
-func faqsForService(t *model.Tenant, svc *model.CatalogService, areas []model.ServiceArea) []siteFAQ {
-	var faqs []siteFAQ
-	if pl := priceLabel(*svc); pl != "" {
-		a := fmt.Sprintf("%s starts at %s.", svc.Name, pl)
-		if svc.PerKMMinor > 0 {
-			a += fmt.Sprintf(" Additional distance is billed at %s per kilometre.", perUnitLabel(svc.Currency, svc.PerKMMinor))
-		}
-		if svc.PerHourMinor > 0 {
-			a += fmt.Sprintf(" Additional time is billed at %s per hour.", perUnitLabel(svc.Currency, svc.PerHourMinor))
-		}
-		faqs = append(faqs, siteFAQ{"How much does " + svc.Name + " cost?", a})
-	} else {
-		faqs = append(faqs, siteFAQ{"How much does " + svc.Name + " cost?",
-			"Every booking is quoted live before you commit — your concierge confirms the full price and you approve it first."})
-	}
-	if len(areas) > 0 {
-		names := make([]string, 0, len(areas))
-		for _, a := range areas {
-			names = append(names, a.Name)
-		}
-		faqs = append(faqs, siteFAQ{"Where is " + svc.Name + " available?",
-			fmt.Sprintf("%s currently serves %s.", t.Name, joinNames(names, 6))})
-	}
-	faqs = append(faqs, siteFAQ{"How do I book?",
-		"Tap the booking button on this page — your concierge confirms the details on WhatsApp within minutes."})
-	switch {
-	case t.PaymentConfig.DisableStripe && t.PaymentConfig.DisablePaystack:
-		faqs = append(faqs, siteFAQ{"How do I pay?", "Your concierge arranges payment with you directly when confirming the booking."})
-	case t.PaymentConfig.DisableStripe:
-		faqs = append(faqs, siteFAQ{"How do I pay?", "You receive a secure Paystack payment link when your booking is confirmed — card, bank transfer or mobile money where supported."})
-	case t.PaymentConfig.DisablePaystack:
-		faqs = append(faqs, siteFAQ{"How do I pay?", "You receive a secure Stripe payment link when your booking is confirmed — all major cards and local payment methods where supported."})
-	default:
-		faqs = append(faqs, siteFAQ{"How do I pay?", "You receive a secure payment link when your booking is confirmed — all major cards and local payment methods where supported."})
-	}
-	return faqs
-}
+// ---------------------------------------------------------- structured data helpers
 
 func faqLD(faqs []siteFAQ) map[string]any {
 	list := make([]any, 0, len(faqs))
@@ -499,25 +589,30 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
-	base := h.siteBase(r, t.Slug)
-	p := h.basePage(r, t, "/og.png")
-	p.Description = brandDescription(t)
+	locale, ok := requestLocale(r, t)
+	if !ok {
+		httpx.WriteError(w, httpx.ErrNotFound)
+		return
+	}
+	rawBase := h.siteBase(r, t.Slug)
+	base := localeBase(rawBase, t, locale)
+	p := h.basePage(r, t, locale, "/og.png")
+	p.Description = localizedBrand(t, locale)
 	p.Canonical = base + "/"
+	p.HrefLangs = h.hreflangCluster(t, rawBase, "/")
 	p.Heading = t.Name
 	p.SubHead = "VIP concierge"
-	p.CTA, p.CTALabel = h.captureURL(t.ID, "landing"), "Book your concierge"
+	p.CTA, p.CTALabel = h.captureURL(t.ID, "landing"), p.D.BookYourConcierge
 	if sum, err := h.svc.ReviewSummary(r.Context(), t.ID); err == nil && sum.Count > 0 {
 		p.ReviewCount = sum.Count
 		p.ReviewAvg = fmt.Sprintf("%.1f", sum.Average)
 	}
-	for _, s := range services {
-		p.Services = append(p.Services, siteServiceView{
-			Name: s.Name, PriceLabel: priceLabel(s), Vertical: s.Vertical,
-			URL: fmt.Sprintf("%s/book/%s", base, s.ID),
-		})
-	}
+	p.Services = serviceCards(t, services, base, locale)
 	for _, a := range areas {
-		p.Areas = append(p.Areas, siteAreaView{Name: a.Name, URL: fmt.Sprintf("%s/areas/%s", base, a.ID)})
+		p.Areas = append(p.Areas, siteAreaView{
+			Name: localizedAreaName(a, locale),
+			URL:  fmt.Sprintf("%s/areas/%s", base, a.ID),
+		})
 	}
 	p.JSONLD = marshalLDGraph(h.landingLD(r, t, p, services, areas)...)
 	renderSite(w, r, p)
@@ -585,6 +680,11 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
+	locale, ok := requestLocale(r, t)
+	if !ok {
+		httpx.WriteError(w, httpx.ErrNotFound)
+		return
+	}
 	var svc *model.CatalogService
 	for i := range services {
 		if services[i].ID == r.PathValue("serviceID") {
@@ -596,27 +696,33 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, httpx.ErrNotFound)
 		return
 	}
-	base := h.siteBase(r, t.Slug)
-	desc := fmt.Sprintf("%s by %s — %s, arranged end to end with a dedicated concierge.",
-		svc.Name, t.Name, strings.ToLower(strings.ReplaceAll(svc.Vertical, "_", " ")))
-	title := fmt.Sprintf("%s | %s", svc.Name, t.Name)
-	if pl := priceLabel(*svc); pl != "" {
-		title = fmt.Sprintf("%s — from %s | %s", svc.Name, pl, t.Name)
-		desc = fmt.Sprintf("%s from %s — %s arranges %s end to end with a dedicated concierge, live tracking and WhatsApp updates.",
-			svc.Name, pl, t.Name, strings.ToLower(strings.ReplaceAll(svc.Vertical, "_", " ")))
+	name := localizedServiceName(*svc, locale)
+	rawBase := h.siteBase(r, t.Slug)
+	base := localeBase(rawBase, t, locale)
+	pagePath := fmt.Sprintf("/book/%s", svc.ID)
+
+	desc := localizedServiceDesc(*svc, locale)
+	if desc == "" {
+		desc = fmt.Sprintf("%s — %s, %s.", name, t.Name, verticalLabel(svc.Vertical, locale))
 	}
-	p := h.basePage(r, t, fmt.Sprintf("/book/%s/og.png", svc.ID))
+	title := fmt.Sprintf("%s | %s", name, t.Name)
+	if pl := priceLabel(*svc); pl != "" {
+		title = fmt.Sprintf("%s — %s %s | %s", name, dictFor(locale).FromPrefix, pl, t.Name)
+	}
+
+	p := h.basePage(r, t, locale, fmt.Sprintf("/book/%s/og.png", svc.ID))
 	p.Title = title
 	p.Description = desc
-	p.Canonical = fmt.Sprintf("%s/book/%s", base, svc.ID)
-	p.Heading, p.SubHead = svc.Name, svc.Name
-	p.CTA, p.CTALabel = h.captureURL(t.ID, "svc-"+svc.ID), "Book "+svc.Name
-	p.Services = []siteServiceView{{
-		Name: svc.Name, PriceLabel: priceLabel(*svc),
-		URL: fmt.Sprintf("%s/book/%s", base, svc.ID),
-	}}
-	p.Sections = serviceSections(t, svc, areas)
-	p.FAQs = faqsForService(t, svc, areas)
+	p.Canonical = base + pagePath
+	p.HrefLangs = h.hreflangCluster(t, rawBase, pagePath)
+	p.Heading, p.SubHead = name, name
+	p.CTA, p.CTALabel = h.captureURL(t.ID, "svc-"+svc.ID), p.D.BookPrefix+name
+	p.Services = serviceCards(t, []model.CatalogService{*svc}, base, locale)
+	p.Sections = []string{guideServiceIntro(t, svc, locale, priceLabel(*svc))}
+	if cov := guideCoverage(name, t.Name, areas, locale); cov != "" {
+		p.Sections = append(p.Sections, cov)
+	}
+	p.FAQs = faqsForServiceL(t, svc, name, areas, locale)
 	if sum, err := h.svc.ReviewSummary(r.Context(), t.ID); err == nil && sum.Count > 0 {
 		p.ReviewCount = sum.Count
 		p.ReviewAvg = fmt.Sprintf("%.1f", sum.Average)
@@ -624,7 +730,7 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 
 	ld := map[string]any{
 		"@type": "Service",
-		"name":  svc.Name, "provider": map[string]any{"@type": "LocalBusiness", "name": t.Name},
+		"name":  name, "provider": map[string]any{"@type": "LocalBusiness", "name": t.Name},
 		"description": desc,
 	}
 	if svc.BaseMinor > 0 {
@@ -634,14 +740,14 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 	if len(areas) > 0 {
 		served := make([]any, 0, len(areas))
 		for _, a := range areas {
-			served = append(served, map[string]any{"@type": "Place", "name": a.Name})
+			served = append(served, map[string]any{"@type": "Place", "name": localizedAreaName(a, locale)})
 		}
 		ld["areaServed"] = served
 	}
 	p.JSONLD = marshalLDGraph([]map[string]any{
 		ld,
 		faqLD(p.FAQs),
-		breadcrumbLD(base, [2]string{"Home", ""}, [2]string{svc.Name, p.Canonical}),
+		breadcrumbLD(base, [2]string{"Home", ""}, [2]string{name, p.Canonical}),
 	}...)
 	renderSite(w, r, p)
 }
@@ -652,6 +758,11 @@ func (h *handlers) siteArea(w http.ResponseWriter, r *http.Request) {
 	t, services, areas, err := h.siteData(r)
 	if err != nil {
 		httpx.WriteError(w, err)
+		return
+	}
+	locale, ok := requestLocale(r, t)
+	if !ok {
+		httpx.WriteError(w, httpx.ErrNotFound)
 		return
 	}
 	var area *model.ServiceArea
@@ -665,31 +776,60 @@ func (h *handlers) siteArea(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, httpx.ErrNotFound)
 		return
 	}
-	base := h.siteBase(r, t.Slug)
-	desc := fmt.Sprintf("%s in %s — %s", t.Name, area.Name, brandDescription(t))
-	p := h.basePage(r, t, "/og.png")
-	p.Title = fmt.Sprintf("%s in %s — %d %s | Book online", t.Name, area.Name,
-		len(services), pluralizeCount(len(services), "concierge service", "concierge services"))
-	p.Description = desc
-	p.Canonical = fmt.Sprintf("%s/areas/%s", base, area.ID)
-	p.Heading = fmt.Sprintf("%s in %s", t.Name, area.Name)
-	p.SubHead = "concierge in " + area.Name
-	p.CTA, p.CTALabel = h.captureURL(t.ID, "area-"+area.ID), "Book in "+area.Name
-	p.Sections = areaSections(t, area, services)
-	for _, s := range services {
-		p.Services = append(p.Services, siteServiceView{
-			Name: s.Name, PriceLabel: priceLabel(s),
-			URL: fmt.Sprintf("%s/book/%s", base, s.ID),
-		})
+	areaName := localizedAreaName(*area, locale)
+	rawBase := h.siteBase(r, t.Slug)
+	base := localeBase(rawBase, t, locale)
+	pagePath := fmt.Sprintf("/areas/%s", area.ID)
+
+	p := h.basePage(r, t, locale, "/og.png")
+	if proseLocale(locale) == "pt-PT" {
+		p.Title = fmt.Sprintf("%s em %s — %d %s", t.Name, areaName,
+			len(services), map[bool]string{true: "serviço de concierge", false: "serviços de concierge"}[len(services) == 1])
+		p.Description = fmt.Sprintf("%s em %s — %s", t.Name, areaName, localizedBrand(t, locale))
+	} else {
+		p.Title = fmt.Sprintf("%s in %s — %d %s | Book online", t.Name, areaName,
+			len(services), pluralizeCount(len(services), "concierge service", "concierge services"))
+		p.Description = fmt.Sprintf("%s in %s — %s", t.Name, areaName, localizedBrand(t, locale))
 	}
+	p.Canonical = base + pagePath
+	p.HrefLangs = h.hreflangCluster(t, rawBase, pagePath)
+	if proseLocale(locale) == "pt-PT" {
+		p.Heading = fmt.Sprintf("%s em %s", t.Name, areaName)
+		p.SubHead = "concierge em " + areaName
+	} else {
+		p.Heading = fmt.Sprintf("%s in %s", t.Name, areaName)
+		p.SubHead = "concierge in " + areaName
+	}
+	p.CTA = h.captureURL(t.ID, "area-"+area.ID)
+	if proseLocale(locale) == "pt-PT" {
+		p.CTALabel = "Reservar em " + areaName
+	} else {
+		p.CTALabel = "Book in " + areaName
+	}
+
+	var parts []string
+	for _, s := range services {
+		if pl := priceLabel(s); pl != "" {
+			parts = append(parts, fmt.Sprintf("%s (%s %s)", localizedServiceName(s, locale), p.D.FromPrefix, pl))
+		} else {
+			parts = append(parts, localizedServiceName(s, locale))
+		}
+	}
+	if len(services) > 0 {
+		p.Sections = []string{
+			guideAreaIntro(t, areaName, parts, len(services), locale),
+			guideAreaTrust(areaName, locale),
+		}
+	}
+	p.Services = serviceCards(t, services, base, locale)
 	p.JSONLD = marshalLDGraph([]map[string]any{
 		{
 			"@type":      "Service",
-			"name":       fmt.Sprintf("%s — %s", t.Name, area.Name),
+			"name":       fmt.Sprintf("%s — %s", t.Name, areaName),
 			"provider":   map[string]any{"@type": "LocalBusiness", "name": t.Name},
-			"areaServed": map[string]any{"@type": "Place", "name": area.Name},
+			"areaServed": map[string]any{"@type": "Place", "name": areaName},
 		},
-		breadcrumbLD(base, [2]string{"Home", ""}, [2]string{area.Name, p.Canonical}),
+		breadcrumbLD(base, [2]string{"Home", ""}, [2]string{areaName, p.Canonical}),
 	}...)
 	renderSite(w, r, p)
 }
@@ -706,19 +846,31 @@ func (h *handlers) sitePartners(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
+	locale, ok := requestLocale(r, t)
+	if !ok {
+		httpx.WriteError(w, httpx.ErrNotFound)
+		return
+	}
 	partners, err := h.svc.Store.Partners().List(r.Context(), t.ID)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	base := h.siteBase(r, t.Slug)
-	p := h.basePage(r, t, "/og.png")
-	p.Title = fmt.Sprintf("Partners of %s — vetted concierge providers", t.Name)
-	p.Description = fmt.Sprintf("The vetted partner network behind %s — chauffeur, travel and lifestyle providers confirmed to the same service standard.", t.Name)
+	rawBase := h.siteBase(r, t.Slug)
+	base := localeBase(rawBase, t, locale)
+	p := h.basePage(r, t, locale, "/og.png")
+	if proseLocale(locale) == "pt-PT" {
+		p.Title = fmt.Sprintf("Parceiros da %s — fornecedores certificados", t.Name)
+		p.Description = fmt.Sprintf("A rede de parceiros certificados da %s — fornecedores de transporte, viagens e lifestyle sob o mesmo padrão de serviço.", t.Name)
+	} else {
+		p.Title = fmt.Sprintf("Partners of %s — vetted concierge providers", t.Name)
+		p.Description = fmt.Sprintf("The vetted partner network behind %s — chauffeur, travel and lifestyle providers confirmed to the same service standard.", t.Name)
+	}
 	p.Canonical = base + "/partners"
-	p.Heading = "Our partners"
+	p.HrefLangs = h.hreflangCluster(t, rawBase, "/partners")
+	p.Heading = p.D.OurPartners
 	p.SubHead = "vetted partner network"
-	p.CTA, p.CTALabel = h.captureURL(t.ID, "partners"), "Book your concierge"
+	p.CTA, p.CTALabel = h.captureURL(t.ID, "partners"), p.D.BookYourConcierge
 	for _, pt := range partners {
 		if pt.Status != "VETTED" {
 			continue
@@ -731,8 +883,13 @@ func (h *handlers) sitePartners(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if n := len(p.Partners); n > 0 {
-		p.Sections = []string{fmt.Sprintf("%s works with %d vetted partner %s. Every partner is quality-scored and operates under the same booking, tracking and payment standards as %s itself.",
-			t.Name, n, pluralizeCount(n, "provider", "providers"), t.Name)}
+		if proseLocale(locale) == "pt-PT" {
+			p.Sections = []string{fmt.Sprintf("%s trabalha com %d %s certificados. Cada parceiro é avaliado por qualidade e opera sob os mesmos padrões de reserva, acompanhamento e pagamento da %s.",
+				t.Name, n, map[bool]string{true: "parceiro", false: "parceiros"}[n == 1], t.Name)}
+		} else {
+			p.Sections = []string{fmt.Sprintf("%s works with %d vetted partner %s. Every partner is quality-scored and operates under the same booking, tracking and payment standards as %s itself.",
+				t.Name, n, pluralizeCount(n, "provider", "providers"), t.Name)}
+		}
 	}
 	items := make([]any, 0, len(p.Partners))
 	for i, pv := range p.Partners {
@@ -763,7 +920,9 @@ func (h *handlers) siteOGLanding(w http.ResponseWriter, r *http.Request) {
 	}
 	footer := fmt.Sprintf("%d %s — book your concierge", len(services),
 		pluralizeCount(len(services), "service", "services"))
-	renderOG(w, t.Name, sub, rating, footer)
+	// asciiFold: the embedded bitmap font is ASCII-only (page HTML is
+	// full UTF-8; this applies only to the card).
+	renderOG(w, asciiFold(t.Name), asciiFold(sub), rating, footer)
 }
 
 func (h *handlers) siteOGService(w http.ResponseWriter, r *http.Request) {
@@ -787,7 +946,7 @@ func (h *handlers) siteOGService(w http.ResponseWriter, r *http.Request) {
 	if pl := priceLabel(*svc); pl != "" {
 		sub = "from " + pl + " — arranged end to end"
 	}
-	renderOG(w, svc.Name, sub, "", t.Name+" — book your concierge")
+	renderOG(w, asciiFold(svc.Name), asciiFold(sub), "", asciiFold(t.Name)+" — book your concierge")
 }
 
 // ---------------------------------------------------------- sitemap + robots
@@ -798,7 +957,7 @@ func (h *handlers) siteSitemap(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
-	base := h.siteBase(r, t.Slug)
+	rawBase := h.siteBase(r, t.Slug)
 	// lastmod: the freshest real timestamp we hold for site content. Never
 	// future-dated, never fabricated per-URL — an honest floor.
 	lastmod := t.CreatedAt
@@ -815,14 +974,18 @@ func (h *handlers) siteSitemap(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(&b, "<url><loc>%s</loc><lastmod>%s</lastmod><priority>%s</priority></url>\n",
 			template.HTMLEscapeString(loc), lm, priority)
 	}
-	writeURL(base+"/", "1.0")
-	writeURL(base+"/links", "0.5")
-	writeURL(base+"/partners", "0.6")
-	for _, s := range services {
-		writeURL(fmt.Sprintf("%s/book/%s", base, s.ID), "0.9")
-	}
-	for _, a := range areas {
-		writeURL(fmt.Sprintf("%s/areas/%s", base, a.ID), "0.8")
+	// Every configured locale tree is listed (Phase 29).
+	for _, l := range tenantLocales(t) {
+		base := localeBase(rawBase, t, l)
+		writeURL(base+"/", "1.0")
+		writeURL(base+"/links", "0.5")
+		writeURL(base+"/partners", "0.6")
+		for _, s := range services {
+			writeURL(fmt.Sprintf("%s/book/%s", base, s.ID), "0.9")
+		}
+		for _, a := range areas {
+			writeURL(fmt.Sprintf("%s/areas/%s", base, a.ID), "0.8")
+		}
 	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -876,18 +1039,20 @@ func (h *handlers) siteLinks(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
-	base := h.siteBase(r, t.Slug)
-	p := h.basePage(r, t, "/og.png")
-	p.Description = brandDescription(t)
-	p.Canonical = base + "/links"
-	p.Heading, p.SubHead = t.Name, "book your concierge"
-	p.CTA, p.CTALabel = h.captureChannelURL(t.ID, "social", "bio", "links"), "Book now"
-	for _, s := range services {
-		p.Services = append(p.Services, siteServiceView{
-			Name: s.Name, PriceLabel: priceLabel(s),
-			URL: fmt.Sprintf("%s/book/%s", base, s.ID),
-		})
+	locale, ok := requestLocale(r, t)
+	if !ok {
+		httpx.WriteError(w, httpx.ErrNotFound)
+		return
 	}
+	rawBase := h.siteBase(r, t.Slug)
+	base := localeBase(rawBase, t, locale)
+	p := h.basePage(r, t, locale, "/og.png")
+	p.Description = localizedBrand(t, locale)
+	p.Canonical = base + "/links"
+	p.HrefLangs = h.hreflangCluster(t, rawBase, "/links")
+	p.Heading, p.SubHead = t.Name, "book your concierge"
+	p.CTA, p.CTALabel = h.captureChannelURL(t.ID, "social", "bio", "links"), p.D.BookNow
+	p.Services = serviceCards(t, services, base, locale)
 	p.JSONLD = marshalLD(map[string]any{
 		"@context": "https://schema.org", "@type": "ItemList",
 		"name": t.Name + " — booking links",
@@ -946,9 +1111,9 @@ func marshalLDGraph(nodes ...map[string]any) template.JS {
 }
 
 // renderSite renders through a buffer so the response carries an ETag and
-// cache headers (Phase 28, lever #7): repeat crawls get 304s, and pages
-// are publicly cacheable for 5 minutes — content changes are reflected
-// fast while crawlers and CDNs stay off the hot path.
+// cache headers (Phase 28): repeat crawls get 304s, and pages are publicly
+// cacheable for 5 minutes — content changes are reflected fast while
+// crawlers and CDNs stay off the hot path.
 func renderSite(w http.ResponseWriter, r *http.Request, p sitePage) {
 	if p.Title == "" {
 		p.Title = p.TenantName + " — " + p.SubHead

@@ -45,3 +45,15 @@ func TestLandingReviewLD(t *testing.T) {
 		t.Fatalf("aggregate must count consented only: %s", s)
 	}
 }
+
+// TestAsciiFold29: the OG card bitmap font is ASCII-only — diacritics fold
+// to their base letters so names like "Fátima" render legibly on cards.
+// Page HTML is unaffected (full UTF-8); this is card-only.
+func TestAsciiFold29(t *testing.T) {
+	if got := asciiFold("Fátima — São Jorge ção"); got != "Fatima — Sao Jorge cao" {
+		t.Fatalf("asciiFold mismatch: %q", got)
+	}
+	if got := asciiFold("Über Ñandú"); got != "Uber Nandu" {
+		t.Fatalf("asciiFold mismatch: %q", got)
+	}
+}

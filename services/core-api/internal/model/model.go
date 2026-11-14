@@ -202,6 +202,12 @@ type SiteConfig struct {
 	GoogleVerification string   `json:"google_verification,omitempty"`
 	Locale             string   `json:"locale,omitempty"` // BCP-47, e.g. en-GB; default en
 	SocialLinks        []string `json:"social_links,omitempty"`
+	// Locales (Phase 29): ordered content locales, first = default. Each
+	// non-default locale gets its own URL tree (/site/{slug}/{locale}/...)
+	// with a full hreflang cluster. BrandI18n maps locale → {tagline,
+	// description} overrides; catalog/area names carry their own i18n.
+	Locales   []string                     `json:"locales,omitempty"`
+	BrandI18n map[string]map[string]string `json:"brand_i18n,omitempty"`
 }
 
 // Review (Phase 27): a post-trip client review, submitted through the
@@ -310,6 +316,11 @@ type CatalogService struct {
 	PerHourMinor int64  `json:"per_hour_minor"`
 	AutoQuotable bool   `json:"auto_quotable"`
 	Active       bool   `json:"active"`
+	// Phase 29: per-locale display overrides (locale → name/description).
+	// The canonical Name/Vertical stay the default-locale truth; i18n maps
+	// only override presentation on localized site pages.
+	NameI18n map[string]string `json:"name_i18n,omitempty"`
+	DescI18n map[string]string `json:"desc_i18n,omitempty"`
 }
 
 // RequestState mirrors booking/v1 RequestState.

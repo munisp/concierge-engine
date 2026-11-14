@@ -13,6 +13,7 @@ export interface Tenant {
   site_config?: {
     custom_domains?: string[]; google_verification?: string;
     locale?: string; social_links?: string[];
+    locales?: string[]; brand_i18n?: Record<string, Record<string, string>>;
   };
   outreach_config?: { marketing_cap_7d?: number };
   operator_config?: { alert_phones?: string[] };

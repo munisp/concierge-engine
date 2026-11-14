@@ -18,7 +18,7 @@ func TestGeoServiceAreas(t *testing.T) {
 	ctx := context.Background()
 	tenantID := seedTenant(t, s)
 
-	a, err := s.Geo.CreateArea(ctx, tenantID, "Victoria Island", victoriaIsland)
+	a, err := s.Geo.CreateArea(ctx, tenantID, "Victoria Island", victoriaIsland, nil)
 	if err != nil || a.ID == "" {
 		t.Fatalf("create: %v", err)
 	}
@@ -35,10 +35,10 @@ func TestGeoServiceAreas(t *testing.T) {
 		t.Fatalf("mainland point must be outside VI: %+v", hits)
 	}
 	// invalid polygon rejected
-	if _, err := s.Geo.CreateArea(ctx, tenantID, "bad", [][2]float64{{1, 2}, {3, 4}}); err == nil {
+	if _, err := s.Geo.CreateArea(ctx, tenantID, "bad", [][2]float64{{1, 2}, {3, 4}}, nil); err == nil {
 		t.Fatal("2-vertex polygon must fail validation")
 	}
-	if _, err := s.Geo.CreateArea(ctx, tenantID, "bad2", [][2]float64{{91, 0}, {0, 0}, {0, 1}}); err == nil {
+	if _, err := s.Geo.CreateArea(ctx, tenantID, "bad2", [][2]float64{{91, 0}, {0, 0}, {0, 1}}, nil); err == nil {
 		t.Fatal("out-of-range lat must fail validation")
 	}
 }
@@ -47,7 +47,7 @@ func TestGeoCrossTenantIsolation(t *testing.T) {
 	s := testServices(t, Deps{})
 	ctx := context.Background()
 	t1, t2 := seedTenant(t, s), seedTenant(t, s)
-	if _, err := s.Geo.CreateArea(ctx, t1, "VI", victoriaIsland); err != nil {
+	if _, err := s.Geo.CreateArea(ctx, t1, "VI", victoriaIsland, nil); err != nil {
 		t.Fatal(err)
 	}
 	areas, _ := s.Geo.Areas(ctx, t2)

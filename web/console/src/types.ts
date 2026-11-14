@@ -5,6 +5,13 @@ export interface Tenant {
   archetype: string;
   autonomy_dial: number;
   pricing_rules: { currency: string; deposit_pct: number; platform_fee_pct: number };
+  sla_config?: { quote_sla_seconds: number; case_sla_hours?: Record<string, number> };
+  tax_config?: { engine?: string; country?: string; vat_rate_bp?: number; prices_include_tax?: boolean };
+  payment_config?: { disable_stripe?: boolean; disable_paystack?: boolean };
+  reward_program?: { disabled?: boolean; referrer_pct?: number; referee_pct?: number; max_reward_minor?: number; expiry_days?: number };
+  outreach_config?: { marketing_cap_7d?: number };
+  operator_config?: { alert_phones?: string[] };
+  dispatch_config?: { turnaround_minutes?: number; default_duration_minutes?: number };
 }
 
 export interface ServiceItem {

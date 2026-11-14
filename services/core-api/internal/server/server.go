@@ -183,20 +183,52 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
-	var patch model.Tenant
+	// Selective patch semantics (Phase 24): only fields present in the body
+	// are applied. Decoding into model.Tenant and copying wholesale would
+	// wipe every config the caller didn't send — a Settings page editing the
+	// operator roster must not zero the tenant's tax engine.
+	var patch struct {
+		Brand          *map[string]any       `json:"brand"`
+		PricingRules   *model.PricingRules   `json:"pricing_rules"`
+		SLAConfig      *model.SLAConfig      `json:"sla_config"`
+		TaxConfig      *model.TaxConfig      `json:"tax_config"`
+		PaymentConfig  *model.PaymentConfig  `json:"payment_config"`
+		RewardProgram  *model.RewardProgram  `json:"reward_program"`
+		OutreachConfig *model.OutreachConfig `json:"outreach_config"`
+		OperatorConfig *model.OperatorConfig `json:"operator_config"`
+		DispatchConfig *model.DispatchConfig `json:"dispatch_config"`
+	}
 	if err := httpx.Decode(r, &patch); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	t.Brand = patch.Brand
-	t.PricingRules = patch.PricingRules
-	t.SLAConfig = patch.SLAConfig
-	t.TaxConfig = patch.TaxConfig
-	t.PaymentConfig = patch.PaymentConfig
-	t.RewardProgram = patch.RewardProgram
-	t.OutreachConfig = patch.OutreachConfig
-	t.OperatorConfig = patch.OperatorConfig
-	t.DispatchConfig = patch.DispatchConfig
+	if patch.Brand != nil {
+		t.Brand = *patch.Brand
+	}
+	if patch.PricingRules != nil {
+		t.PricingRules = *patch.PricingRules
+	}
+	if patch.SLAConfig != nil {
+		t.SLAConfig = *patch.SLAConfig
+	}
+	if patch.TaxConfig != nil {
+		t.TaxConfig = *patch.TaxConfig
+	}
+	if patch.PaymentConfig != nil {
+		t.PaymentConfig = *patch.PaymentConfig
+	}
+	if patch.RewardProgram != nil {
+		t.RewardProgram = *patch.RewardProgram
+	}
+	if patch.OutreachConfig != nil {
+		t.OutreachConfig = *patch.OutreachConfig
+	}
+	if patch.OperatorConfig != nil {
+		t.OperatorConfig = *patch.OperatorConfig
+	}
+	if patch.DispatchConfig != nil {
+		t.DispatchConfig = *patch.DispatchConfig
+	}
 	updated, err := h.svc.Tenants.UpdateConfig(r.Context(), t)
 	if err != nil {
 		httpx.WriteError(w, err)

@@ -267,3 +267,37 @@ func TestHumanQuoteFallbackAboveTier2Limit(t *testing.T) {
 		t.Fatalf("expected human fallback: %v", out)
 	}
 }
+
+func TestTenantConfigSelectivePatch(t *testing.T) {
+	env := newEnv(t)
+
+	// Seed two config objects.
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"tax_config":      map[string]any{"engine": "flat", "country": "NL", "vat_rate_bp": 2100},
+		"dispatch_config": map[string]any{"turnaround_minutes": 45, "default_duration_minutes": 90},
+	}, http.StatusOK, nil)
+
+	// Patch ONLY the operator roster: tax and dispatch must survive intact.
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"operator_config": map[string]any{"alert_phones": []string{"+971500000099"}},
+	}, http.StatusOK, nil)
+
+	var got model.Tenant
+	env.do("GET", "/v1/tenant", env.tenantID, nil, http.StatusOK, &got)
+	if got.TaxConfig.Engine != "flat" || got.TaxConfig.VATRateBP != 2100 {
+		t.Fatalf("tax config wiped by unrelated patch: %+v", got.TaxConfig)
+	}
+	if got.DispatchConfig.TurnaroundMinutes != 45 || got.DispatchConfig.DefaultDurationMinutes != 90 {
+		t.Fatalf("dispatch config wiped by unrelated patch: %+v", got.DispatchConfig)
+	}
+	if len(got.OperatorConfig.AlertPhones) != 1 || got.OperatorConfig.AlertPhones[0] != "+971500000099" {
+		t.Fatalf("operator roster not applied: %+v", got.OperatorConfig)
+	}
+
+	// Empty object patch is a no-op, not a wipe.
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{}, http.StatusOK, nil)
+	env.do("GET", "/v1/tenant", env.tenantID, nil, http.StatusOK, &got)
+	if got.TaxConfig.Engine != "flat" || len(got.OperatorConfig.AlertPhones) != 1 {
+		t.Fatalf("empty patch mutated config: %+v %+v", got.TaxConfig, got.OperatorConfig)
+	}
+}

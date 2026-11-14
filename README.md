@@ -328,4 +328,16 @@ provider keys); `/health` and 503s list exactly what's missing; live media
 cutover steps in `docs/deferred-register.md`. 33 tests, hermetic (no audio
 hardware required).
 
+**Phase 24 — delivered (see `docs/phase24.md`).** Operational control
+surface: `PUT /v1/tenant` switched to selective patch semantics (pointer
+fields — a partial body no longer zeroes the config objects it omits;
+empty body is a no-op, closing a wipe-by-omission footgun); console
+`/settings` page editing every tenant config object (operator roster,
+dispatch windows, tax engine, payment rails, reward program, outreach cap,
+quote SLA) one safe card at a time; voice channel gains operator takeover
+(`POST /v1/voice/sessions/{id}/takeover` — room-scoped staff token +
+SYSTEM provenance line, 409 on ended sessions) and a tenant-scoped
+sessions board (`GET /v1/voice/sessions?active=1`). 1 server + 4 voice
+tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

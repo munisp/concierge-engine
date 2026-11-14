@@ -89,3 +89,7 @@ class SessionStore:
         return [s for s in self._by_id.values()
                 if s.state in (CREATED, LIVE)
                 and (tenant_id is None or s.tenant_id == tenant_id)]
+
+    def all_for_tenant(self, tenant_id: str) -> list[VoiceSession]:
+        return sorted((s for s in self._by_id.values() if s.tenant_id == tenant_id),
+                      key=lambda s: s.created_at, reverse=True)

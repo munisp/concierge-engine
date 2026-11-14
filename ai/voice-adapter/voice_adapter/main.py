@@ -111,6 +111,53 @@ async def hangup(session_id: str, x_tenant_id: str = Header(...),
     return {"session": s.to_dict()}
 
 
+@app.get("/v1/voice/sessions")
+def list_sessions(x_tenant_id: str = Header(...), active: bool = False,
+                  store: SessionStore = Depends(get_store)):
+    """Operator board: the tenant's sessions, optionally only live ones."""
+    if active:
+        return {"sessions": [s.to_dict() for s in store.active(tenant_id=x_tenant_id)]}
+    return {"sessions": [s.to_dict() for s in store.all_for_tenant(x_tenant_id)]}
+
+
+class Takeover(BaseModel):
+    staff_name: str
+
+
+@app.post("/v1/voice/sessions/{session_id}/takeover")
+async def takeover(session_id: str, body: Takeover,
+                   x_tenant_id: str = Header(...),
+                   store: SessionStore = Depends(get_store),
+                   bridge: CoreBridge = Depends(get_bridge)):
+    """A human concierge joins the live room. The client hears the agent
+    hand over; the timeline records the takeover as provenance, and the
+    staff participant joins with the same token contract as everyone
+    else — no privileged media path."""
+    s = store.get_for_tenant(x_tenant_id, session_id)
+    if s is None:
+        raise HTTPException(404, detail={"error": "session not found"})
+    if s.state == ENDED or s.state == "FAILED":
+        raise HTTPException(409, detail={
+            "error": f"session already {s.state.lower()}",
+            "end_reason": s.end_reason})
+    ready = config.readiness()
+    if not ready["livekit_configured"]:
+        raise HTTPException(503, detail={
+            "error": "livekit not configured", "missing": ready["missing"]})
+    if not body.staff_name.strip():
+        raise HTTPException(422, detail={"error": "staff_name required"})
+
+    await bridge.post_message(s.tenant_id, s.conversation_id, "SYSTEM",
+                              f"[human concierge joining: {body.staff_name.strip()}]")
+    slug = "".join(ch for ch in body.staff_name.lower() if ch.isalnum())[:24] or "staff"
+    token = mint_access_token(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET,
+                              identity=f"staff-{slug}", room=s.room,
+                              ttl_minutes=config.MAX_SESSION_MINUTES,
+                              name=body.staff_name.strip())
+    return {"session": s.to_dict(), "livekit_url": config.LIVEKIT_URL,
+            "room": s.room, "token": token, "identity": f"staff-{slug}"}
+
+
 @app.post("/webhooks/livekit")
 async def livekit_webhook(request: Request,
                           store: SessionStore = Depends(get_store),

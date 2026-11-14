@@ -13,6 +13,7 @@ import Receipts from "./pages/Receipts";
 import Growth from "./pages/Growth";
 import Clients from "./pages/Clients";
 import Referrals from "./pages/Referrals";
+import Settings from "./pages/Settings";
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
         <Link to="/corporate">Corporate</Link>
         <Link to="/integrations">Integrations</Link>
         <Link to="/admin">Admin</Link>
+        <Link to="/settings">Settings</Link>
       </nav>
       <main>
         <Routes>
@@ -49,6 +51,7 @@ export default function App() {
           <Route path="/corporate" element={<Corporate />} />
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/chauffeur" element={<Chauffeur />} />
         </Routes>
       </main>

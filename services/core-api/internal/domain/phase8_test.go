@@ -196,3 +196,61 @@ func TestReceiptFailuresNewestFirst(t *testing.T) {
 		t.Fatalf("board must be newest-first: %+v", rows)
 	}
 }
+
+// Phase 13: a failed delivery pings the operator on WhatsApp — the SLA
+// breach evidence lands where operators actually look.
+func TestReceiptFailedPushesOperatorAlert(t *testing.T) {
+	var sends []map[string]string
+	wa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]string
+		json.NewDecoder(r.Body).Decode(&b)
+		sends = append(sends, b)
+		json.NewEncoder(w).Encode(map[string]any{"mode": "freeform",
+			"body": map[string]any{"messages": []map[string]string{{"id": "wamid.reply-1"}}}})
+	}))
+	t.Cleanup(wa.Close)
+
+	s := testServices(t, Deps{WhatsAppURL: wa.URL, OperatorPhone: "+971509999999"})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+	caseID := sendReplyLinked(t, s, tenantID) // one send: the client reply
+
+	if _, err := s.Receipts.Record(ctx, tenantID, "whatsapp", "wamid.reply-1", "failed", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(sends) != 2 {
+		t.Fatalf("expected client reply + operator alert, got %d sends: %+v", len(sends), sends)
+	}
+	alert := sends[1]
+	if alert["contact"] != "+971509999999" {
+		t.Fatalf("alert must go to the operator, got %+v", alert)
+	}
+	if !strings.Contains(alert["body"], "DELIVERY FAILED") ||
+		!strings.Contains(alert["body"], caseID[:8]) ||
+		!strings.Contains(alert["body"], "wamid.reply-1") {
+		t.Fatalf("alert body must carry case + evidence ref: %+v", alert)
+	}
+}
+
+// Without CE_OPERATOR_PHONE the failure is events+notes only — no send.
+func TestReceiptFailedNoOperatorConfigured(t *testing.T) {
+	var sends int
+	wa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sends++
+		json.NewEncoder(w).Encode(map[string]any{"mode": "freeform",
+			"body": map[string]any{"messages": []map[string]string{{"id": "wamid.reply-1"}}}})
+	}))
+	t.Cleanup(wa.Close)
+
+	s := testServices(t, Deps{WhatsAppURL: wa.URL})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
+	sendReplyLinked(t, s, tenantID)
+
+	if _, err := s.Receipts.Record(ctx, tenantID, "whatsapp", "wamid.reply-1", "failed", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if sends != 1 {
+		t.Fatalf("no operator configured -> only the client reply send, got %d", sends)
+	}
+}

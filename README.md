@@ -178,4 +178,17 @@ FK mismatch (migration never applicable), missing `::uuid` casts in the
 0007/0008 RLS policies, `""`→uuid casts in `pgCases` writes, and NULL
 columns scanned into plain strings.
 
+**Phase 13 — delivered (see `docs/phase13.md`).** `case.reply_failed` now
+pushes a WhatsApp alert to the operator (`CE_OPERATOR_PHONE`, advisory) —
+SLA breach evidence lands where operators look. Gold layer gains
+`channel_sla.json`: per tenant|channel failure rate and median
+sent→delivered / sent→read latencies from receipt evidence, replay-safe
+(first status observation wins), labeled `receipt-latency/v1` as measured
+statistics, not prediction. The live-pg CI gate expands to the Phase 1–3
+CRM spine (clients, catalog→request→quote→booking, conversations,
+partners, referrals under the bilateral RLS policy), catching three more
+latent pg bugs pre-push: partners never roundtripped `lat`/`lng` (geo
+ranking would have been blind on pg), and referrals `""`→uuid writes /
+NULL scans on `request_id`/`booking_id`.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

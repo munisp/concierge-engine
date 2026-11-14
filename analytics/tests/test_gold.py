@@ -190,4 +190,64 @@ def test_pricing_suggestions_empty(tmp_path: Path):
     paths = gold.write_gold(tmp_path)
     assert {p.name for p in paths} == {
         "client_ltv.json", "churn_risk.json", "pricing_suggestions.json",
+        "channel_sla.json",
     }
+
+
+def _receipt(eid: str, tenant: str, ref: str, status: str, at: str, channel: str = "whatsapp") -> dict:
+    return {
+        "id": eid, "tenant_id": tenant, "aggregate": "channel", "aggregate_id": ref,
+        "event_type": "channel.receipt", "payload": {"channel": channel, "status": status, "at": at},
+        "created_at": at,
+    }
+
+
+def test_channel_sla_latencies_and_failures(tmp_path: Path):
+    """Receipt evidence -> per tenant+channel delivery SLA medians."""
+    events = [
+        # msg1: sent 10:00:00, delivered +30s, read +120s
+        _receipt("r1", "t1", "wamid.1", "sent", "2026-11-14T10:00:00Z"),
+        _receipt("r2", "t1", "wamid.1", "delivered", "2026-11-14T10:00:30Z"),
+        _receipt("r3", "t1", "wamid.1", "read", "2026-11-14T10:02:00Z"),
+        # msg2: sent, delivered at +60s, never read
+        _receipt("r4", "t1", "wamid.2", "sent", "2026-11-14T11:00:00Z"),
+        _receipt("r5", "t1", "wamid.2", "delivered", "2026-11-14T11:01:00Z"),
+        # msg3: failed outright
+        _receipt("r6", "t1", "wamid.3", "sent", "2026-11-14T12:00:00Z"),
+        _receipt("r7", "t1", "wamid.3", "failed", "2026-11-14T12:00:05Z"),
+        # tenant isolation: t2's receipts must not leak into t1's row
+        _receipt("r8", "t2", "wamid.9", "sent", "2026-11-14T10:00:00Z"),
+        _receipt("r9", "t2", "wamid.9", "failed", "2026-11-14T10:00:01Z"),
+    ]
+    _seed_bronze(tmp_path, events)
+
+    out = gold.build_channel_sla(tmp_path)
+    rows = {f"{r['tenant_id']}|{r['channel']}": r for r in out["rows"]}
+    t1 = rows["t1|whatsapp"]
+    assert t1["messages"] == 3
+    assert t1["failure_rate"] == round(1 / 3, 4)
+    assert t1["median_sent_to_delivered_s"] == 45.0  # median of 30, 60
+    assert t1["median_sent_to_read_s"] == 120.0  # only msg1 was read
+    assert t1["model"] == "receipt-latency/v1"
+    t2 = rows["t2|whatsapp"]
+    assert t2["messages"] == 1 and t2["failure_rate"] == 1.0
+    assert t2["median_sent_to_delivered_s"] is None
+
+
+def test_channel_sla_redelivery_first_wins(tmp_path: Path):
+    """Replayed receipts (at-least-once delivery) must not double-count or
+    shift latencies — first observation of a status wins."""
+    events = [
+        _receipt("r1", "t1", "wamid.1", "sent", "2026-11-14T10:00:00Z"),
+        _receipt("r2", "t1", "wamid.1", "delivered", "2026-11-14T10:00:30Z"),
+        _receipt("r3", "t1", "wamid.1", "delivered", "2026-11-14T10:05:00Z"),  # replay storm
+        _receipt("r4", "t1", "wamid.1", "delivered", "2026-11-14T10:09:00Z"),
+    ]
+    _seed_bronze(tmp_path, events)
+    (row,) = gold.build_channel_sla(tmp_path)["rows"]
+    assert row["messages"] == 1
+    assert row["median_sent_to_delivered_s"] == 30.0
+
+
+def test_channel_sla_empty(tmp_path: Path):
+    assert gold.build_channel_sla(tmp_path)["rows"] == []

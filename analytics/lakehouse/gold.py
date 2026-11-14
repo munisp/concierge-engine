@@ -28,7 +28,7 @@ unchanged: these outputs advise humans (or the gated agent).
 
 Consumes: lakehouse/bronze (raw events), lakehouse/silver/daily_kpis.json
 Produces: lakehouse/gold/client_ltv.json, churn_risk.json,
-          pricing_suggestions.json
+          pricing_suggestions.json, channel_sla.json
 """
 
 from __future__ import annotations
@@ -269,6 +269,76 @@ def build_pricing_suggestions(root: Path) -> dict[str, Any]:
     return {"grain": "tenant", "rows": rows}
 
 
+def build_channel_sla(root: Path) -> dict[str, Any]:
+    """Channel delivery SLA per tenant+channel from channel.receipt events
+    (Phase 13). For every channel message (aggregate_id = external_ref),
+    pair the provider timestamps: sent->delivered and sent->read latencies,
+    and a failure flag. Aggregate as medians (robust to the long tail of
+    WhatsApp delivery) + failure rate over distinct messages.
+
+    This is descriptive statistics over evidence, not a model — rows are
+    labeled receipt-latency/v1 so downstream consumers never confuse a
+    measured median with a prediction."""
+    events = _load_bronze(root)
+    by_msg: dict[str, dict[str, Any]] = defaultdict(dict)
+    for e in events:
+        if e.get("event_type") != "channel.receipt":
+            continue
+        payload = e.get("payload") or {}
+        status = payload.get("status")
+        if status not in ("sent", "delivered", "read", "failed"):
+            continue
+        tenant = e.get("tenant_id", "platform")
+        channel = payload.get("channel") or "whatsapp"
+        ref = e.get("aggregate_id", "")
+        at = payload.get("at") or _ts(e)
+        slot = by_msg[f"{tenant}|{channel}|{ref}"]
+        # First observation of a status wins — redelivery replays are noise.
+        slot.setdefault(status, at)
+        slot["tenant"], slot["channel"] = tenant, channel
+
+    per_pair: dict[str, dict[str, list]] = defaultdict(
+        lambda: {"messages": 0, "failed": 0, "delivered_s": [], "read_s": []})
+    for msg in by_msg.values():
+        key = f"{msg['tenant']}|{msg['channel']}"
+        agg = per_pair[key]
+        agg["messages"] += 1
+        if "failed" in msg:
+            agg["failed"] += 1
+        sent = _parse_ts(msg.get("sent", ""))
+        if sent:
+            d = _parse_ts(msg.get("delivered", ""))
+            if d and d >= sent:
+                agg["delivered_s"].append((d - sent).total_seconds())
+            r = _parse_ts(msg.get("read", ""))
+            if r and r >= sent:
+                agg["read_s"].append((r - sent).total_seconds())
+
+    rows = []
+    for key, agg in sorted(per_pair.items()):
+        tenant, channel = key.split("|", 1)
+        rows.append({
+            "tenant_id": tenant, "channel": channel,
+            "messages": agg["messages"],
+            "failure_rate": round(agg["failed"] / agg["messages"], 4),
+            "median_sent_to_delivered_s": (
+                round(statistics.median(agg["delivered_s"]), 1) if agg["delivered_s"] else None),
+            "median_sent_to_read_s": (
+                round(statistics.median(agg["read_s"]), 1) if agg["read_s"] else None),
+            "model": "receipt-latency/v1",
+        })
+    return {"grain": "tenant|channel", "rows": rows}
+
+
+def _parse_ts(s: str) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def write_gold(root: Path) -> list[Path]:
     out = root / "gold"
     out.mkdir(parents=True, exist_ok=True)
@@ -277,6 +347,7 @@ def write_gold(root: Path) -> list[Path]:
         ("client_ltv", build_client_ltv(root)),
         ("churn_risk", build_churn_risk(root)),
         ("pricing_suggestions", build_pricing_suggestions(root)),
+        ("channel_sla", build_channel_sla(root)),
     ):
         p = out / f"{name}.json"
         p.write_text(json.dumps(data, indent=2))

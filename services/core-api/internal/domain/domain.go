@@ -29,6 +29,7 @@ type Deps struct {
 	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
 	AgentURL      string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
 	WhatsAppURL   string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
+	OperatorPhone string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
 	GeocodeURL    string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
 	GeocodeKey    string // CE_GEOCODE_API_KEY when the provider needs one
 	Now           func() time.Time
@@ -106,7 +107,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.InstantOn = &InstantOnService{s: s}
 	s.Cases = &CaseService{s: s, assist: NewCaseAssistClient(deps.AgentURL), waURL: deps.WhatsAppURL}
 	s.Geo = NewGeoService(s, deps.GeocodeURL, deps.GeocodeKey)
-	s.Receipts = NewReceiptsService(s)
+	s.Receipts = NewReceiptsService(s, deps.WhatsAppURL, deps.OperatorPhone)
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)

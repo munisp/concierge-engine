@@ -12,6 +12,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 
@@ -323,7 +324,7 @@ func (s pgReferrals) Create(ctx context.Context, r *model.Referral) error {
 		`INSERT INTO referrals (`+referralCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		r.ID, r.ReferringTenantID, r.ReceivingTenantID, r.ClientName, r.ClientContact,
 		r.RequestSummary, r.EstValueMinor, r.Currency, r.FeePct, r.State,
-		r.RequestID, r.BookingID, r.CommissionMinor, r.IdempotencyKey, r.CreatedAt, r.UpdatedAt)
+		nilIfEmpty(r.RequestID), nilIfEmpty(r.BookingID), r.CommissionMinor, r.IdempotencyKey, r.CreatedAt, r.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -332,13 +333,16 @@ func (s pgReferrals) Create(ctx context.Context, r *model.Referral) error {
 
 func scanReferral(row interface{ Scan(...any) error }) (*model.Referral, error) {
 	var r model.Referral
+	var requestID, bookingID sql.NullString // nullable until the receiving tenant books
 	err := row.Scan(&r.ID, &r.ReferringTenantID, &r.ReceivingTenantID, &r.ClientName,
 		&r.ClientContact, &r.RequestSummary, &r.EstValueMinor, &r.Currency, &r.FeePct,
-		&r.State, &r.RequestID, &r.BookingID, &r.CommissionMinor, &r.IdempotencyKey,
+		&r.State, &requestID, &bookingID, &r.CommissionMinor, &r.IdempotencyKey,
 		&r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
+	r.RequestID = requestID.String
+	r.BookingID = bookingID.String
 	return &r, nil
 }
 
@@ -394,7 +398,7 @@ func (s pgReferrals) Update(ctx context.Context, r *model.Referral) error {
 	res, err := tx.ExecContext(ctx,
 		`UPDATE referrals SET state=$2, request_id=$3, booking_id=$4, commission_minor=$5, updated_at=$6
 		 WHERE id=$1`,
-		r.ID, r.State, r.RequestID, r.BookingID, r.CommissionMinor, r.UpdatedAt)
+		r.ID, r.State, nilIfEmpty(r.RequestID), nilIfEmpty(r.BookingID), r.CommissionMinor, r.UpdatedAt)
 	if err != nil {
 		return err
 	}

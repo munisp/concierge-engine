@@ -7,11 +7,21 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
 )
+
+// nullZeroFloat maps 0 to NULL: the domain convention is that 0,0 means
+// "no coordinates recorded" (the Gulf of Guinea is not a service area).
+func nullZeroFloat(f float64) any {
+	if f == 0 {
+		return nil
+	}
+	return f
+}
 
 func (p *postgres) Partners() PartnerStore    { return pgPartners{p} }
 func (p *postgres) Corporate() CorporateStore { return pgCorporate{p} }
@@ -30,9 +40,10 @@ func (s pgPartners) Create(ctx context.Context, pt *model.Partner) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO partners (id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		pt.ID, pt.TenantID, pt.Name, verticals, markets, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef)
+		`INSERT INTO partners (id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		pt.ID, pt.TenantID, pt.Name, verticals, markets, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef,
+		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng))
 	if err != nil {
 		return err
 	}
@@ -42,17 +53,20 @@ func (s pgPartners) Create(ctx context.Context, pt *model.Partner) error {
 func scanPartner(row interface{ Scan(...any) error }) (*model.Partner, error) {
 	var pt model.Partner
 	var verticals, markets []byte
+	var lat, lng sql.NullFloat64 // base-of-operations (Phase 6) is nullable
 	err := row.Scan(&pt.ID, &pt.TenantID, &pt.Name, &verticals, &markets,
-		&pt.Status, &pt.QualityScore, &pt.PayoutRail, &pt.PayoutRef, &pt.CreatedAt)
+		&pt.Status, &pt.QualityScore, &pt.PayoutRail, &pt.PayoutRef, &lat, &lng, &pt.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
+	pt.Lat = lat.Float64
+	pt.Lng = lng.Float64
 	_ = json.Unmarshal(verticals, &pt.Verticals)
 	_ = json.Unmarshal(markets, &pt.Markets)
 	return &pt, nil
 }
 
-const partnerCols = `id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, created_at`
+const partnerCols = `id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, created_at`
 
 func (s pgPartners) Get(ctx context.Context, tenantID, id string) (*model.Partner, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -100,8 +114,9 @@ func (s pgPartners) Update(ctx context.Context, pt *model.Partner) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`UPDATE partners SET name=$2, status=$3, quality_score=$4, payout_rail=$5, payout_ref=$6 WHERE id=$1`,
-		pt.ID, pt.Name, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef)
+		`UPDATE partners SET name=$2, status=$3, quality_score=$4, payout_rail=$5, payout_ref=$6, lat=$7, lng=$8 WHERE id=$1`,
+		pt.ID, pt.Name, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef,
+		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng))
 	if err != nil {
 		return err
 	}

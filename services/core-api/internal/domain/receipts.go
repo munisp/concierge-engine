@@ -2,7 +2,10 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"concierge-engine/services/core-api/internal/httpx"
@@ -18,9 +21,17 @@ var receiptStatuses = map[string]bool{
 	"sent": true, "delivered": true, "read": true, "failed": true,
 }
 
-type ReceiptsService struct{ s *Services }
+type ReceiptsService struct {
+	s *Services
+	// Phase 13 operator alerting: on a failed delivery of a linked reply the
+	// operator gets a WhatsApp ping through the same adapter (advisory).
+	waURL         string
+	operatorPhone string
+}
 
-func NewReceiptsService(s *Services) *ReceiptsService { return &ReceiptsService{s} }
+func NewReceiptsService(s *Services, waURL, operatorPhone string) *ReceiptsService {
+	return &ReceiptsService{s: s, waURL: waURL, operatorPhone: operatorPhone}
+}
 
 // Record a receipt. Idempotent per (external_ref, status) at the store
 // level, so webhook redelivery is free. Unknown statuses are rejected —
@@ -43,7 +54,7 @@ func (svc *ReceiptsService) Record(ctx context.Context, tenantID, channel, exter
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "channel", externalRef, "channel.receipt",
-		map[string]any{"channel": rc.Channel, "status": status})
+		map[string]any{"channel": rc.Channel, "status": status, "at": rc.At.Format(time.RFC3339)})
 	svc.alertLinkedCase(ctx, tenantID, rc)
 	return rc, nil
 }
@@ -94,6 +105,33 @@ func (svc *ReceiptsService) alertLinkedCase(ctx context.Context, tenantID string
 	}
 	svc.s.Events.Emit(ctx, tenantID, "case", caseID, "case.reply_failed",
 		map[string]any{"external_ref": rc.ExternalRef, "state": c.State})
+	svc.pushOperatorAlert(ctx, tenantID, c, rc)
+}
+
+// pushOperatorAlert (Phase 13): the SLA breach evidence lands where the
+// operator actually looks — WhatsApp — through the same channel adapter.
+// Advisory: alert delivery failure never blocks receipt recording, and the
+// event stream already carries case.reply_failed for everything else.
+func (svc *ReceiptsService) pushOperatorAlert(ctx context.Context, tenantID string, c *model.Case, rc *model.MessageReceipt) {
+	if svc.waURL == "" || svc.operatorPhone == "" {
+		return
+	}
+	body := fmt.Sprintf("DELIVERY FAILED — case %s (%s): your approved reply never reached the client (ref %s). Resend advised.",
+		c.ID[:8], c.Title, rc.ExternalRef)
+	payload, _ := json.Marshal(map[string]string{
+		"tenant_id": tenantID, "contact": svc.operatorPhone, "body": body})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimSuffix(svc.waURL, "/")+"/v1/send", strings.NewReader(string(payload)))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	hc := &http.Client{Timeout: 10 * time.Second}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
 }
 
 // For: the receipt timeline for one channel message id.

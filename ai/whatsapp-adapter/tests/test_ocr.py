@@ -5,6 +5,7 @@ docs/eval-ocr-latency.md."""
 
 import asyncio
 import io
+import shutil
 import time
 from unittest.mock import patch
 
@@ -14,6 +15,9 @@ from whatsapp_adapter import ocr
 from whatsapp_adapter.main import WebhookMessage, inbound
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+needs_tesseract = pytest.mark.skipif(
+    shutil.which("tesseract") is None,
+    reason="tesseract binary not installed (CI installs it; the real-extraction gate runs there)")
 
 
 def _receipt_image(text: str = "REFUND REQUEST 1400 AED") -> bytes:
@@ -38,6 +42,8 @@ def _no_http_provider(monkeypatch):
     monkeypatch.setattr(ocr, "OCR_API_KEY", "")
 
 
+
+@needs_tesseract
 def test_tesseract_extracts_text_real_image():
     t0 = time.perf_counter()
     out = ocr.ocr_image(_receipt_image(), "image/png")
@@ -76,6 +82,8 @@ def test_http_provider_preferred_and_labeled(monkeypatch):
     assert out["text"] == "PNR ABC123 confirmed"
 
 
+
+@needs_tesseract
 def test_http_failure_falls_back_to_tesseract(monkeypatch):
     monkeypatch.setattr(ocr, "OCR_URL", "http://ocr.local/ocr")
 
@@ -129,6 +137,8 @@ def _run_media(msg, core, media_bytes=b"", fetch_fails=False):
             return asyncio.run(inbound(msg))
 
 
+
+@needs_tesseract
 def test_inbound_media_ocr_feeds_intake():
     core = _FakeCore()
     msg = WebhookMessage(tenant_id="t1", contact="+31612345678",

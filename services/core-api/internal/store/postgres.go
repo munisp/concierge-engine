@@ -435,6 +435,38 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 	return out, tx.Commit()
 }
 
+// Get returns one service regardless of Active — see CatalogStore.
+func (s pgCatalog) Get(ctx context.Context, tenantID, id string) (*model.CatalogService, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var svc model.CatalogService
+	var nameI18n, descI18n []byte
+	err = tx.QueryRowContext(ctx,
+		`SELECT id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n, coalesce(image_id,'')
+		 FROM catalog_services WHERE id=$1 AND tenant_id=$2`, id, tenantID).
+		Scan(&svc.ID, &svc.TenantID, &svc.Vertical, &svc.Name, &svc.BaseMinor,
+			&svc.Currency, &svc.PerKMMinor, &svc.PerHourMinor, &svc.AutoQuotable, &svc.Active,
+			&nameI18n, &descI18n, &svc.ImageID)
+	if err == sql.ErrNoRows {
+		return nil, httpx.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal(nameI18n, &svc.NameI18n)
+	_ = json.Unmarshal(descI18n, &svc.DescI18n)
+	if svc.NameI18n == nil {
+		svc.NameI18n = map[string]string{}
+	}
+	if svc.DescI18n == nil {
+		svc.DescI18n = map[string]string{}
+	}
+	return &svc, tx.Commit()
+}
+
 // ------------------------------------------------------------- requests
 type pgRequests struct{ p *postgres }
 

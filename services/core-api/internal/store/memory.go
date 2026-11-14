@@ -333,6 +333,18 @@ func (s *memCatalog) List(_ context.Context, tenantID string) ([]model.CatalogSe
 	return out, nil
 }
 
+// Get returns one service regardless of Active — see CatalogStore.
+func (s *memCatalog) Get(_ context.Context, tenantID, id string) (*model.CatalogService, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	svc, ok := s.m.catalog[tenantID+"/"+id]
+	if !ok {
+		return nil, httpx.ErrNotFound
+	}
+	cp := *svc
+	return &cp, nil
+}
+
 func (s *memCatalog) Update(_ context.Context, svc *model.CatalogService) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()

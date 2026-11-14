@@ -484,3 +484,31 @@ export now bundles referenced media files and rewrites URLs to the flat
 layout. New chrome strings ship full en + pt-PT, English backfill
 elsewhere (honest degrade). 3 server + 2 pg tests.
 
+**Phase 32 — delivered (see `docs/phase32.md`).** End-to-end onboarding +
+console gap closure + design layer. **Payment honesty:** the site's
+payment claims (trust chip, platform band, FAQ answers) now gate on
+`LiveRails` — a rail is live only when the platform holds the PSP key AND
+the tenant hasn't disabled it; with no keys the FAQ honestly says the
+concierge arranges payment directly, and the onboarding payments step
+reports SANDBOX mode. **Onboarding** grows to 21 derived steps in four
+groups (essentials / operations / presence / growth): fleet, drivers,
+pricing, tax, dispatch tuning, site design, imagery, socials, custom
+domain, templates, lifecycle, campaigns, first booking — every step
+carries the console path that completes it, rendered as grouped "Open →"
+links. **Console gaps closed:** new Catalog page (create/edit/price/
+deactivate services, card images from the media library — backed by the
+extended PATCH-shaped `PUT /v1/catalog/{id}` and a new active-agnostic
+`CatalogStore.Get`, fixing the can't-reactivate-a-deactivated-service bug
+the new tests caught), Dispatch fleet/crew add forms, Studio media
+library (upload, thumbnails via tenant-scoped `GET /v1/media/{id}/raw`,
+set-hero, gallery membership, delete with reference cleanup), and the
+Onboarding page's grouped steps. **Design layer:** `site_config.design`
+splits layout from theme tokens — `classic` (default) or `editorial`
+(oversized serif display, asymmetric hero, alternating service rows, pure
+CSS re-flow of the same DOM); `hidden_sections` toggles any of the nine
+landing sections; `gallery_ids` (≤8) renders a gallery strip, dangling
+ids skipped at render. `ValidateSiteConfig` now runs on BOTH write paths
+(the `PUT /v1/tenant` wholesale patch previously bypassed theme
+validation). Puck (MIT) evaluated as a future visual site builder —
+documented spike, recommendation: stay curated. 5 server + 2 pg tests.
+

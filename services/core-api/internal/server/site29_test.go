@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/model"
 )
 
@@ -124,7 +125,10 @@ func TestLocaleTreesAndHreflang29(t *testing.T) {
 }
 
 func TestRedesignAndChatCTA29(t *testing.T) {
-	env := newEnv(t)
+	// Phase 32: the payment chip requires a LIVE rail — this env carries a
+	// (fake) Stripe key so the chip can render; the key is never used for
+	// network calls on the site surface.
+	env := newEnvDeps(t, domain.Deps{StripeKey: "sk_test_fake"})
 	seedLisbonTenant(t, env)
 
 	_, _, body := getHost(t, env.server.URL, "/site/taylor/", "", "", "")
@@ -136,7 +140,7 @@ func TestRedesignAndChatCTA29(t *testing.T) {
 		"Fale connosco no WhatsApp", // localized chat CTA label
 		"class=\"trust\"",           // trust bar
 		"Confirmação por WhatsApp",  // WhatsApp trust chip (number configured)
-		"Pagamento online seguro",   // payment chip (default env has a rail enabled)
+		"Pagamento online seguro",   // payment chip (env carries a live rail key)
 		"class=\"sticky\"",          // sticky mobile CTA bar
 	} {
 		if !strings.Contains(body, want) {

@@ -360,7 +360,7 @@ func guideAreaTrust(areaName, locale string) string {
 // faqsForServiceL is the locale-aware FAQ builder (Phase 29 superset of
 // faqsForService). Full translation en + pt-PT; other locales fall back to
 // English body text.
-func faqsForServiceL(t *model.Tenant, svc *model.CatalogService, svcName string, areas []model.ServiceArea, locale string) []siteFAQ {
+func faqsForServiceL(t *model.Tenant, svc *model.CatalogService, svcName string, areas []model.ServiceArea, locale string, liveRails []string) []siteFAQ {
 	pt := proseLocale(locale) == "pt-PT"
 	var faqs []siteFAQ
 	pl := priceLabel(*svc)
@@ -420,20 +420,31 @@ func faqsForServiceL(t *model.Tenant, svc *model.CatalogService, svcName string,
 	if pt {
 		payQ = "Como pago?"
 	}
+	// Phase 32: answer from LIVE rails (platform keys ∧ tenant flags), never
+	// from flags alone — otherwise the FAQ promises a Stripe link on an
+	// instance that can only mint sandbox links.
+	has := func(rail string) bool {
+		for _, r := range liveRails {
+			if r == rail {
+				return true
+			}
+		}
+		return false
+	}
 	switch {
-	case t.PaymentConfig.DisableStripe && t.PaymentConfig.DisablePaystack:
+	case len(liveRails) == 0:
 		if pt {
 			faqs = append(faqs, siteFAQ{payQ, "O seu concierge combina o pagamento consigo diretamente ao confirmar a reserva."})
 		} else {
 			faqs = append(faqs, siteFAQ{payQ, "Your concierge arranges payment with you directly when confirming the booking."})
 		}
-	case t.PaymentConfig.DisableStripe:
+	case !has("stripe"):
 		if pt {
 			faqs = append(faqs, siteFAQ{payQ, "Recebe um link de pagamento seguro Paystack quando a reserva é confirmada — cartão, transferência bancária ou outros métodos locais suportados."})
 		} else {
 			faqs = append(faqs, siteFAQ{payQ, "You receive a secure Paystack payment link when your booking is confirmed — card, bank transfer or mobile money where supported."})
 		}
-	case t.PaymentConfig.DisablePaystack:
+	case !has("paystack"):
 		if pt {
 			faqs = append(faqs, siteFAQ{payQ, "Recebe um link de pagamento seguro Stripe quando a reserva é confirmada — cartões e métodos de pagamento locais suportados."})
 		} else {

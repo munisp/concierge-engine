@@ -217,6 +217,20 @@ type SiteConfig struct {
 	// Rendered full-bleed behind the hero copy; empty falls back to the
 	// theme gradient. Rides on site_config jsonb (no migration needed).
 	HeroImageID string `json:"hero_image_id,omitempty"`
+	// Design (Phase 32): the page LAYOUT family — "classic" (default, the
+	// Phase 31 card-grid layout) or "editorial" (oversized serif display,
+	// asymmetric hero, alternating service rows). Distinct from Theme:
+	// theme = tokens, design = structure. Empty = classic.
+	Design string `json:"design,omitempty"`
+	// HiddenSections (Phase 32): landing sections the tenant turns off —
+	// trust | stats | services | steps | platform | gallery | reviews |
+	// areas | cta. Visibility only (ordering stays engine-owned so the
+	// conversion narrative can't be broken into incoherence).
+	HiddenSections []string `json:"hidden_sections,omitempty"`
+	// GalleryIDs (Phase 32): tenant_media ids rendered as a gallery strip
+	// between the services grid and how-it-works. Dangling ids are skipped
+	// at render (never a broken img); max 8 enforced on write.
+	GalleryIDs []string `json:"gallery_ids,omitempty"`
 }
 
 // SiteTheme (Phase 30): the design tokens the public site template

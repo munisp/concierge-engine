@@ -53,6 +53,22 @@ func (svc *PaymentService) choosePSP(currency, requested string, pc model.Paymen
 	return "sandbox"
 }
 
+// LiveRails answers "which rails can actually charge a customer right now?"
+// — a rail is live when the platform has PSP credentials configured AND the
+// tenant has not disabled it. This is the honesty gate for every public
+// payment claim (site trust chips, feature cards, step copy, onboarding):
+// flag state alone does not make a rail real (Phase 32).
+func (svc *PaymentService) LiveRails(pc model.PaymentConfig) []string {
+	var out []string
+	if svc.s.Stripe.Enabled() && !pc.DisableStripe {
+		out = append(out, "stripe")
+	}
+	if svc.s.Paystack.Enabled() && !pc.DisablePaystack {
+		out = append(out, "paystack")
+	}
+	return out
+}
+
 // PaymentMethods answers "how can a customer pay in this currency?" — the
 // integrator discovery surface for international checkout. Tenant payment
 // config filters out disabled rails (Phase 17).

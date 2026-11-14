@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, dispatchStream, getTenantId } from "../api";
-import type { Assignment } from "../types";
+import type { Assignment, CrewMember, FleetResource } from "../types";
 
 // Dispatch board v1 (M4): assignment list + live SSE feed
 // (assignment / trip_status / geostamp events).
+// Phase 32: fleet & crew management moved into the console — the
+// onboarding "fleet"/"drivers" steps derive from these resources, so they
+// must be completable here, not only via curl.
 type Availability = {
   fleet_resource_id: string;
   label: string;
@@ -15,6 +18,12 @@ export default function Dispatch() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [events, setEvents] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const [fleet, setFleet] = useState<FleetResource[]>([]);
+  const [crew, setCrew] = useState<CrewMember[]>([]);
+  const [fKind, setFKind] = useState("sedan");
+  const [fLabel, setFLabel] = useState("");
+  const [cName, setCName] = useState("");
+  const [cCerts, setCCerts] = useState("");
   // Phase 22: scheduling — availability query across the fleet.
   const [availFrom, setAvailFrom] = useState("");
   const [availTo, setAvailTo] = useState("");
@@ -34,6 +43,33 @@ export default function Dispatch() {
   async function refresh() {
     try {
       setAssignments(await api.get<Assignment[]>("/v1/dispatch/assignments"));
+      setFleet(await api.get<FleetResource[]>("/v1/dispatch/fleet"));
+      setCrew(await api.get<CrewMember[]>("/v1/dispatch/crew"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function addFleet() {
+    setError("");
+    try {
+      await api.post("/v1/dispatch/fleet", { kind: fKind.trim(), label: fLabel.trim() });
+      setFLabel("");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function addCrew() {
+    setError("");
+    try {
+      await api.post("/v1/dispatch/crew", {
+        full_name: cName.trim(),
+        certificates: cCerts.split(",").map((s) => s.trim()).filter(Boolean),
+      });
+      setCName(""); setCCerts("");
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -109,6 +145,48 @@ export default function Dispatch() {
             </table>
           )
         )}
+      </div>
+      <div className="card">
+        <h2>Fleet &amp; crew</h2>
+        <div className="row">
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: "0 0 6px" }}>Fleet ({fleet.length})</h3>
+            {fleet.map((f) => (
+              <p key={f.id} className="muted" style={{ margin: "2px 0" }}>
+                <strong>{f.label}</strong> · {f.kind}{!f.active && " · inactive"}
+              </p>
+            ))}
+            <div className="row">
+              <select value={fKind} onChange={(e) => setFKind(e.target.value)}>
+                <option value="sedan">sedan</option>
+                <option value="suv">suv</option>
+                <option value="van">van</option>
+                <option value="minibus">minibus</option>
+                <option value="coach">coach</option>
+              </select>
+              <input placeholder="Label (e.g. Mercedes E · 12-AB-34)" value={fLabel}
+                onChange={(e) => setFLabel(e.target.value)} />
+              <button onClick={addFleet} disabled={!fLabel.trim()}>Add vehicle</button>
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: "0 0 6px" }}>Crew ({crew.length})</h3>
+            {crew.map((c) => (
+              <p key={c.id} className="muted" style={{ margin: "2px 0" }}>
+                <strong>{c.full_name}</strong>
+                {c.certificates?.length > 0 && ` · ${c.certificates.join(", ")}`}
+                {!c.active && " · inactive"}
+              </p>
+            ))}
+            <div className="row">
+              <input placeholder="Full name" value={cName}
+                onChange={(e) => setCName(e.target.value)} />
+              <input placeholder="Certificates (comma-sep, optional)" value={cCerts}
+                onChange={(e) => setCCerts(e.target.value)} />
+              <button onClick={addCrew} disabled={!cName.trim()}>Add crew</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="row">
         <div style={{ flex: 2 }}>

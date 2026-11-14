@@ -25,7 +25,15 @@ type testEnv struct {
 
 func newEnv(t *testing.T) *testEnv {
 	t.Helper()
-	svc := domain.NewServices(store.NewMemory(), domain.Deps{})
+	return newEnvDeps(t, domain.Deps{})
+}
+
+// newEnvDeps (Phase 32) builds an env with explicit platform deps — e.g. a
+// Stripe key so payment-rail honesty gates can be tested in both states
+// (key present = rail live; no key = sandbox, no payment claims).
+func newEnvDeps(t *testing.T, deps domain.Deps) *testEnv {
+	t.Helper()
+	svc := domain.NewServices(store.NewMemory(), deps)
 	srv := httptest.NewServer(server.New(svc))
 	t.Cleanup(srv.Close)
 	env := &testEnv{t: t, server: srv}

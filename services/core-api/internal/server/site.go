@@ -302,7 +302,17 @@ type sitePage struct {
 	Stats        []siteStat
 	Reviews      []siteReviewView
 	Features     []siteFeature
+	// Phase 32: design layer — layout family (classic|editorial, editorial
+	// is a CSS re-flow over the same semantic DOM), section visibility and
+	// the gallery strip. Show() is the template's visibility gate.
+	Design    string
+	Hidden    map[string]bool
+	Gallery   []string     // resolved public media URLs (dangling ids skipped)
+	DesignCSS template.CSS // editorial layout re-flow, empty for classic
 }
+
+// Show reports whether a landing section is visible (Phase 32).
+func (p sitePage) Show(id string) bool { return !p.Hidden[id] }
 
 // hreflangCluster builds the alternate set for a page path: every
 // configured locale plus x-default → the default-locale URL.
@@ -369,13 +379,33 @@ func (h *handlers) basePage(r *http.Request, t *model.Tenant, locale, ogPath str
 	if n, _ := t.Brand["whatsapp_number"].(string); n != "" {
 		p.WhatsApp = "https://wa.me/" + strings.TrimPrefix(strings.TrimSpace(n), "+")
 	}
-	p.TrustedPayment = !(t.PaymentConfig.DisableStripe && t.PaymentConfig.DisablePaystack)
+	// Phase 32 honesty fix: a payment claim requires a LIVE rail (platform
+	// PSP credentials present AND the tenant hasn't disabled it) — flag
+	// state alone used to render "secure online payment" on instances with
+	// no keys at all, where every link would have been a sandbox.
+	p.TrustedPayment = len(h.svc.Payments.LiveRails(t.PaymentConfig)) > 0
 	if !p.TrustedPayment {
 		// Honesty rule (same as the trust chips): no payment-link claims
 		// when no rail is enabled.
 		p.D.Step2Body = p.D.Step2BodyNoPay
 	}
 	p.ThemeCSS = themeCSS(t.SiteConfig.Theme)
+	// Phase 32: layout family + section visibility. Editorial is a CSS
+	// re-flow of the same semantic DOM — one structure, two designs, no
+	// template drift.
+	p.Design = t.SiteConfig.Design
+	if p.Design == "" {
+		p.Design = "classic"
+	}
+	if p.Design == "editorial" {
+		p.DesignCSS = editorialCSS
+	}
+	if len(t.SiteConfig.HiddenSections) > 0 {
+		p.Hidden = map[string]bool{}
+		for _, s := range t.SiteConfig.HiddenSections {
+			p.Hidden[s] = true
+		}
+	}
 	// Phase 31: the embed widget always lives on the platform origin — the
 	// hostRewrite middleware only maps the /site/ surface, so a custom
 	// domain iframe src would miss /embed.
@@ -630,6 +660,13 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 		p.HeroImageURL = mediaURL(rawBase, t.SiteConfig.HeroImageID)
 		p.OGImage = p.HeroImageURL
 	}
+	// Phase 32: gallery strip — resolve ids through the media store so a
+	// deleted asset silently drops out rather than rendering a broken img.
+	for _, id := range t.SiteConfig.GalleryIDs {
+		if _, err := h.svc.Store.Media().Get(r.Context(), t.ID, id); err == nil {
+			p.Gallery = append(p.Gallery, mediaURL(rawBase, id))
+		}
+	}
 	if len(services) > 0 {
 		p.Stats = append(p.Stats, siteStat{Value: fmt.Sprintf("%d", len(services)), Label: p.D.ServicesWord})
 	}
@@ -766,7 +803,7 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 	if cov := guideCoverage(name, t.Name, areas, locale); cov != "" {
 		p.Sections = append(p.Sections, cov)
 	}
-	p.FAQs = faqsForServiceL(t, svc, name, areas, locale)
+	p.FAQs = faqsForServiceL(t, svc, name, areas, locale, h.svc.Payments.LiveRails(t.PaymentConfig))
 	if sum, err := h.svc.ReviewSummary(r.Context(), t.ID); err == nil && sum.Count > 0 {
 		p.ReviewCount = sum.Count
 		p.ReviewAvg = fmt.Sprintf("%.1f", sum.Average)

@@ -94,6 +94,56 @@ func ValidateTheme(t *model.SiteTheme) error {
 	return nil
 }
 
+// SiteDesigns enumerates the landing LAYOUT families the site engine can
+// render (Phase 32). Empty = classic.
+var SiteDesigns = map[string]bool{"": true, "classic": true, "editorial": true}
+
+// SiteSections enumerates the landing sections a tenant may hide via
+// site_config.hidden_sections (Phase 32). Visibility only — ordering stays
+// engine-owned so the conversion narrative can't be scrambled.
+var SiteSections = map[string]bool{
+	"trust": true, "stats": true, "services": true, "steps": true,
+	"platform": true, "gallery": true, "reviews": true, "areas": true, "cta": true,
+}
+
+// MaxGalleryImages caps the landing gallery strip (Phase 32).
+const MaxGalleryImages = 8
+
+// ValidateSiteConfig (Phase 32) validates every design-bearing site_config
+// field on EVERY write path. PUT /v1/tenant patches site_config wholesale
+// and used to bypass ValidateTheme entirely — an invalid preset posted
+// there would have rendered broken CSS until someone noticed.
+func ValidateSiteConfig(sc *model.SiteConfig) error {
+	if sc == nil {
+		return nil
+	}
+	if err := ValidateTheme(sc.Theme); err != nil {
+		return err
+	}
+	design := strings.ToLower(strings.TrimSpace(sc.Design))
+	if !SiteDesigns[design] {
+		return httpx.ErrValidation
+	}
+	sc.Design = design
+	seen := map[string]bool{}
+	keep := sc.HiddenSections[:0]
+	for _, s := range sc.HiddenSections {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if !SiteSections[s] {
+			return httpx.ErrValidation
+		}
+		if !seen[s] {
+			seen[s] = true
+			keep = append(keep, s)
+		}
+	}
+	sc.HiddenSections = keep
+	if len(sc.GalleryIDs) > MaxGalleryImages {
+		return httpx.ErrValidation
+	}
+	return nil
+}
+
 // ResolveTheme returns the effective token set: preset bundle overlaid
 // with explicit token overrides. Nil theme = the default (noir-gold).
 func ResolveTheme(t *model.SiteTheme) StudioPreset {

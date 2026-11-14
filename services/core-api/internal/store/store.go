@@ -47,6 +47,11 @@ type ClientStore interface {
 type CatalogStore interface {
 	Add(ctx context.Context, s *model.CatalogService) error
 	List(ctx context.Context, tenantID string) ([]model.CatalogService, error)
+	// Get (Phase 32): one service by id, INCLUDING inactive rows. List
+	// filters on Active (it feeds the quote engine and public site), but
+	// the update path must be able to find — and reactivate — a
+	// deactivated service.
+	Get(ctx context.Context, tenantID, id string) (*model.CatalogService, error)
 	// Update (Phase 30): persist mutable catalog fields — currently the
 	// i18n presentation maps the design studio writes. Tenant-scoped.
 	Update(ctx context.Context, s *model.CatalogService) error

@@ -112,17 +112,20 @@ ul.plist li{padding:12px 0;border-bottom:1px solid #eee;font-family:system-ui,sa
 .sticky .btn{padding:12px 24px;font-size:.95rem}
 footer{text-align:center;color:#8a8f98;font-size:.85rem;padding:36px 24px 112px;font-family:system-ui,sans-serif}
 footer a{color:#8a8f98}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;list-style:none;padding:0;margin:0 0 8px}
+.gallery img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--radius);display:block}
 @media (max-width:640px){.cards{grid-template-columns:1fr}.steps{grid-template-columns:1fr}.hero .brand{font-size:2.1rem}.hero .hero-inner{padding:76px 20px 68px}.band{padding:36px 22px}.stats{flex-direction:column}.stats div+div{border-left:0;border-top:1px solid #f0ebdc}}
 @media (min-width:900px){.sticky{display:none}}
 </style>
+{{if .DesignCSS}}<style>{{.DesignCSS}}</style>{{end}}
 </head>
-<body>
+<body class="design-{{.Design}}">
 <nav class="nav">
 <a class="brand" href="{{.HomeURL}}">{{.TenantName}}</a>
 <div class="links">
-{{if .Services}}<a href="#services">{{.D.Services}}</a>{{end}}
-{{if .Areas}}<a href="#areas">{{.D.WhereWeOperate}}</a>{{end}}
-{{if .Reviews}}<a href="#reviews">{{.D.ReviewsHeading}}</a>{{end}}
+{{if and .Services (.Show "services")}}<a href="#services">{{.D.Services}}</a>{{end}}
+{{if and .Areas (.Show "areas")}}<a href="#areas">{{.D.WhereWeOperate}}</a>{{end}}
+{{if and .Reviews (.Show "reviews")}}<a href="#reviews">{{.D.ReviewsHeading}}</a>{{end}}
 <a href="{{.PartnersURL}}">{{.D.OurPartners}}</a>
 </div>
 <a class="cta" href="{{.CTA}}">{{.D.BookNow}}</a>
@@ -140,25 +143,26 @@ footer a{color:#8a8f98}
 </div>
 </header>
 <main>
-<div class="trust">
+{{if .Show "trust"}}<div class="trust">
 {{if .TrustedPayment}}<span>✓ {{.D.SecurePayment}}</span>{{end}}
 {{if .WhatsApp}}<span>✓ {{.D.WhatsAppConfirm}}</span>{{end}}
 {{if .ReviewCount}}<span>★ {{.ReviewAvg}} ({{.ReviewCount}})</span>{{end}}
-</div>
-{{if .Stats}}<div class="stats">{{range .Stats}}<div><div class="v">{{.Value}}</div><div class="l">{{.Label}}</div></div>{{end}}</div>{{end}}
+</div>{{end}}
+{{if and .Stats (.Show "stats")}}<div class="stats">{{range .Stats}}<div><div class="v">{{.Value}}</div><div class="l">{{.Label}}</div></div>{{end}}</div>{{end}}
 {{range .Sections}}<p class="guide">{{.}}</p>{{end}}
-{{if .Services}}<h2 id="services">{{.D.Services}}</h2><ul class="cards">{{range .Services}}
+{{if and .Services (.Show "services")}}<h2 id="services">{{.D.Services}}</h2><ul class="cards">{{range .Services}}
 <li><div class="card-top">{{if .ImageURL}}<img src="{{.ImageURL}}" alt="{{.Name}}" loading="lazy">{{else}}{{.Initial}}{{end}}</div><div class="card-body"><p class="nm">{{.Name}}</p>{{if .Desc}}<p class="ds">{{.Desc}}</p>{{end}}
 <div class="card-foot">{{if .PriceLabel}}<span class="pr">{{$.D.FromPrefix}} {{.PriceLabel}}</span>{{else}}<span></span>{{end}}<a href="{{.URL}}">{{$.D.BookNow}} →</a></div></div></li>
 {{end}}</ul>{{end}}
-<h2>{{.D.HowItWorks}}</h2>
+{{if and .Gallery (.Show "gallery")}}<ul class="gallery">{{range .Gallery}}<li><img src="{{.}}" alt="" loading="lazy"></li>{{end}}</ul>{{end}}
+{{if .Show "steps"}}<h2>{{.D.HowItWorks}}</h2>
 <ul class="steps">
 <li><span class="n">1</span><p class="st">{{.D.Step1Title}}</p><p class="sb">{{.D.Step1Body}}</p></li>
 <li><span class="n">2</span><p class="st">{{.D.Step2Title}}</p><p class="sb">{{.D.Step2Body}}</p></li>
 <li><span class="n">3</span><p class="st">{{.D.Step3Title}}</p><p class="sb">{{.D.Step3Body}}</p></li>
-</ul>
+</ul>{{end}}
 </main>
-<div class="band-wrap">
+{{if .Show "platform"}}<div class="band-wrap">
 <div class="band">
 <h2>{{.D.PlatformBand}}</h2>
 <div class="feats">{{range .Features}}
@@ -167,12 +171,12 @@ footer a{color:#8a8f98}
 {{if .EmbedURL}}<p class="widget-cap">{{.D.WidgetTitle}}</p>
 <div class="widget"><iframe src="{{.EmbedURL}}" style="width:100%;border:0;height:400px;display:block" title="{{.D.WidgetTitle}}" loading="lazy"></iframe></div>{{end}}
 </div>
-</div>
+</div>{{end}}
 <main>
-{{if .Reviews}}<h2 id="reviews">{{.D.ReviewsHeading}}</h2><ul class="reviews">{{range .Reviews}}
+{{if and .Reviews (.Show "reviews")}}<h2 id="reviews">{{.D.ReviewsHeading}}</h2><ul class="reviews">{{range .Reviews}}
 <li><div class="stars">{{.Stars}}</div><p class="rt">“{{.Text}}”</p><span class="ra">— {{$.D.VerifiedClient}}</span></li>
 {{end}}</ul>{{end}}
-{{if .Areas}}<h2 id="areas">{{.D.WhereWeOperate}}</h2><ul class="areas">{{range .Areas}}
+{{if and .Areas (.Show "areas")}}<h2 id="areas">{{.D.WhereWeOperate}}</h2><ul class="areas">{{range .Areas}}
 <li><a href="{{.URL}}">{{.Name}}</a></li>
 {{end}}</ul>{{end}}
 {{if .Partners}}<h2>{{.D.OurPartners}}</h2><ul class="plist">{{range .Partners}}
@@ -182,11 +186,11 @@ footer a{color:#8a8f98}
 <dt>{{.Q}}</dt><dd>{{.A}}</dd>
 {{end}}</dl>{{end}}
 </main>
-<div class="cta-band">
+{{if .Show "cta"}}<div class="cta-band">
 <p class="t">{{.D.CTABandTitle}}</p>
 <p class="b">{{.D.CTABandBody}}</p>
 <a class="btn" href="{{.CTA}}">{{.CTALabel}}</a>
-</div>
+</div>{{end}}
 <div class="sticky">
 <a class="btn btn-primary" href="{{.CTA}}">{{.CTALabel}}</a>
 {{if .WhatsApp}}<a class="btn btn-ghost" href="{{.WhatsApp}}">{{.D.ChatWhatsApp}}</a>{{end}}
@@ -197,3 +201,50 @@ footer a{color:#8a8f98}
 </footer>
 </body>
 </html>`))
+
+// editorialCSS (Phase 32): the "editorial" layout family — a CSS re-flow of
+// the classic DOM, so one semantic structure serves two genuinely distinct
+// designs with zero template drift. Oversized serif display, left-aligned
+// hero with a masked side image, hairline rules, alternating service rows,
+// baseline stats strip. Light-surface design: hero text renders in --ink
+// on --bg (the image carries the visual weight, not a dark overlay).
+const editorialCSS = template.CSS(`
+body.design-editorial{--radius:2px}
+body.design-editorial .nav{position:static;background:transparent;color:var(--ink);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid #e3ddc9}
+body.design-editorial .nav .brand{color:var(--ink)}
+body.design-editorial .nav .links a{color:var(--muted)}
+body.design-editorial .nav .links a:hover{color:var(--ink)}
+body.design-editorial .hero{text-align:left;background:var(--bg);color:var(--ink)}
+body.design-editorial .hero::after{display:none}
+body.design-editorial .hero .hero-bg{left:52%;right:0;width:auto;opacity:1;-webkit-mask-image:linear-gradient(90deg,transparent,#000 24%);mask-image:linear-gradient(90deg,transparent,#000 24%)}
+body.design-editorial .hero .hero-inner{max-width:1160px;padding:96px 24px 88px}
+body.design-editorial .hero .brand{font-size:clamp(2.6rem,6vw,4.8rem);letter-spacing:-.02em;line-height:1.04;max-width:9em}
+body.design-editorial .hero .tag{margin:18px 0 0;max-width:480px;color:var(--muted)}
+body.design-editorial .rating{color:var(--ink);background:transparent}
+body.design-editorial .cta-row{justify-content:flex-start}
+body.design-editorial .btn-ghost{border-color:var(--ink);color:var(--ink)}
+body.design-editorial .btn-ghost:hover{background:var(--ink);color:#fff}
+body.design-editorial main,body.design-editorial .band-wrap{max-width:1160px}
+body.design-editorial h2{font-size:.95rem}
+body.design-editorial .trust{justify-content:flex-start;margin-top:0}
+body.design-editorial .trust span{border:0;border-bottom:1px solid #e3ddc9;border-radius:0;box-shadow:none;background:transparent;padding:9px 4px}
+body.design-editorial .stats{border:0;border-top:1px solid #e3ddc9;border-bottom:1px solid #e3ddc9;border-radius:0;background:transparent}
+body.design-editorial .stats div{padding:26px 12px;text-align:left}
+body.design-editorial .stats .v{font-size:2.2rem;font-weight:400}
+body.design-editorial .cards{grid-template-columns:1fr;gap:0}
+body.design-editorial .cards li{display:flex;background:transparent;border:0;border-top:1px solid #e3ddc9;border-radius:0}
+body.design-editorial .cards li:hover{transform:none;box-shadow:none;background:#fff}
+body.design-editorial .cards .card-top{flex:0 0 38%;aspect-ratio:auto;font-size:1.4rem}
+body.design-editorial .cards li:nth-child(even){flex-direction:row-reverse}
+body.design-editorial .cards .card-body{flex:1;padding:28px 26px;align-self:center}
+body.design-editorial .cards .card-body .nm{font-size:1.5rem}
+body.design-editorial .cards .card-body .ds{-webkit-line-clamp:3;font-size:.95rem}
+body.design-editorial .steps li{background:transparent;border:0;border-top:2px solid var(--ink);border-radius:0;padding:20px 4px}
+body.design-editorial .band{border-radius:0;padding:64px 48px}
+body.design-editorial .reviews li{background:transparent;border:0;border-top:1px solid #e3ddc9;border-radius:0}
+body.design-editorial .gallery{grid-template-columns:repeat(4,1fr)}
+body.design-editorial .gallery img{border-radius:0}
+body.design-editorial .areas li a{border-radius:0}
+body.design-editorial .cta-band{text-align:left;padding:72px 48px}
+@media (max-width:760px){body.design-editorial .hero .hero-bg{left:0;width:100%;opacity:.16;-webkit-mask-image:none;mask-image:none}body.design-editorial .cards li{flex-direction:column}body.design-editorial .cards li:nth-child(even){flex-direction:column}body.design-editorial .gallery{grid-template-columns:1fr 1fr}body.design-editorial .cta-band{padding:56px 24px}}
+`)

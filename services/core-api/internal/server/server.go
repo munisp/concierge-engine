@@ -262,6 +262,12 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 			d = strings.TrimSuffix(d, "/")
 			sc.CustomDomains[i] = d
 		}
+		// Phase 32: validate theme + design fields on this write path too —
+		// the studio endpoint validated, but this wholesale patch bypassed it.
+		if err := domain.ValidateSiteConfig(&sc); err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
 		t.SiteConfig = sc
 	}
 	updated, err := h.svc.Tenants.UpdateConfig(r.Context(), t)

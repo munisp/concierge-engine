@@ -14,6 +14,11 @@ export interface Tenant {
     custom_domains?: string[]; google_verification?: string;
     locale?: string; social_links?: string[];
     locales?: string[]; brand_i18n?: Record<string, Record<string, string>>;
+    theme?: { preset?: string; primary?: string; accent?: string; font?: string; corners?: string };
+    hero_image_id?: string;
+    design?: string; // classic | editorial
+    hidden_sections?: string[];
+    gallery_ids?: string[];
   };
   outreach_config?: { marketing_cap_7d?: number };
   operator_config?: { alert_phones?: string[] };
@@ -90,4 +95,43 @@ export interface Message {
 
 export function money(minor: number, currency: string): string {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(minor / 100);
+}
+
+// Phase 31/32: catalog, media, fleet and crew records as served by the API.
+export interface CatalogService {
+  id: string;
+  vertical: string;
+  name: string;
+  base_minor: number;
+  currency: string;
+  per_km_minor: number;
+  per_hour_minor: number;
+  auto_quotable: boolean;
+  active: boolean;
+  image_id?: string;
+}
+
+export interface Media {
+  id: string;
+  kind: string; // hero | service | misc
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface FleetResource {
+  id: string;
+  kind: string;
+  label: string;
+  partner_id?: string;
+  quality_score: number;
+  active: boolean;
+}
+
+export interface CrewMember {
+  id: string;
+  full_name: string;
+  certificates: string[];
+  quality_score: number;
+  active: boolean;
 }

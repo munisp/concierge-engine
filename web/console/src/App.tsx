@@ -2,6 +2,7 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import Admin from "./pages/Admin";
 import Capture from "./pages/Capture";
 import Cases from "./pages/Cases";
+import Catalog from "./pages/Catalog";
 import Chauffeur from "./pages/Chauffeur";
 import Console from "./pages/Console";
 import Corporate from "./pages/Corporate";
@@ -25,6 +26,7 @@ export default function App() {
       <nav className="nav">
         <span className="brand">Concierge Engine</span>
         <Link to="/capture">Book</Link>
+        <Link to="/catalog">Catalog</Link>
         <Link to="/console">Concierge console</Link>
         <Link to="/cases">Cases</Link>
         <Link to="/dispatch">Dispatch board</Link>
@@ -46,6 +48,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/capture" replace />} />
           <Route path="/capture" element={<Capture />} />
+          <Route path="/catalog" element={<Catalog />} />
           <Route path="/console" element={<Console />} />
           <Route path="/cases" element={<Cases />} />
           <Route path="/dispatch" element={<Dispatch />} />

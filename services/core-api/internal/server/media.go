@@ -23,6 +23,10 @@ import (
 func (h *handlers) registerMedia(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/media", h.uploadMedia)
 	mux.HandleFunc("GET /v1/media", h.listMedia)
+	// GET /v1/media/{id}/raw: tenant-scoped binary read for console
+	// thumbnails (Catalog page, Studio media library). The public,
+	// slug-scoped /site/{slug}/media/{id} path stays the site-facing one.
+	mux.HandleFunc("GET /v1/media/{id}/raw", h.rawMedia)
 	mux.HandleFunc("DELETE /v1/media/{id}", h.deleteMedia)
 	// PUT /v1/catalog/{id}: mutable catalog fields — currently the card
 	// image (Phase 31). i18n maps continue to be written by the studio.
@@ -115,33 +119,100 @@ func (h *handlers) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// updateCatalogService applies the mutable catalog fields (image_id) to an
-// existing service. The record is loaded first so untouched fields survive
-// — this is a PATCH-shaped PUT, not a wholesale replace.
+// rawMedia streams one tenant-owned asset back with its stored content
+// type. Console-only (X-Tenant-ID scoped); ids are uuids and content is
+// immutable per id, so a long cache header is safe here too.
+func (h *handlers) rawMedia(w http.ResponseWriter, r *http.Request) {
+	md, err := h.svc.Store.Media().Get(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", md.ContentType)
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(md.Data)
+}
+
+// updateCatalogService applies mutable catalog fields to an existing
+// service (Phase 32: price, rates, vertical, active flag — the console
+// Catalog page edits these; image_id from Phase 31). The record is loaded
+// first so untouched fields survive — this is a PATCH-shaped PUT, not a
+// wholesale replace. The i18n maps continue to be written by the studio.
 func (h *handlers) updateCatalogService(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ImageID *string `json:"image_id"`
+		Name         *string `json:"name"`
+		Vertical     *string `json:"vertical"`
+		Currency     *string `json:"currency"`
+		BaseMinor    *int64  `json:"base_minor"`
+		PerKMMinor   *int64  `json:"per_km_minor"`
+		PerHourMinor *int64  `json:"per_hour_minor"`
+		AutoQuotable *bool   `json:"auto_quotable"`
+		Active       *bool   `json:"active"`
+		ImageID      *string `json:"image_id"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
 	tenantID := tenantOf(r)
-	services, err := h.svc.Store.Catalog().List(r.Context(), tenantID)
+	// Get (not List): List filters on Active — a deactivated service must
+	// still be findable here so it can be edited and reactivated.
+	svc, err := h.svc.Store.Catalog().Get(r.Context(), tenantID, r.PathValue("id"))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	var svc *model.CatalogService
-	for i := range services {
-		if services[i].ID == r.PathValue("id") {
-			svc = &services[i]
-			break
+	// Scalar fields: reject explicit empties/negatives on the keys the
+	// create path requires, so an update cannot push the record into a
+	// state Add would refuse.
+	if body.Name != nil {
+		if *body.Name == "" {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
 		}
+		svc.Name = *body.Name
 	}
-	if svc == nil {
-		httpx.WriteError(w, httpx.ErrNotFound)
-		return
+	if body.Vertical != nil {
+		if *body.Vertical == "" {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		svc.Vertical = *body.Vertical
+	}
+	if body.Currency != nil {
+		if *body.Currency == "" {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		svc.Currency = *body.Currency
+	}
+	if body.BaseMinor != nil {
+		if *body.BaseMinor < 0 {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		svc.BaseMinor = *body.BaseMinor
+	}
+	if body.PerKMMinor != nil {
+		if *body.PerKMMinor < 0 {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		svc.PerKMMinor = *body.PerKMMinor
+	}
+	if body.PerHourMinor != nil {
+		if *body.PerHourMinor < 0 {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		svc.PerHourMinor = *body.PerHourMinor
+	}
+	if body.AutoQuotable != nil {
+		svc.AutoQuotable = *body.AutoQuotable
+	}
+	if body.Active != nil {
+		svc.Active = *body.Active
 	}
 	if body.ImageID != nil {
 		if *body.ImageID != "" {

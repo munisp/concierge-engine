@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, getTenantId } from "../api";
 
 // Tenant onboarding wizard (Phase 27): the setup journey as a live checklist.
@@ -6,8 +7,14 @@ import { api, getTenantId } from "../api";
 // brand, roster, promos, bookings) — this page never stores progress, it
 // reads it. Two playbooks: "new" (build from scratch) and "existing"
 // (brownfield: import what you already run, integrate the rest).
+// Phase 32: steps arrive GROUPED (essentials → operations → presence →
+// growth) and each pending step links straight to the console surface that
+// completes it.
 
-type Step = { id: string; title: string; status: string; detail: string; action: string };
+type Step = {
+  id: string; group: string; title: string;
+  status: string; detail: string; action: string;
+};
 
 type Report = {
   track: string;
@@ -24,6 +31,15 @@ type ImportResult = { created: number; skipped: number; errors?: string[] };
 type WaLinks = { configured: boolean; setup?: string; links?: { service_name: string; url: string }[] };
 
 const STATUS_LABEL: Record<string, string> = { done: "DONE", pending: "TO DO", skipped: "SKIPPED" };
+
+// Group presentation order + blurbs. Ids come from the server; unknown
+// groups fall through to the end untouched.
+const GROUPS: [string, string, string][] = [
+  ["essentials", "Essentials", "What you sell, where, and how you get paid."],
+  ["operations", "Operations", "The channels, people and vehicles that deliver the service."],
+  ["presence", "Presence", "Your public website, design and social footprint."],
+  ["growth", "Growth", "Campaigns, follow-ups and the first bookings."],
+];
 
 const CATALOG_EXAMPLE = JSON.stringify(
   [{ vertical: "ground", name: "Airport Transfer", base_minor: 9500, per_km_minor: 210 }],
@@ -103,27 +119,46 @@ export default function Onboarding() {
 
       <div className="card">
         <h2>Steps</h2>
-        <table>
-          <tbody>
-            {rep.steps.map((s) => (
-              <tr key={s.id}>
-                <td style={{ width: 90 }}>
-                  <strong className={s.status === "done" ? "ok" : "muted"}>{STATUS_LABEL[s.status] ?? s.status}</strong>
-                </td>
-                <td style={{ width: 200 }}>{s.title}</td>
-                <td className="muted">{s.detail}</td>
-                <td style={{ width: 160 }}>
-                  {s.status === "pending" && (
-                    <button onClick={() => void skip(s.id, true)}>Skip</button>
-                  )}
-                  {s.status === "skipped" && (
-                    <button onClick={() => void skip(s.id, false)}>Reinstate</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {GROUPS.map(([gid, label, blurb]) => {
+          const steps = rep.steps.filter((s) => (s.group || "essentials") === gid);
+          if (steps.length === 0) return null;
+          const done = steps.filter((s) => s.status !== "pending").length;
+          return (
+            <div key={gid} style={{ marginBottom: 18 }}>
+              <h3 style={{ margin: "10px 0 2px" }}>
+                {label}{" "}
+                <span className="muted" style={{ fontWeight: "normal" }}>
+                  — {done}/{steps.length}
+                </span>
+              </h3>
+              <p className="muted" style={{ margin: "0 0 8px" }}>{blurb}</p>
+              <table>
+                <tbody>
+                  {steps.map((s) => (
+                    <tr key={s.id}>
+                      <td style={{ width: 90 }}>
+                        <strong className={s.status === "done" ? "ok" : "muted"}>{STATUS_LABEL[s.status] ?? s.status}</strong>
+                      </td>
+                      <td style={{ width: 200 }}>{s.title}</td>
+                      <td className="muted">{s.detail}</td>
+                      <td style={{ width: 230 }}>
+                        {s.status === "pending" && s.action && s.action !== "/onboarding" && (
+                          <Link to={s.action}>Open →</Link>
+                        )}{" "}
+                        {s.status === "pending" && (
+                          <button onClick={() => void skip(s.id, true)}>Skip</button>
+                        )}
+                        {s.status === "skipped" && (
+                          <button onClick={() => void skip(s.id, false)}>Reinstate</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
       </div>
 
       <div className="card">

@@ -59,6 +59,7 @@ type Services struct {
 	Geo           *GeoService
 	Receipts      *ReceiptsService
 	Outreach      *OutreachService
+	FollowUps     *FollowUpService
 	Supply        *SupplyService
 	Trips         *TripService
 	Audit         *AuditService
@@ -114,6 +115,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Geo = NewGeoService(s, deps.GeocodeURL, deps.GeocodeKey)
 	s.Receipts = NewReceiptsService(s, deps.WhatsAppURL, deps.OperatorPhone)
 	s.Outreach = NewOutreachService(s, deps.WhatsAppURL)
+	s.FollowUps = &FollowUpService{s: s}
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)

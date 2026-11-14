@@ -33,6 +33,32 @@ function SaveButton({ onSave }: { onSave: () => Promise<string> }) {
   );
 }
 
+type FollowUpResult = {
+  post_trip_sent: number;
+  win_back_sent: number;
+  win_back_held: number;
+  clients_scanned: number;
+};
+
+function RunFollowUps() {
+  const [msg, setMsg] = useState("");
+  async function run() {
+    try {
+      const r = await api.post<FollowUpResult>("/v1/followups/run");
+      setMsg(`${r.post_trip_sent} post-trip sent, ${r.win_back_sent} win-back sent, ` +
+        `${r.win_back_held} held (no consent), ${r.clients_scanned} clients scanned`);
+    } catch (e) {
+      setMsg(String(e));
+    }
+  }
+  return (
+    <>
+      <button onClick={() => void run()}>Run sweep now</button>
+      {msg && <p className="muted">{msg}</p>}
+    </>
+  );
+}
+
 export default function Settings() {
   const { tenant, error } = useTenant();
   const [alertPhones, setAlertPhones] = useState("");
@@ -51,6 +77,9 @@ export default function Settings() {
   const [expiryDays, setExpiryDays] = useState(0);
   const [mktCap, setMktCap] = useState(0);
   const [quoteSLA, setQuoteSLA] = useState(3600);
+  const [lcDisabled, setLcDisabled] = useState(false);
+  const [lcPostTrip, setLcPostTrip] = useState(24);
+  const [lcWinBack, setLcWinBack] = useState(90);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -71,6 +100,9 @@ export default function Settings() {
     setExpiryDays(tenant.reward_program?.expiry_days ?? 0);
     setMktCap(tenant.outreach_config?.marketing_cap_7d ?? 0);
     setQuoteSLA(tenant.sla_config?.quote_sla_seconds ?? 3600);
+    setLcDisabled(tenant.lifecycle_config?.disabled ?? false);
+    setLcPostTrip(tenant.lifecycle_config?.post_trip_hours ?? 24);
+    setLcWinBack(tenant.lifecycle_config?.win_back_days ?? 90);
     setLoaded(true);
   }, [tenant, loaded]);
 
@@ -115,6 +147,30 @@ export default function Settings() {
         <SaveButton onSave={() => save({
           dispatch_config: { turnaround_minutes: turnaround, default_duration_minutes: duration },
         })} />
+      </div>
+
+      <div className="card">
+        <h2>Client lifecycle (always-on engagement)</h2>
+        <p className="muted">
+          The lifecycle sweeper runs hourly. Post-trip follow-ups go out as
+          service messages (no marketing consent needed); win-backs are
+          marketing — clients who never opted in are held, never contacted.
+        </p>
+        <label>
+          <input type="checkbox" checked={lcDisabled}
+            onChange={(e) => setLcDisabled(e.target.checked)} /> Disable lifecycle follow-ups
+        </label>
+        <label>Post-trip follow-up delay (hours)</label>
+        <input type="number" value={lcPostTrip}
+          onChange={(e) => setLcPostTrip(Number(e.target.value))} />
+        <label>Win-back after days without a booking</label>
+        <input type="number" value={lcWinBack}
+          onChange={(e) => setLcWinBack(Number(e.target.value))} />
+        <p />
+        <SaveButton onSave={() => save({
+          lifecycle_config: { disabled: lcDisabled, post_trip_hours: lcPostTrip, win_back_days: lcWinBack },
+        })} />{" "}
+        <RunFollowUps />
       </div>
 
       <div className="card">

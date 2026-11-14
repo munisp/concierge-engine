@@ -513,6 +513,26 @@ func (s *memDispatch) AddGeoStamp(_ context.Context, g *model.GeoStamp) error {
 	return nil
 }
 
+func (s *memDispatch) LatestGeoStamp(_ context.Context, tenantID, assignmentID string) (*model.GeoStamp, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var latest *model.GeoStamp
+	for i := range s.m.geostamps {
+		g := &s.m.geostamps[i]
+		if g.TenantID != tenantID || g.AssignmentID != assignmentID {
+			continue
+		}
+		if latest == nil || g.At.After(latest.At) {
+			latest = g
+		}
+	}
+	if latest == nil {
+		return nil, httpx.ErrNotFound
+	}
+	cp := *latest
+	return &cp, nil
+}
+
 // ------------------------------------------------------------- payments
 type memPayments struct{ m *memory }
 

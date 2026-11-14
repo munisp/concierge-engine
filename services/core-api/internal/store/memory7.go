@@ -43,6 +43,26 @@ func (s *memClients) Search(_ context.Context, tenantID, query string, limit int
 	return out, nil
 }
 
+// List returns up to limit clients for the tenant, newest first (Phase 25).
+func (s *memClients) List(_ context.Context, tenantID string, limit int) ([]model.Client, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var out []model.Client
+	for _, c := range s.m.clients {
+		if c.TenantID == tenantID {
+			out = append(out, *c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 // Merge re-points every client-scoped record from loser to winner, then
 // deletes the loser. Bookings follow automatically via their request.
 func (s *memClients) Merge(_ context.Context, tenantID, winnerID, loserID string) error {

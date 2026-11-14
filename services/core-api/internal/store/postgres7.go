@@ -41,6 +41,34 @@ func (s pgClients) Search(ctx context.Context, tenantID, query string, limit int
 	return out, rows.Err()
 }
 
+// List returns up to limit clients for the tenant, newest first (Phase 25
+// lifecycle sweeps enumerate the book; Search stays substring-gated).
+func (s pgClients) List(ctx context.Context, tenantID string, limit int) ([]model.Client, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT `+clientCols+` FROM clients ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Client
+	for rows.Next() {
+		c, err := s.scanClient(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, rows.Err()
+}
+
 // Merge re-points every client-scoped record from loser to winner in one
 // transaction, then deletes the loser. Bookings follow via their request.
 // The loser's idempotency-bearing rows keep their keys — they belong to the

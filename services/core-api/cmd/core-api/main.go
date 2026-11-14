@@ -111,6 +111,37 @@ func main() {
 		}
 	}()
 
+	// Phase 25: background lifecycle sweeper — hourly per tenant, sends
+	// post-trip follow-ups and consent-gated win-backs through the outreach
+	// engine. Idempotency keys make hourly re-runs safe; the config's
+	// Disabled flag or per-tenant cadence decide what fires.
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-dispatchCtx.Done():
+				return
+			case <-ticker.C:
+				tenants, err := svc.Tenants.List(dispatchCtx)
+				if err != nil {
+					continue
+				}
+				for _, t := range tenants {
+					res, err := svc.FollowUps.Run(dispatchCtx, t.ID)
+					if err != nil {
+						log.Printf("lifecycle sweep: tenant %s — %v", t.Slug, err)
+						continue
+					}
+					if res.PostTripSent+res.WinBackSent+res.WinBackHeld > 0 {
+						log.Printf("lifecycle sweep: tenant %s — %d post-trip, %d win-back sent, %d held",
+							t.Slug, res.PostTripSent, res.WinBackSent, res.WinBackHeld)
+					}
+				}
+			}
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           server.New(svc),

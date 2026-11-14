@@ -34,7 +34,10 @@ type Tenant struct {
 	OperatorConfig OperatorConfig `json:"operator_config"`
 	// Phase 22: dispatch tuning.
 	DispatchConfig DispatchConfig `json:"dispatch_config"`
-	CreatedAt      time.Time      `json:"created_at"`
+	// LifecycleConfig (Phase 25): always-on engagement — post-trip follow-up
+	// and win-back rules evaluated by the follow-up sweeper.
+	LifecycleConfig LifecycleConfig `json:"lifecycle_config"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 // DispatchConfig tunes scheduling. TurnaroundMinutes extends every
@@ -44,6 +47,18 @@ type Tenant struct {
 type DispatchConfig struct {
 	TurnaroundMinutes      int `json:"turnaround_minutes,omitempty"`
 	DefaultDurationMinutes int `json:"default_duration_minutes,omitempty"`
+}
+
+// LifecycleConfig is the tenant's always-on client-engagement posture
+// (Phase 25). PostTripHours after a completed trip the client gets a
+// service-purpose thank-you/follow-up; WinBackDays of silence marks a
+// client for a marketing win-back attempt (consent- and cap-gated by the
+// outreach engine — held, never forced). Disabled = the sweeper skips the
+// tenant entirely. Zeros fall back to 24h / 90d.
+type LifecycleConfig struct {
+	Disabled      bool `json:"disabled,omitempty"`
+	PostTripHours int  `json:"post_trip_hours,omitempty"`
+	WinBackDays   int  `json:"win_back_days,omitempty"`
 }
 
 // OperatorConfig is the tenant's operator roster. AlertPhones receive

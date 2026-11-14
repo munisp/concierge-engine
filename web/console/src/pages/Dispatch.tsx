@@ -58,6 +58,20 @@ export default function Dispatch() {
     await refresh();
   }
 
+  // Phase 25: mint the passenger's journey-tracking link (read-only token).
+  const [trackLinks, setTrackLinks] = useState<Record<string, string>>({});
+  async function clientLink(a: Assignment) {
+    try {
+      const r = await api.post<{ token: string; url: string }>(
+        `/v1/dispatch/assignments/${a.id}/track-link`);
+      const full = `${window.location.origin}${r.url}`;
+      setTrackLinks((prev) => ({ ...prev, [a.id]: full }));
+      try { await navigator.clipboard.writeText(full); } catch { /* clipboard optional */ }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const next: Record<string, string> = {
     ASSIGNED: "EN_ROUTE_TO_PICKUP",
     EN_ROUTE_TO_PICKUP: "ARRIVED",
@@ -115,6 +129,12 @@ export default function Dispatch() {
                 <button onClick={() => advance(a, next[a.status])}>
                   Advance → {next[a.status].replaceAll("_", " ").toLowerCase()}
                 </button>
+              )}{" "}
+              <button onClick={() => clientLink(a)}>Client link</button>
+              {trackLinks[a.id] && (
+                <p className="muted" style={{ wordBreak: "break-all" }}>
+                  Tracking link (copied): {trackLinks[a.id]}
+                </p>
               )}
             </div>
           ))}

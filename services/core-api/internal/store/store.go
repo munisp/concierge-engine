@@ -28,6 +28,9 @@ type ClientStore interface {
 	// Phase 15: CRM-360.
 	// Search finds clients by name/email/phone substring (case-insensitive).
 	Search(ctx context.Context, tenantID, query string, limit int) ([]model.Client, error)
+	// List returns up to limit clients for a tenant, newest first (Phase 25
+	// lifecycle sweeps need the whole book, not a substring search).
+	List(ctx context.Context, tenantID string, limit int) ([]model.Client, error)
 	// Merge re-points every client-scoped record (requests, cases,
 	// conversations, preferences, attribution, outreach) from loser to
 	// winner, then deletes the loser. Fixes cross-channel duplicates.
@@ -74,6 +77,9 @@ type DispatchStore interface {
 	UpdateAssignmentStatus(ctx context.Context, tenantID, id, status string) error
 	ListAssignments(ctx context.Context, tenantID string) ([]model.Assignment, error)
 	AddGeoStamp(ctx context.Context, g *model.GeoStamp) error
+	// LatestGeoStamp returns the newest stamp for an assignment (Phase 25
+	// client tracking); ErrNotFound when the trip has no positions yet.
+	LatestGeoStamp(ctx context.Context, tenantID, assignmentID string) (*model.GeoStamp, error)
 }
 
 type PaymentStore interface {

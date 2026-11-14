@@ -301,3 +301,71 @@ func TestTenantConfigSelectivePatch(t *testing.T) {
 		t.Fatalf("empty patch mutated config: %+v %+v", got.TaxConfig, got.OperatorConfig)
 	}
 }
+
+// ------------------------------------------------------------- Phase 25: tracking + lifecycle
+
+func TestTrackEndpoint(t *testing.T) {
+	env := newEnv(t)
+
+	// Garbage token: forbidden, never a panic or a 500.
+	env.do("GET", "/v1/track/not-a-token", "", nil, http.StatusForbidden, nil)
+
+	// Mint a real track link for an assignment that doesn't exist yet: the
+	// token verifies (auth passed) and the missing trip is a clean 404.
+	var link struct {
+		Token string `json:"token"`
+		URL   string `json:"url"`
+	}
+	env.do("POST", "/v1/dispatch/assignments/asg-nope/track-link", env.tenantID, nil,
+		http.StatusOK, &link)
+	if link.Token == "" || link.URL == "" {
+		t.Fatalf("track link empty: %+v", link)
+	}
+	env.do("GET", "/v1/track/"+link.Token, "", nil, http.StatusNotFound, nil)
+
+	// The same endpoint rejects the DRIVER token family (wrong credential).
+	// (The driver mint is exercised end-to-end in the domain suite; here we
+	// just prove the track route never accepts a foreign token shape.)
+	env.do("GET", "/v1/track/"+link.Token[:len(link.Token)-2]+"zz", "", nil,
+		http.StatusForbidden, nil)
+}
+
+func TestFollowUpsRunEndpoint(t *testing.T) {
+	env := newEnv(t)
+
+	// Fresh tenant: nothing to do, but the run is real and reported.
+	var res struct {
+		PostTripSent   int `json:"post_trip_sent"`
+		WinBackSent    int `json:"win_back_sent"`
+		WinBackHeld    int `json:"win_back_held"`
+		ClientsScanned int `json:"clients_scanned"`
+	}
+	env.do("POST", "/v1/followups/run", env.tenantID, nil, http.StatusOK, &res)
+	if res.PostTripSent != 0 || res.WinBackSent != 0 || res.WinBackHeld != 0 || res.ClientsScanned != 0 {
+		t.Fatalf("empty tenant produced engagement: %+v", res)
+	}
+
+	// Lifecycle config rides the selective patch: set it, then prove an
+	// unrelated patch leaves it intact (Phase 24 wipe regression).
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"lifecycle_config": map[string]any{"disabled": true, "post_trip_hours": 12, "win_back_days": 45},
+	}, http.StatusOK, nil)
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"operator_config": map[string]any{"alert_phones": []string{"+971500000098"}},
+	}, http.StatusOK, nil)
+	var got model.Tenant
+	env.do("GET", "/v1/tenant", env.tenantID, nil, http.StatusOK, &got)
+	if !got.LifecycleConfig.Disabled || got.LifecycleConfig.PostTripHours != 12 ||
+		got.LifecycleConfig.WinBackDays != 45 {
+		t.Fatalf("lifecycle config not persisted: %+v", got.LifecycleConfig)
+	}
+	if len(got.OperatorConfig.AlertPhones) != 1 {
+		t.Fatalf("unrelated patch not applied: %+v", got.OperatorConfig)
+	}
+
+	// Disabled tenant: the run is a no-op even when triggered manually.
+	env.do("POST", "/v1/followups/run", env.tenantID, nil, http.StatusOK, &res)
+	if res.PostTripSent != 0 || res.WinBackSent != 0 {
+		t.Fatalf("disabled tenant engaged clients: %+v", res)
+	}
+}

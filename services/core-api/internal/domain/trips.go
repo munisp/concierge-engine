@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"strings"
+	"time"
 
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
@@ -53,23 +54,40 @@ func (svc *TripService) TokenFor(tenantID, assignmentID string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + hex.EncodeToString(mac.Sum(nil))
 }
 
-// ParseToken verifies and extracts (tenantID, assignmentID).
+// ParseToken verifies and extracts (tenantID, assignmentID). Client
+// tracking tokens (track/ prefix, Phase 25) are rejected here — a
+// monitoring link must never drive the trip.
 func (svc *TripService) ParseToken(token string) (string, string, error) {
+	_, _, payload, err := svc.parseAny(token)
+	if err != nil {
+		return "", "", err
+	}
+	if strings.HasPrefix(payload, clientTokenPrefix) {
+		return "", "", httpx.ErrForbidden
+	}
+	return splitPayload(payload)
+}
+
+func (svc *TripService) parseAny(token string) (string, string, string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
-		return "", "", httpx.ErrForbidden
+		return "", "", "", httpx.ErrForbidden
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return "", "", httpx.ErrForbidden
+		return "", "", "", httpx.ErrForbidden
 	}
 	mac := hmac.New(sha256.New, svc.secret)
 	mac.Write(payload)
 	want := hex.EncodeToString(mac.Sum(nil))
 	if subtle.ConstantTimeCompare([]byte(want), []byte(parts[1])) != 1 {
-		return "", "", httpx.ErrForbidden
+		return "", "", "", httpx.ErrForbidden
 	}
-	kv := strings.SplitN(string(payload), "/", 2)
+	return "", "", string(payload), nil
+}
+
+func splitPayload(payload string) (string, string, error) {
+	kv := strings.SplitN(payload, "/", 2)
 	if len(kv) != 2 || kv[0] == "" || kv[1] == "" {
 		return "", "", httpx.ErrForbidden
 	}
@@ -162,4 +180,126 @@ func maskName(full string) string {
 		last = last[:1] + "***"
 	}
 	return strings.Join(append(parts[:len(parts)-1], last), " ")
+}
+
+// ------------------------------------------------------------- client tracking (Phase 25)
+//
+// The client side of the trip: the same HMAC token discipline as the
+// chauffeur link, but a distinct "track/" payload prefix — a monitoring
+// link can never advance status or stamp positions (ParseToken rejects it).
+
+const clientTokenPrefix = "track/"
+
+// ClientTokenFor mints the client tracking token for an assignment.
+func (svc *TripService) ClientTokenFor(tenantID, assignmentID string) string {
+	payload := clientTokenPrefix + tenantID + "/" + assignmentID
+	mac := hmac.New(sha256.New, svc.secret)
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + hex.EncodeToString(mac.Sum(nil))
+}
+
+// ParseClientToken verifies a tracking token and extracts
+// (tenantID, assignmentID). Driver tokens are rejected here.
+func (svc *TripService) ParseClientToken(token string) (string, string, error) {
+	_, _, payload, err := svc.parseAny(token)
+	if err != nil {
+		return "", "", err
+	}
+	rest, ok := strings.CutPrefix(payload, clientTokenPrefix)
+	if !ok {
+		return "", "", httpx.ErrForbidden
+	}
+	return splitPayload(rest)
+}
+
+// TrackView is what the client sees: their own trip status, the vehicle and
+// crew label, and the latest position. Clients get full addresses (it is
+// their journey); the crew member is first-name only.
+type TrackView struct {
+	AssignmentID string    `json:"assignment_id"`
+	Status       string    `json:"status"`
+	Pickup       string    `json:"pickup_address"`
+	Dropoff      string    `json:"dropoff_address,omitempty"`
+	PickupAt     int64     `json:"pickup_at"`
+	VehicleClass string    `json:"vehicle_class,omitempty"`
+	VehicleLabel string    `json:"vehicle_label,omitempty"`
+	DriverName   string    `json:"driver_name,omitempty"` // first name only
+	WindowStart  time.Time `json:"window_start,omitempty"`
+	WindowEnd    time.Time `json:"window_end,omitempty"`
+	// Position is nil until the chauffeur's first stamp — the page says
+	// "position pending", never invents one.
+	Position *TrackPosition `json:"position,omitempty"`
+}
+
+type TrackPosition struct {
+	Lat  float64   `json:"lat"`
+	Lng  float64   `json:"lng"`
+	Kind string    `json:"kind"`
+	At   time.Time `json:"at"`
+}
+
+// Track renders the client view for a verified tracking token.
+func (svc *TripService) Track(ctx context.Context, token string) (*TrackView, error) {
+	tenantID, assignmentID, err := svc.ParseClientToken(token)
+	if err != nil {
+		return nil, err
+	}
+	assignments, err := svc.s.Store.Dispatch().ListAssignments(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	var a *model.Assignment
+	for i := range assignments {
+		if assignments[i].ID == assignmentID {
+			a = &assignments[i]
+			break
+		}
+	}
+	if a == nil {
+		return nil, httpx.ErrNotFound
+	}
+	view := &TrackView{
+		AssignmentID: a.ID, Status: a.Status, WindowStart: a.StartAt, WindowEnd: a.EndAt,
+	}
+	// Join booking -> request -> first item for addresses/timing.
+	if b, err := svc.s.Store.Bookings().Get(ctx, tenantID, a.BookingID); err == nil {
+		if sr, err := svc.s.Store.Requests().Get(ctx, tenantID, b.RequestID); err == nil && len(sr.Items) > 0 {
+			it := sr.Items[0]
+			view.Pickup = it.PickupAddress
+			view.Dropoff = it.DropoffAddress
+			view.PickupAt = it.PickupAt
+			view.VehicleClass = it.VehicleClass
+		}
+	}
+	// Vehicle + crew labels, best-effort.
+	if a.FleetResourceID != "" {
+		if fleet, err := svc.s.Store.Dispatch().ListFleet(ctx, tenantID); err == nil {
+			for _, f := range fleet {
+				if f.ID == a.FleetResourceID {
+					view.VehicleLabel = f.Label
+				}
+			}
+		}
+	}
+	if a.CrewMemberID != "" {
+		if crew, err := svc.s.Store.Dispatch().ListCrew(ctx, tenantID); err == nil {
+			for _, c := range crew {
+				if c.ID == a.CrewMemberID {
+					view.DriverName = firstName(c.FullName)
+				}
+			}
+		}
+	}
+	// Latest position, best-effort (nil until the first stamp).
+	if g, err := svc.s.Store.Dispatch().LatestGeoStamp(ctx, tenantID, a.ID); err == nil {
+		view.Position = &TrackPosition{Lat: g.Lat, Lng: g.Lng, Kind: g.Kind, At: g.At}
+	}
+	return view, nil
+}
+
+func firstName(full string) string {
+	if parts := strings.Fields(strings.TrimSpace(full)); len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
 }

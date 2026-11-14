@@ -14,6 +14,7 @@ import Growth from "./pages/Growth";
 import Clients from "./pages/Clients";
 import Referrals from "./pages/Referrals";
 import Settings from "./pages/Settings";
+import Track from "./pages/Track";
 
 export default function App() {
   return (
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/admin" element={<Admin />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/chauffeur" element={<Chauffeur />} />
+          <Route path="/track" element={<Track />} />
         </Routes>
       </main>
     </div>

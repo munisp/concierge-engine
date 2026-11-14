@@ -340,4 +340,23 @@ SYSTEM provenance line, 409 on ended sessions) and a tenant-scoped
 sessions board (`GET /v1/voice/sessions?active=1`). 1 server + 4 voice
 tests.
 
+**Phase 25 — delivered (see `docs/phase25.md`).** Client journey tracking
+& lifecycle follow-ups. Passengers get an Uber-like monitoring link:
+`track/`-prefixed HMAC tokens (a separate family — driver `ParseToken`
+rejects them and vice versa, so a monitoring link can never drive the
+trip), `GET /v1/track/{token}` (tenant-middleware exempt, like the
+chauffeur routes), a console `/track` page with a status stepper and
+5s-polled live position that says "position pending" until the
+chauffeur's first real stamp, and a "Client link" mint button on the
+dispatch board. Tenants get all-year engagement without manual
+remembering: a lifecycle engine (`domain/followups.go`) sends post-trip
+thank-you-and-one-preference messages (service lane — no marketing
+consent needed) 24h after trip completion and win-backs after 90 days
+quiet (marketing lane — consent-gated, non-consenting clients recorded
+held, never contacted), all through the Phase 14 outreach engine with
+per-assignment / per-client-per-ISO-week idempotency so the hourly
+sweeper (and `POST /v1/followups/run`, plus the Settings lifecycle card
+with kill-switch and cadences) never double-fires. 5 domain + 2 server +
+3 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

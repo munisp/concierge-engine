@@ -74,6 +74,8 @@ type Services struct {
 	Cipher        *FieldCipher
 	publicBase    string
 	consoleBase   string
+	waURL         string // shared operator-alert transport (Phase 27 notices)
+	operatorPhone string
 	now           func() time.Time
 }
 
@@ -82,7 +84,8 @@ func NewServices(st store.Store, deps Deps) *Services {
 	if now == nil {
 		now = time.Now
 	}
-	s := &Services{Store: st, now: now, publicBase: deps.PublicBase, consoleBase: deps.ConsoleBase}
+	s := &Services{Store: st, now: now, publicBase: deps.PublicBase, consoleBase: deps.ConsoleBase,
+		waURL: deps.WhatsAppURL, operatorPhone: deps.OperatorPhone}
 	s.Policy = NewPolicyClient(deps.PolicyURL)
 	s.Ledger = NewLedgerClient(deps.LedgerURL)
 	s.Stripe = NewStripeClient(deps.StripeKey, deps.StripeBase, deps.StripeWHSec, now)

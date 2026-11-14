@@ -33,6 +33,8 @@ type FollowUpResult struct {
 	PostTripSent   int `json:"post_trip_sent"`
 	WinBackSent    int `json:"win_back_sent"`
 	WinBackHeld    int `json:"win_back_held"` // consent/cap gate — counted, never forced
+	LeadNudgeSent  int `json:"lead_nudge_sent"`
+	LeadNudgeHeld  int `json:"lead_nudge_held"`
 	ClientsScanned int `json:"clients_scanned"`
 }
 
@@ -47,6 +49,9 @@ func (svc *FollowUpService) lifecycleConfig(ctx context.Context, tenantID string
 	}
 	if cfg.WinBackDays <= 0 {
 		cfg.WinBackDays = 90
+	}
+	if cfg.LeadNudgeDays <= 0 {
+		cfg.LeadNudgeDays = 7
 	}
 	return cfg, nil
 }
@@ -70,6 +75,9 @@ func (svc *FollowUpService) Run(ctx context.Context, tenantID string) (*FollowUp
 		return res, err
 	}
 	if err := svc.runWinBack(ctx, tenantID, cfg, runStart, res); err != nil {
+		return res, err
+	}
+	if err := svc.runLeadNudge(ctx, tenantID, cfg, runStart, res); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -186,6 +194,66 @@ func (svc *FollowUpService) runWinBack(ctx context.Context, tenantID string, cfg
 		}
 		// "failed" (adapter unreachable) is recorded on the send itself and
 		// surfaced on the growth board; it is neither a success nor a hold.
+	}
+	return nil
+}
+
+// runLeadNudge (Phase 27, acquisition innovation #7): dormant-lead
+// activation. A captured lead with ZERO bookings LeadNudgeDays (default 7)
+// after creation is quietly decaying — the single highest-ROI nudge in the
+// funnel. Marketing lane: consent- and cap-gated like win_backs, one
+// attempt per client per ISO week. Clients with any booking are excluded —
+// win_back owns the lapsed-customer relationship.
+func (svc *FollowUpService) runLeadNudge(ctx context.Context, tenantID string, cfg model.LifecycleConfig, runStart time.Time, res *FollowUpResult) error {
+	clients, err := svc.s.Store.Clients().List(ctx, tenantID, 5000)
+	if err != nil {
+		return err
+	}
+	bookings, err := svc.s.Store.Bookings().List(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	// Set of clients who hold at least one booking (request join memoized).
+	reqClient := map[string]string{}
+	bookedClients := map[string]bool{}
+	for _, b := range bookings {
+		cid, ok := reqClient[b.RequestID]
+		if !ok {
+			sr, err := svc.s.Store.Requests().Get(ctx, tenantID, b.RequestID)
+			if err != nil {
+				continue
+			}
+			cid = sr.ClientID
+			reqClient[b.RequestID] = cid
+		}
+		bookedClients[cid] = true
+	}
+	now := svc.s.Now()
+	year, week := now.ISOWeek()
+	cutoff := now.Add(-time.Duration(cfg.LeadNudgeDays) * 24 * time.Hour)
+	for _, c := range clients {
+		if c.CreatedAt.After(cutoff) {
+			continue // too fresh — give the concierge conversation a chance first
+		}
+		if bookedClients[c.ID] {
+			continue
+		}
+		body := "Your concierge is ready whenever you are — one message and your first booking is arranged end to end. No app to install, no forms."
+		o, err := svc.s.Outreach.Send(ctx, tenantID, SendOutreachInput{
+			ClientID: c.ID, Purpose: model.OutreachMarketing, Body: body,
+			IdempotencyKey: fmt.Sprintf("followup:lead:%s:%d-W%02d", c.ID, year, week),
+		})
+		if err != nil {
+			continue
+		}
+		if !fresh(o, runStart) {
+			continue
+		}
+		if o.Status == "sent" {
+			res.LeadNudgeSent++
+		} else if o.Status == "held" {
+			res.LeadNudgeHeld++
+		}
 	}
 	return nil
 }

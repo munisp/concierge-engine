@@ -380,4 +380,30 @@ Monday 09:00 UTC WhatsApp pacing alert to the operator roster; console
 acquisition config (kill-switch, fee %, channels, goal). Migration 0019.
 4 domain + 2 server + 1 pg tests.
 
+**Phase 27 — delivered (see `docs/phase27.md`).** Tenant onboarding as a
+derived journey, plus ten acquisition innovations. Onboarding step
+statuses are **computed from real resources on every read** (catalog,
+areas, brand, payments, WhatsApp, roster, promos, bookings, cohort) —
+never stored, so the checklist cannot drift from reality; the only
+persisted state is track + skipped steps. Two playbooks: **new** tenants
+get greenfield provisioning (Phase 3 instant-on seeds), **existing**
+tenants get the same steps with import/connect actions —
+`POST /v1/import/catalog` and `/v1/import/clients` are idempotent
+(name/phone dedupe), and imported clients are consent-clean
+(marketing=false, `imported` marker, first-touch channel `import`,
+deliberately outside the acquisition taxonomy — no 10% fee on a
+pre-existing book of business). Ten acquisition innovations, all
+terminating in the Phase 14 attribution spine: QR booking codes (PNG,
+channel=qr), link-in-bio page (`/site/{slug}/links`, channel=social),
+WhatsApp click-to-chat deep links per service, post-trip reviews with
+consent-gated JSON-LD aggregateRating rich snippets, gift vouchers
+(forced single-redemption, `gift:` attribution), referral boost windows,
+dormant-lead nudges (ISO-week idempotent lifecycle rule), embeddable
+booking widget (`/embed/{slug}`, channel=widget), competitor
+switch-offer codes (operator alert on redeem), and partner co-marketing
+links with per-partner funnel metrics. Console: `/onboarding` setup
+journey page, review form on the client tracking page, lifecycle
+lead-nudge + reward boost settings, promo gift/switch flags. Migration
+0020. 8 domain + 4 server + 3 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

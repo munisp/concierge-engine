@@ -37,6 +37,8 @@ type FollowUpResult = {
   post_trip_sent: number;
   win_back_sent: number;
   win_back_held: number;
+  lead_nudge_sent: number;
+  lead_nudge_held: number;
   clients_scanned: number;
 };
 
@@ -46,7 +48,8 @@ function RunFollowUps() {
     try {
       const r = await api.post<FollowUpResult>("/v1/followups/run");
       setMsg(`${r.post_trip_sent} post-trip sent, ${r.win_back_sent} win-back sent, ` +
-        `${r.win_back_held} held (no consent), ${r.clients_scanned} clients scanned`);
+        `${r.win_back_held} held, ${r.lead_nudge_sent} lead nudges sent, ` +
+        `${r.lead_nudge_held} held (no consent), ${r.clients_scanned} clients scanned`);
     } catch (e) {
       setMsg(String(e));
     }
@@ -80,6 +83,10 @@ export default function Settings() {
   const [lcDisabled, setLcDisabled] = useState(false);
   const [lcPostTrip, setLcPostTrip] = useState(24);
   const [lcWinBack, setLcWinBack] = useState(90);
+  const [lcLeadNudge, setLcLeadNudge] = useState(7);
+  // Phase 27: referral boost window
+  const [boostUntil, setBoostUntil] = useState("");
+  const [boostMult, setBoostMult] = useState(1);
   // Phase 26: acquisition monetization
   const [acqDisabled, setAcqDisabled] = useState(false);
   const [acqFeePct, setAcqFeePct] = useState(10);
@@ -109,6 +116,9 @@ export default function Settings() {
     setLcDisabled(tenant.lifecycle_config?.disabled ?? false);
     setLcPostTrip(tenant.lifecycle_config?.post_trip_hours ?? 24);
     setLcWinBack(tenant.lifecycle_config?.win_back_days ?? 90);
+    setLcLeadNudge(tenant.lifecycle_config?.lead_nudge_days ?? 7);
+    setBoostUntil(tenant.reward_program?.boost_until ?? "");
+    setBoostMult(tenant.reward_program?.boost_multiplier ?? 1);
     setAcqDisabled(tenant.acquisition_config?.disabled ?? false);
     setAcqFeePct((tenant.acquisition_config?.fee_pct ?? 0.10) * 100);
     setAcqChannels((tenant.acquisition_config?.channels ??
@@ -178,9 +188,12 @@ export default function Settings() {
         <label>Win-back after days without a booking</label>
         <input type="number" value={lcWinBack}
           onChange={(e) => setLcWinBack(Number(e.target.value))} />
+        <label>Nudge dormant leads after days without a first booking</label>
+        <input type="number" value={lcLeadNudge}
+          onChange={(e) => setLcLeadNudge(Number(e.target.value))} />
         <p />
         <SaveButton onSave={() => save({
-          lifecycle_config: { disabled: lcDisabled, post_trip_hours: lcPostTrip, win_back_days: lcWinBack },
+          lifecycle_config: { disabled: lcDisabled, post_trip_hours: lcPostTrip, win_back_days: lcWinBack, lead_nudge_days: lcLeadNudge },
         })} />{" "}
         <RunFollowUps />
       </div>
@@ -274,10 +287,17 @@ export default function Settings() {
         <label>Credit expiry (days, 0 = never)</label>
         <input type="number" value={expiryDays}
           onChange={(e) => setExpiryDays(Number(e.target.value))} />
+        <label>Referral boost until (RFC3339, empty = no boost window)</label>
+        <input placeholder="2026-12-31T23:59:59Z" value={boostUntil}
+          onChange={(e) => setBoostUntil(e.target.value)} />
+        <label>Boost multiplier (e.g. 2 = double rewards during the window)</label>
+        <input type="number" step="0.5" value={boostMult}
+          onChange={(e) => setBoostMult(Number(e.target.value))} />
         <p />
         <SaveButton onSave={() => save({
           reward_program: { disabled: rewardsDisabled, referrer_pct: referrerPct / 100,
-            referee_pct: refereePct / 100, max_reward_minor: maxReward, expiry_days: expiryDays },
+            referee_pct: refereePct / 100, max_reward_minor: maxReward, expiry_days: expiryDays,
+            boost_until: boostUntil || undefined, boost_multiplier: boostMult },
         })} />
       </div>
 

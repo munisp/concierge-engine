@@ -25,11 +25,11 @@ func (s pgPromos) Create(ctx context.Context, c *model.PromoCampaign) error {
 	defer tx.Rollback()
 	var id string
 	err = tx.QueryRowContext(ctx,
-		`INSERT INTO promo_campaigns (id, tenant_id, code, credit_minor, currency, max_redemptions, expires_at, active)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		`INSERT INTO promo_campaigns (id, tenant_id, code, credit_minor, currency, max_redemptions, expires_at, active, gift, switch_offer)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		 ON CONFLICT (tenant_id, code) DO NOTHING RETURNING id`,
 		c.ID, c.TenantID, strings.ToUpper(c.Code), c.CreditMinor, c.Currency,
-		c.MaxRedemptions, nilIfZero(c.ExpiresAt), c.Active).Scan(&id)
+		c.MaxRedemptions, nilIfZero(c.ExpiresAt), c.Active, c.Gift, c.SwitchOffer).Scan(&id)
 	if err == sql.ErrNoRows {
 		return httpx.ErrConflict
 	}
@@ -48,10 +48,10 @@ func (s pgPromos) GetByCode(ctx context.Context, tenantID, code string) (*model.
 	var c model.PromoCampaign
 	var expiresAt sql.NullTime
 	err = tx.QueryRowContext(ctx,
-		`SELECT id, tenant_id, code, credit_minor, currency, max_redemptions, expires_at, active, created_at
+		`SELECT id, tenant_id, code, credit_minor, currency, max_redemptions, expires_at, active, gift, switch_offer, created_at
 		 FROM promo_campaigns WHERE code=$1`, strings.ToUpper(code)).
 		Scan(&c.ID, &c.TenantID, &c.Code, &c.CreditMinor, &c.Currency,
-			&c.MaxRedemptions, &expiresAt, &c.Active, &c.CreatedAt)
+			&c.MaxRedemptions, &expiresAt, &c.Active, &c.Gift, &c.SwitchOffer, &c.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -68,7 +68,7 @@ func (s pgPromos) List(ctx context.Context, tenantID string) ([]model.PromoCampa
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, code, credit_minor, currency, max_redemptions, expires_at, active, created_at
+		`SELECT id, tenant_id, code, credit_minor, currency, max_redemptions, expires_at, active, gift, switch_offer, created_at
 		 FROM promo_campaigns ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (s pgPromos) List(ctx context.Context, tenantID string) ([]model.PromoCampa
 		var c model.PromoCampaign
 		var expiresAt sql.NullTime
 		if err := rows.Scan(&c.ID, &c.TenantID, &c.Code, &c.CreditMinor, &c.Currency,
-			&c.MaxRedemptions, &expiresAt, &c.Active, &c.CreatedAt); err != nil {
+			&c.MaxRedemptions, &expiresAt, &c.Active, &c.Gift, &c.SwitchOffer, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		if expiresAt.Valid {

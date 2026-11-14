@@ -46,6 +46,8 @@ type Promo = {
   max_redemptions?: number;
   expires_at?: string;
   active: boolean;
+  gift?: boolean;
+  switch_offer?: boolean;
   created_at: string;
 };
 
@@ -135,6 +137,8 @@ export default function Growth() {
 
   const [promos, setPromos] = useState<Promo[]>([]);
   const [pCode, setPCode] = useState("");
+  const [pGift, setPGift] = useState(false);
+  const [pSwitch, setPSwitch] = useState(false);
   // Phase 26
   const [cohort, setCohort] = useState<Cohort | null>(null);
   const [invoice, setInvoice] = useState<FeeInvoice | null>(null);
@@ -181,8 +185,10 @@ export default function Growth() {
         currency: pCurrency,
         max_redemptions: pMax ? parseInt(pMax, 10) : undefined,
         expiry_days: pDays ? parseInt(pDays, 10) : undefined,
+        gift: pGift || undefined,
+        switch_offer: pSwitch || undefined,
       });
-      setPCode(""); setPCredit(""); setPMax(""); setPDays("");
+      setPCode(""); setPCredit(""); setPMax(""); setPDays(""); setPGift(false); setPSwitch(false);
       load();
     } catch (e) { setErr(String(e)); }
   };
@@ -376,17 +382,24 @@ export default function Growth() {
           </select>
           <input placeholder="max redemptions" value={pMax} onChange={(e) => setPMax(e.target.value)} />
           <input placeholder="valid days" value={pDays} onChange={(e) => setPDays(e.target.value)} />
+          <label title="One-recipient voucher an existing client hands to a non-client">
+            <input type="checkbox" checked={pGift} onChange={(e) => setPGift(e.target.checked)} /> gift
+          </label>
+          <label title="Competitor-switch offer — redemption alerts your operator roster">
+            <input type="checkbox" checked={pSwitch} onChange={(e) => setPSwitch(e.target.checked)} /> switch offer
+          </label>
           <button onClick={createPromo} disabled={!pCode || !pCredit}>Create</button>
         </div>
         {promos.length === 0 ? <p>No campaigns yet.</p> : (
           <table>
-            <thead><tr><th>Code</th><th>Credit</th><th>Cap</th><th>Expires</th><th>Status</th></tr></thead>
+            <thead><tr><th>Code</th><th>Credit</th><th>Cap</th><th>Kind</th><th>Expires</th><th>Status</th></tr></thead>
             <tbody>
               {promos.map((pr) => (
                 <tr key={pr.id}>
                   <td><strong>{pr.code}</strong></td>
                   <td>{(pr.credit_minor / 100).toFixed(2)} {pr.currency}</td>
                   <td>{pr.max_redemptions || "∞"}</td>
+                  <td>{pr.gift ? "gift voucher" : pr.switch_offer ? "switch offer" : "promo"}</td>
                   <td>{pr.expires_at ? new Date(pr.expires_at).toLocaleDateString() : "never"}</td>
                   <td>{pr.active ? "active" : "inactive"}</td>
                 </tr>

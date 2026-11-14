@@ -141,6 +141,17 @@ type PromoStore interface {
 	Redemptions(ctx context.Context, tenantID, code string) (int, error)
 }
 
+// ReviewStore (Phase 27): post-trip client reviews. Create is idempotent
+// per (tenant, assignment) — one review per trip, replays return the
+// original. ConsentedOnly lists publishable reviews (public SEO pages);
+// ListAll is the operator's full view.
+type ReviewStore interface {
+	Create(ctx context.Context, r *model.Review) error
+	GetByAssignment(ctx context.Context, tenantID, assignmentID string) (*model.Review, error)
+	Consented(ctx context.Context, tenantID string) ([]model.Review, error)
+	ListAll(ctx context.Context, tenantID string, limit int) ([]model.Review, error)
+}
+
 type OutboxStore interface {
 	Add(ctx context.Context, e *model.OutboxEvent) error
 	Unpublished(ctx context.Context, limit int) ([]model.OutboxEvent, error)
@@ -339,5 +350,6 @@ type Store interface {
 	Receipts() ReceiptStore
 	Outreach() OutreachStore
 	Templates() TemplateStore
+	Reviews() ReviewStore
 	Close()
 }

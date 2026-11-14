@@ -14,6 +14,7 @@ import Growth from "./pages/Growth";
 import Clients from "./pages/Clients";
 import Referrals from "./pages/Referrals";
 import Settings from "./pages/Settings";
+import Onboarding from "./pages/Onboarding";
 import Track from "./pages/Track";
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
         <Link to="/corporate">Corporate</Link>
         <Link to="/integrations">Integrations</Link>
         <Link to="/admin">Admin</Link>
+        <Link to="/onboarding">Setup</Link>
         <Link to="/settings">Settings</Link>
       </nav>
       <main>
@@ -53,6 +55,7 @@ export default function App() {
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/chauffeur" element={<Chauffeur />} />
           <Route path="/track" element={<Track />} />
         </Routes>

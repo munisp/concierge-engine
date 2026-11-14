@@ -42,10 +42,56 @@ const STEP_LABELS: Record<string, string> = {
   NO_SHOW: "No-show",
 };
 
-async function tokenCall<T>(method: string, path: string): Promise<T> {
-  const resp = await fetch(path, { method });
+async function tokenCall<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const resp = await fetch(path, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (!resp.ok) throw new Error(`${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   return (await resp.json()) as T;
+}
+
+// ReviewForm (Phase 27): after a completed trip the passenger rates it here.
+// The track token authenticates the review — no login. Publishing is
+// opt-in: without the consent checkbox the review is private feedback only.
+function ReviewForm({ token }: { token: string }) {
+  const [rating, setRating] = useState(0);
+  const [text, setText] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [msg, setMsg] = useState("");
+  const submit = async () => {
+    try {
+      await tokenCall("POST", `/v1/track/${token}/review`, {
+        rating, text, publish_consent: consent,
+      });
+      setMsg("Thank you — your feedback is on file.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "failed to submit");
+    }
+  };
+  if (msg) return <p className="muted">{msg}</p>;
+  return (
+    <div className="card">
+      <h2>How was your journey?</h2>
+      <div className="row" style={{ gap: 6 }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} onClick={() => setRating(n)}
+            style={{ fontSize: 20, opacity: rating >= n ? 1 : 0.3 }}>
+            ★
+          </button>
+        ))}
+      </div>
+      <textarea rows={2} style={{ width: "100%", marginTop: 8 }}
+        placeholder="One sentence we can learn from (optional)"
+        value={text} onChange={(e) => setText(e.target.value)} />
+      <label style={{ display: "block", margin: "8px 0" }}>
+        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+        {" "}You may show my rating on the company's public page
+      </label>
+      <button disabled={rating === 0} onClick={() => void submit()}>Submit review</button>
+    </div>
+  );
 }
 
 function age(at: string): string {
@@ -121,8 +167,7 @@ export default function Track() {
           </div>
 
           <div className="card">
-            <h2>Live position</h2>
-            {view.position ? (
+            <h2>Live position</h2>            {view.position ? (
               <>
                 <p>
                   {view.position.lat.toFixed(5)}, {view.position.lng.toFixed(5)}{" "}
@@ -144,6 +189,8 @@ export default function Track() {
               </p>
             )}
           </div>
+
+          {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} />}
         </>
       )}
     </div>

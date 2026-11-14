@@ -25,6 +25,12 @@ type CreatePromoInput struct {
 	Currency       string `json:"currency"`
 	MaxRedemptions int    `json:"max_redemptions,omitempty"`
 	ExpiryDays     int    `json:"expiry_days,omitempty"` // campaign validity; 0 = no expiry
+	// Phase 27 acquisition flags: Gift = one-recipient voucher a client
+	// hands to a non-client (forces max_redemptions 1 when unset);
+	// SwitchOffer = competitor-switch campaign (redemption alerts the
+	// operator roster — a high-intent signal worth a personal response).
+	Gift        bool `json:"gift,omitempty"`
+	SwitchOffer bool `json:"switch_offer,omitempty"`
 }
 
 // CreatePromo registers a campaign. Idempotent per (tenant, code) —
@@ -40,10 +46,15 @@ func (svc *Services) CreatePromo(ctx context.Context, tenantID string, in Create
 	if err := validateCurrency(in.Currency); err != nil {
 		return nil, err
 	}
+	maxRed := in.MaxRedemptions
+	if in.Gift && maxRed == 0 {
+		maxRed = 1 // a gift voucher has exactly one recipient
+	}
 	c := &model.PromoCampaign{
 		ID: NewID(), TenantID: tenantID, Code: code,
 		CreditMinor: in.CreditMinor, Currency: strings.ToUpper(in.Currency),
-		MaxRedemptions: in.MaxRedemptions, Active: true, CreatedAt: svc.Now(),
+		MaxRedemptions: maxRed, Active: true, CreatedAt: svc.Now(),
+		Gift: in.Gift, SwitchOffer: in.SwitchOffer,
 	}
 	if in.ExpiryDays > 0 {
 		c.ExpiresAt = svc.Now().Add(time.Duration(in.ExpiryDays) * 24 * time.Hour)
@@ -108,5 +119,6 @@ func (svc *Services) RedeemPromo(ctx context.Context, tenantID, code, clientID s
 	}
 	svc.Events.Emit(ctx, tenantID, "client", clientID, "promo.redeemed",
 		map[string]any{"code": c.Code, "amount_minor": c.CreditMinor, "currency": c.Currency})
+	svc.redeemSideEffects(ctx, tenantID, clientID, c) // Phase 27: gift attribution + switch alerts
 	return reward, nil
 }

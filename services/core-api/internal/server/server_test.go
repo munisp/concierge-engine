@@ -507,3 +507,191 @@ func TestSitePages(t *testing.T) {
 		t.Fatalf("unknown service: %d", resp.StatusCode)
 	}
 }
+
+// ------------------------------------------------------------- Phase 27
+
+func TestOnboardingEndpoints(t *testing.T) {
+	env := newEnv(t)
+
+	var rep struct {
+		Track string `json:"track"`
+		Steps []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"steps"`
+		Total    int    `json:"total"`
+		NextStep string `json:"next_step"`
+	}
+	env.do("GET", "/v1/onboarding", env.tenantID, nil, http.StatusOK, &rep)
+	if rep.Track != "existing" { // flagship archetype default
+		t.Fatalf("track: %q", rep.Track)
+	}
+	byID := map[string]string{}
+	for _, s := range rep.Steps {
+		byID[s.ID] = s.Status
+	}
+	if byID["website"] != "done" || byID["catalog"] != "pending" {
+		t.Fatalf("derived statuses wrong: %+v", byID)
+	}
+
+	// Track + skip via PUT; skip survives in the next read.
+	env.do("PUT", "/v1/onboarding", env.tenantID,
+		map[string]any{"track": "new", "skip": []string{"team"}}, http.StatusOK, nil)
+	env.do("GET", "/v1/onboarding", env.tenantID, nil, http.StatusOK, &rep)
+	if rep.Track != "new" {
+		t.Fatalf("track not persisted: %q", rep.Track)
+	}
+	for _, s := range rep.Steps {
+		if s.ID == "team" && s.Status != "skipped" {
+			t.Fatalf("team should be skipped: %+v", s)
+		}
+	}
+	// onboarding_config also survives an unrelated selective patch.
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"operator_config": map[string]any{"alert_phones": []string{"+971500000098"}},
+	}, http.StatusOK, nil)
+	var got model.Tenant
+	env.do("GET", "/v1/tenant", env.tenantID, nil, http.StatusOK, &got)
+	if got.OnboardingConfig.Track != "new" || len(got.OnboardingConfig.Skipped) != 1 {
+		t.Fatalf("onboarding config wiped by unrelated patch: %+v", got.OnboardingConfig)
+	}
+}
+
+func TestImportEndpoints(t *testing.T) {
+	env := newEnv(t)
+
+	var catRes struct {
+		Created int      `json:"created"`
+		Skipped int      `json:"skipped"`
+		Errors  []string `json:"errors"`
+	}
+	env.do("POST", "/v1/import/catalog", env.tenantID, map[string]any{
+		"items": []map[string]any{
+			{"vertical": "ground", "name": "Airport Transfer", "base_minor": 9500},
+			{"vertical": "ground", "name": "Airport Transfer", "base_minor": 9500},
+		},
+	}, http.StatusOK, &catRes)
+	if catRes.Created != 1 || catRes.Skipped != 1 {
+		t.Fatalf("catalog import: %+v", catRes)
+	}
+
+	var cliRes struct {
+		Created int `json:"created"`
+		Skipped int `json:"skipped"`
+	}
+	env.do("POST", "/v1/import/clients", env.tenantID, map[string]any{
+		"items": []map[string]any{
+			{"full_name": "Ada", "phone": "+447700900010"},
+			{"full_name": "Dup", "phone": "+447700900010"},
+		},
+	}, http.StatusOK, &cliRes)
+	if cliRes.Created != 1 || cliRes.Skipped != 1 {
+		t.Fatalf("client import: %+v", cliRes)
+	}
+}
+
+func TestMarketingSurfaces(t *testing.T) {
+	env := newEnv(t)
+
+	// QR: PNG bytes for a printable landing code.
+	req, _ := http.NewRequest("GET", env.server.URL+"/v1/marketing/qr?target=landing", nil)
+	req.Header.Set("X-Tenant-ID", env.tenantID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body := readAll(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(string(body), "\x89PNG") {
+		t.Fatalf("qr: status %d, %d bytes", resp.StatusCode, len(body))
+	}
+	// Unknown target shape → 422 (httpx validation).
+	env.do("GET", "/v1/marketing/qr?target=bogus", env.tenantID, nil, http.StatusUnprocessableEntity, nil)
+
+	// WhatsApp links: unconfigured until brand.whatsapp_number is set.
+	var wa struct {
+		Configured bool `json:"configured"`
+		Links      []struct {
+			URL string `json:"url"`
+		} `json:"links"`
+	}
+	env.do("GET", "/v1/marketing/wa-links", env.tenantID, nil, http.StatusOK, &wa)
+	if wa.Configured {
+		t.Fatal("wa links should be unconfigured without a number")
+	}
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"brand": map[string]any{"whatsapp_number": "+971501112233", "tagline": "Travel, arranged."},
+	}, http.StatusOK, nil)
+	env.do("POST", "/v1/catalog", env.tenantID, map[string]any{
+		"vertical": "ground", "name": "Airport Transfer", "base_minor": 9500, "currency": "EUR",
+	}, http.StatusCreated, nil)
+	env.do("GET", "/v1/marketing/wa-links", env.tenantID, nil, http.StatusOK, &wa)
+	if !wa.Configured || len(wa.Links) != 1 || !strings.Contains(wa.Links[0].URL, "wa.me/971501112233") {
+		t.Fatalf("wa links: %+v", wa)
+	}
+
+	// Partner co-marketing: link + zero conversions.
+	var partner struct {
+		ID string `json:"id"`
+	}
+	env.do("POST", "/v1/partners", env.tenantID, map[string]any{
+		"name": "Hotel Grande", "verticals": []string{"ground"},
+	}, http.StatusCreated, &partner)
+	var pa struct {
+		Link     string `json:"link"`
+		Bookings int    `json:"bookings"`
+	}
+	env.do("GET", "/v1/partners/"+partner.ID+"/acquisition", env.tenantID, nil, http.StatusOK, &pa)
+	if !strings.Contains(pa.Link, "channel=partner") || pa.Bookings != 0 {
+		t.Fatalf("partner acquisition: %+v", pa)
+	}
+}
+
+func TestTrackReviewAndPublicPages(t *testing.T) {
+	env := newEnv(t)
+
+	// Garbage token → 403; valid token for a missing assignment → 404.
+	env.do("POST", "/v1/track/not-a-token/review", "", map[string]any{"rating": 5},
+		http.StatusForbidden, nil)
+	var link struct {
+		Token string `json:"token"`
+	}
+	env.do("POST", "/v1/dispatch/assignments/asg-nope/track-link", env.tenantID, nil,
+		http.StatusOK, &link)
+	env.do("POST", "/v1/track/"+link.Token+"/review", "", map[string]any{"rating": 5},
+		http.StatusNotFound, nil)
+
+	// Link-in-bio page + embed widget are public and carry the tenant.
+	req, _ := http.NewRequest("GET", env.server.URL+"/site/taylor/links", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(readAll(t, resp))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(page, "Taylor Travel Management") ||
+		!strings.Contains(page, "channel=social") {
+		t.Fatalf("links page: status %d", resp.StatusCode)
+	}
+	req, _ = http.NewRequest("GET", env.server.URL+"/embed/taylor", nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = string(readAll(t, resp))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(page, "channel=widget") {
+		t.Fatalf("embed widget: status %d", resp.StatusCode)
+	}
+	// Sitemap lists the links page.
+	req, _ = http.NewRequest("GET", env.server.URL+"/site/taylor/sitemap.xml", nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = string(readAll(t, resp))
+	resp.Body.Close()
+	if !strings.Contains(page, "/links") {
+		t.Fatal("sitemap missing /links")
+	}
+}

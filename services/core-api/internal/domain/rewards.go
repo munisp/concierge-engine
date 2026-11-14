@@ -50,6 +50,7 @@ func (svc *Services) accrueReward(ctx context.Context, tenantID, clientID, booki
 	if clientID == "" || pct <= 0 || valueMinor <= 0 {
 		return 0
 	}
+	pct *= boostActive(prog, svc.Now()) // Phase 27: time-boxed referral boost window
 	amount := int64(math.Round(float64(valueMinor) * pct))
 	if prog.MaxRewardMinor > 0 && amount > prog.MaxRewardMinor {
 		amount = prog.MaxRewardMinor
@@ -91,8 +92,8 @@ func (svc *Services) RewardSummary(ctx context.Context, tenantID, clientID strin
 		rewards = []model.ClientReward{}
 	}
 	return map[string]any{
-		"client_id":    clientID,
+		"client_id":     clientID,
 		"balance_minor": bal,
-		"rewards":      rewards,
+		"rewards":       rewards,
 	}, nil
 }

@@ -27,17 +27,23 @@ const (
 )
 
 // defaultAcquisitionChannels is the platform-sourced taxonomy. Tenants can
-// narrow it in acquisition_config.channels.
+// narrow it in acquisition_config.channels. Phase 27 adds the innovation
+// pack surfaces: qr (printable booking codes), widget (embedded booking on
+// external sites), gift (voucher-handed clients).
 func defaultAcquisitionChannels() []string {
-	return []string{"seo", "referral", "outreach", "ads", "partner"}
+	return []string{"seo", "referral", "outreach", "ads", "partner", "qr", "widget", "gift"}
 }
 
 // classifyAcquisition maps a first-touch (channel, campaign) onto the
 // acquisition taxonomy. "ref:<code>" campaigns are referrals regardless of
-// the raw channel string (the capture page stamps them that way).
+// the raw channel string (the capture page stamps them that way); "gift:"
+// campaigns are gift-voucher acquisitions.
 func classifyAcquisition(channel, campaign string) string {
 	if strings.HasPrefix(campaign, "ref:") {
 		return "referral"
+	}
+	if strings.HasPrefix(campaign, "gift:") {
+		return "gift"
 	}
 	return strings.ToLower(strings.TrimSpace(channel))
 }

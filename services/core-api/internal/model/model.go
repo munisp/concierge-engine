@@ -41,7 +41,9 @@ type Tenant struct {
 	// fee on platform-attributed new-client transactions, and the
 	// new-client cohort goal the platform paces the tenant against.
 	AcquisitionConfig AcquisitionConfig `json:"acquisition_config"`
-	CreatedAt         time.Time         `json:"created_at"`
+	// OnboardingConfig (Phase 27): setup journey track + dismissed steps.
+	OnboardingConfig OnboardingConfig `json:"onboarding_config"`
+	CreatedAt        time.Time        `json:"created_at"`
 }
 
 // DispatchConfig tunes scheduling. TurnaroundMinutes extends every
@@ -63,6 +65,11 @@ type LifecycleConfig struct {
 	Disabled      bool `json:"disabled,omitempty"`
 	PostTripHours int  `json:"post_trip_hours,omitempty"`
 	WinBackDays   int  `json:"win_back_days,omitempty"`
+	// LeadNudgeDays (Phase 27): a captured lead with zero bookings this many
+	// days after creation gets a marketing-lane activation nudge (consent-
+	// and cap-gated like win_back; one attempt per client per ISO week).
+	// 0 = default 7.
+	LeadNudgeDays int `json:"lead_nudge_days,omitempty"`
 }
 
 // AcquisitionConfig is the tenant's acquisition-monetization posture
@@ -131,6 +138,12 @@ type RewardProgram struct {
 	RefereePct     float64 `json:"referee_pct,omitempty"`
 	MaxRewardMinor int64   `json:"max_reward_minor,omitempty"`
 	ExpiryDays     int     `json:"expiry_days,omitempty"`
+	// Boost window (Phase 27): while now < BoostUntil (RFC3339), referral
+	// accruals are multiplied by BoostMultiplier (default 1 when unset or
+	// <= 0; the window is inert without a multiplier > 1). Time-boxed
+	// double-sided referral drives without touching the base program.
+	BoostUntil      string  `json:"boost_until,omitempty"` // RFC3339
+	BoostMultiplier float64 `json:"boost_multiplier,omitempty"`
 }
 
 // OutreachConfig holds per-tenant proactive-outreach settings (Phase 20).
@@ -144,6 +157,11 @@ type OutreachConfig struct {
 // the code accrues credit_minor of reward credit, once per client. The
 // credit expires with the campaign (expires_at); max_redemptions 0 =
 // unlimited.
+// Phase 27 acquisition flags: Gift marks a one-redemption voucher an
+// existing client hands to a NON-client (recipient's redemption stamps
+// gift:<code> attribution, so the first booking counts as a gifted
+// acquisition). SwitchOffer marks a competitor-switch campaign — redemption
+// is a high-intent signal and alerts the operator roster.
 type PromoCampaign struct {
 	ID             string    `json:"id"`
 	TenantID       string    `json:"tenant_id"`
@@ -153,6 +171,36 @@ type PromoCampaign struct {
 	MaxRedemptions int       `json:"max_redemptions,omitempty"`
 	ExpiresAt      time.Time `json:"expires_at,omitempty"`
 	Active         bool      `json:"active"`
+	Gift           bool      `json:"gift,omitempty"`
+	SwitchOffer    bool      `json:"switch_offer,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// OnboardingConfig (Phase 27): the tenant's setup journey state. Track
+// selects the playbook — "new" (greenfield: build website, catalog, areas
+// from scratch) or "existing" (brownfield: the business already runs
+// elsewhere and needs import + integration instead of creation). Skipped
+// holds step IDs the tenant deliberately dismissed; statuses themselves
+// are DERIVED from real resources, never stored — the checklist cannot
+// drift from reality.
+type OnboardingConfig struct {
+	Track   string   `json:"track,omitempty"` // new | existing
+	Skipped []string `json:"skipped,omitempty"`
+}
+
+// Review (Phase 27): a post-trip client review, submitted through the
+// track-token page (the token authenticates the passenger for that exact
+// assignment). PublishConsent gates whether the rating/text may appear on
+// the tenant's public SEO pages (aggregateRating rich snippets) — a review
+// is feedback by default, marketing material only by consent.
+type Review struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenant_id"`
+	ClientID       string    `json:"client_id"`
+	AssignmentID   string    `json:"assignment_id"`
+	Rating         int       `json:"rating"` // 1..5
+	Text           string    `json:"text,omitempty"`
+	PublishConsent bool      `json:"publish_consent"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 

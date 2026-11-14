@@ -124,7 +124,7 @@ func (s pgBookings) ForClient(ctx context.Context, tenantID, clientID string, li
 	// Bookings carry no client_id — resolve through their request. Both
 	// tables are RLS-scoped by the tenant GUC inside tenantTx.
 	rows, err := tx.QueryContext(ctx,
-		`SELECT b.id, b.tenant_id, b.request_id, b.quote_id, b.state, b.created_at
+		`SELECT b.id, b.tenant_id, b.request_id, coalesce(b.quote_id::text,''), b.state, b.created_at
 		 FROM bookings b JOIN service_requests r ON r.id = b.request_id
 		 WHERE r.client_id = $1
 		 ORDER BY b.created_at DESC LIMIT $2`, clientID, limit)

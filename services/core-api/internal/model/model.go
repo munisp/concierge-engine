@@ -43,7 +43,10 @@ type Tenant struct {
 	AcquisitionConfig AcquisitionConfig `json:"acquisition_config"`
 	// OnboardingConfig (Phase 27): setup journey track + dismissed steps.
 	OnboardingConfig OnboardingConfig `json:"onboarding_config"`
-	CreatedAt        time.Time        `json:"created_at"`
+	// SiteConfig (Phase 28): public-site posture — custom domains, Search
+	// Console verification, locale, social sameAs links.
+	SiteConfig SiteConfig `json:"site_config"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // DispatchConfig tunes scheduling. TurnaroundMinutes extends every
@@ -186,6 +189,19 @@ type PromoCampaign struct {
 type OnboardingConfig struct {
 	Track   string   `json:"track,omitempty"` // new | existing
 	Skipped []string `json:"skipped,omitempty"`
+}
+
+// SiteConfig (Phase 28): the tenant's public-site posture. CustomDomains
+// switches the SEO surface from path-based (/site/{slug}) to host-based
+// (conciergebrand.com → tenant) so search authority compounds on the
+// tenant's own domain instead of the platform's. GoogleVerification emits
+// the Search Console meta tag on the landing page. Locale sets <html
+// lang> + hreflang. SocialLinks feeds sameAs in the LocalBusiness graph.
+type SiteConfig struct {
+	CustomDomains      []string `json:"custom_domains,omitempty"`
+	GoogleVerification string   `json:"google_verification,omitempty"`
+	Locale             string   `json:"locale,omitempty"` // BCP-47, e.g. en-GB; default en
+	SocialLinks        []string `json:"social_links,omitempty"`
 }
 
 // Review (Phase 27): a post-trip client review, submitted through the

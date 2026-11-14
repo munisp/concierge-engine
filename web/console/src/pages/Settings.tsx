@@ -93,6 +93,11 @@ export default function Settings() {
   const [acqChannels, setAcqChannels] = useState("seo, referral, outreach, ads, partner");
   const [acqGoal, setAcqGoal] = useState(100);
   const [acqDays, setAcqDays] = useState(90);
+  // Phase 28: public site & SEO
+  const [siteDomains, setSiteDomains] = useState("");
+  const [siteVerify, setSiteVerify] = useState("");
+  const [siteLocale, setSiteLocale] = useState("");
+  const [siteSocial, setSiteSocial] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -125,6 +130,10 @@ export default function Settings() {
       ["seo", "referral", "outreach", "ads", "partner"]).join(", "));
     setAcqGoal(tenant.acquisition_config?.goal_clients ?? 100);
     setAcqDays(tenant.acquisition_config?.goal_days ?? 90);
+    setSiteDomains((tenant.site_config?.custom_domains ?? []).join("\n"));
+    setSiteVerify(tenant.site_config?.google_verification ?? "");
+    setSiteLocale(tenant.site_config?.locale ?? "");
+    setSiteSocial((tenant.site_config?.social_links ?? []).join("\n"));
     setLoaded(true);
   }, [tenant, loaded]);
 
@@ -225,6 +234,39 @@ export default function Settings() {
             disabled: acqDisabled, fee_pct: acqFeePct / 100,
             channels: acqChannels.split(",").map((c) => c.trim()).filter(Boolean),
             goal_clients: acqGoal, goal_days: acqDays,
+          },
+        })} />
+      </div>
+
+      <div className="card">
+        <h2>Public site &amp; SEO</h2>
+        <p className="muted">
+          Your public booking site is live at /site/&#123;slug&#125; out of the box.
+          Add a custom domain (CNAME the domain to the platform host, then list it
+          here) and every page, sitemap and social card is served on your own
+          domain — search authority compounds on your brand, not ours.
+        </p>
+        <label>Custom domains (one per line)</label>
+        <textarea rows={2} style={{ width: "100%" }} value={siteDomains}
+          onChange={(e) => setSiteDomains(e.target.value)}
+          placeholder={"concierge.yourbrand.com"} />
+        <label>Google Search Console verification token</label>
+        <input style={{ width: "100%" }} value={siteVerify}
+          onChange={(e) => setSiteVerify(e.target.value)}
+          placeholder="from Search Console → Settings → Ownership verification (HTML tag)" />
+        <label>Site locale (BCP-47, e.g. en-GB)</label>
+        <input value={siteLocale} onChange={(e) => setSiteLocale(e.target.value)} placeholder="en" />
+        <label>Social profile URLs (one per line — shown as sameAs to search engines)</label>
+        <textarea rows={3} style={{ width: "100%" }} value={siteSocial}
+          onChange={(e) => setSiteSocial(e.target.value)}
+          placeholder={"https://instagram.com/yourbrand\nhttps://x.com/yourbrand"} />
+        <p />
+        <SaveButton onSave={() => save({
+          site_config: {
+            custom_domains: siteDomains.split("\n").map((d) => d.trim()).filter(Boolean),
+            google_verification: siteVerify.trim(),
+            locale: siteLocale.trim(),
+            social_links: siteSocial.split("\n").map((s) => s.trim()).filter(Boolean),
           },
         })} />
       </div>

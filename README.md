@@ -406,4 +406,25 @@ journey page, review form on the client tracking page, lifecycle
 lead-nudge + reward boost settings, promo gift/switch flags. Migration
 0020. 8 domain + 4 server + 3 pg tests.
 
+**Phase 28 — delivered (see `docs/phase28.md`).** SEO optimization wave —
+the ten levers that decide whether the acquisition surface actually ranks
+and converts. Custom domains: `site_config.custom_domains` + host-rewrite
+middleware serve the entire site (pages, sitemap, robots, OG cards) on the
+tenant's own domain so link authority compounds on their brand, not the
+platform's (header-spoof-guarded; unknown hosts fall through). Thin
+content fixed with guide sections assembled strictly from real data
+(services, prices, areas, payment rails — never invented copy). Structured
+data expanded to a per-page `@graph`: LocalBusiness with catalog-derived
+`priceRange`, coverage-centroid `geo`, `sameAs` socials, consented
+`Review` nodes; Service + Offer + `areaServed` + FAQPage + BreadcrumbList
+on service pages. Dynamic branded OG images (`/og.png`, pure-Go x/image
+rendering, deterministic, long-cached) turn every shared link into a
+rich card. Per-page unique titles/descriptions; FAQ sections from real
+catalog attributes; ETag + 304 + cache headers; sitemap `lastmod` +
+platform-level sitemap index; hreflang/locale; Search Console
+verification meta; public partner directory (VETTED only) with
+partner-attributed booking links. Console Settings gains the Public site
+& SEO card. Migration 0021 (`tenants.site_config`, `GetByDomain` jsonb
+containment). 5 server + 1 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

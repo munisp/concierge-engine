@@ -177,6 +177,23 @@ func (s *memTenants) GetBySlug(_ context.Context, slug string) (*model.Tenant, e
 	return &cp, nil
 }
 
+// GetByDomain (Phase 28) scans custom domains — tenant counts are small
+// (hundreds, not millions) so a linear scan with early exit is correct and
+// keeps the in-memory store dependency-free.
+func (s *memTenants) GetByDomain(_ context.Context, host string) (*model.Tenant, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	for _, t := range s.m.tenants {
+		for _, d := range t.SiteConfig.CustomDomains {
+			if d == host {
+				cp := *t
+				return &cp, nil
+			}
+		}
+	}
+	return nil, httpx.ErrNotFound
+}
+
 func (s *memTenants) UpdateConfig(_ context.Context, t *model.Tenant) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()

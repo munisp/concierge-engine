@@ -10,6 +10,10 @@ export interface Tenant {
   payment_config?: { disable_stripe?: boolean; disable_paystack?: boolean };
   reward_program?: { disabled?: boolean; referrer_pct?: number; referee_pct?: number; max_reward_minor?: number; expiry_days?: number; boost_until?: string; boost_multiplier?: number };
   onboarding_config?: { track?: string; skipped?: string[] };
+  site_config?: {
+    custom_domains?: string[]; google_verification?: string;
+    locale?: string; social_links?: string[];
+  };
   outreach_config?: { marketing_cap_7d?: number };
   operator_config?: { alert_phones?: string[] };
   dispatch_config?: { turnaround_minutes?: number; default_duration_minutes?: number };

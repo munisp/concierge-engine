@@ -13,6 +13,10 @@ type TenantStore interface {
 	Create(ctx context.Context, t *model.Tenant) error
 	Get(ctx context.Context, tenantID string) (*model.Tenant, error)
 	GetBySlug(ctx context.Context, slug string) (*model.Tenant, error)
+	// GetByDomain (Phase 28): resolve a tenant by custom domain (host header
+	// of an inbound request). Host is normalized (lowercased, port and
+	// leading www. stripped) before matching against site_config domains.
+	GetByDomain(ctx context.Context, host string) (*model.Tenant, error)
 	UpdateConfig(ctx context.Context, t *model.Tenant) error
 	List(ctx context.Context) ([]model.Tenant, error)
 }

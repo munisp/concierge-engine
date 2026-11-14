@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"concierge-engine/services/core-api/internal/domain"
@@ -141,7 +142,9 @@ func New(svc *domain.Services) http.Handler {
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
 
-	return tenantctx.Middleware(mux)
+	// Phase 28: custom-domain resolution sits outermost so host-rewritten
+	// paths route through the mux (and tenantctx) exactly like native ones.
+	return h.hostRewrite(tenantctx.Middleware(mux))
 }
 
 type handlers struct{ svc *domain.Services }
@@ -204,6 +207,7 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 		LifecycleConfig   *model.LifecycleConfig   `json:"lifecycle_config"`
 		AcquisitionConfig *model.AcquisitionConfig `json:"acquisition_config"`
 		OnboardingConfig  *model.OnboardingConfig  `json:"onboarding_config"`
+		SiteConfig        *model.SiteConfig        `json:"site_config"`
 	}
 	if err := httpx.Decode(r, &patch); err != nil {
 		httpx.WriteError(w, err)
@@ -244,6 +248,19 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.OnboardingConfig != nil {
 		t.OnboardingConfig = *patch.OnboardingConfig
+	}
+	if patch.SiteConfig != nil {
+		// normalize domains at the edge: lowercase, strip scheme/www/port
+		sc := *patch.SiteConfig
+		for i, d := range sc.CustomDomains {
+			d = strings.ToLower(strings.TrimSpace(d))
+			d = strings.TrimPrefix(d, "https://")
+			d = strings.TrimPrefix(d, "http://")
+			d = strings.TrimPrefix(d, "www.")
+			d = strings.TrimSuffix(d, "/")
+			sc.CustomDomains[i] = d
+		}
+		t.SiteConfig = sc
 	}
 	updated, err := h.svc.Tenants.UpdateConfig(r.Context(), t)
 	if err != nil {

@@ -25,6 +25,13 @@ type ClientStore interface {
 	// Phase 14: client referral codes. Code is derived from the client uuid
 	// ("VIP-" + first 8 hex chars, uppercase) — see model.ClientReferralCode.
 	FindByReferralCode(ctx context.Context, tenantID, code string) (*model.Client, error)
+	// Phase 15: CRM-360.
+	// Search finds clients by name/email/phone substring (case-insensitive).
+	Search(ctx context.Context, tenantID, query string, limit int) ([]model.Client, error)
+	// Merge re-points every client-scoped record (requests, cases,
+	// conversations, preferences, attribution, outreach) from loser to
+	// winner, then deletes the loser. Fixes cross-channel duplicates.
+	Merge(ctx context.Context, tenantID, winnerID, loserID string) error
 	SavePreference(ctx context.Context, p *model.Preference) error
 	Preferences(ctx context.Context, tenantID, clientID string) ([]model.Preference, error)
 	DeletePreferences(ctx context.Context, tenantID, clientID string) error // DSAR cascade
@@ -39,6 +46,8 @@ type RequestStore interface {
 	Create(ctx context.Context, r *model.ServiceRequest) error // idempotent on IdempotencyKey
 	Get(ctx context.Context, tenantID, id string) (*model.ServiceRequest, error)
 	Update(ctx context.Context, r *model.ServiceRequest) error
+	// ForClient: a client's requests, newest first (Phase 15 CRM-360).
+	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.ServiceRequest, error)
 }
 
 type QuoteStore interface {
@@ -52,6 +61,8 @@ type BookingStore interface {
 	Get(ctx context.Context, tenantID, id string) (*model.Booking, error)
 	UpdateState(ctx context.Context, tenantID, id, state string) error
 	List(ctx context.Context, tenantID string) ([]model.Booking, error)
+	// ForClient: bookings on the client's requests, newest first (Phase 15).
+	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.Booking, error)
 }
 
 type DispatchStore interface {
@@ -79,6 +90,8 @@ type ConversationStore interface {
 	SetState(ctx context.Context, tenantID, id, state string) error
 	AppendMessage(ctx context.Context, m *model.Message) error
 	Timeline(ctx context.Context, tenantID, conversationID string) ([]model.Message, error)
+	// ForClient: a client's conversations, newest first (Phase 15 CRM-360).
+	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.Conversation, error)
 }
 
 type HandoffStore interface {
@@ -206,6 +219,8 @@ type WebhookStore interface {
 	DueDeliveries(ctx context.Context, now time.Time, limit int) ([]model.WebhookDelivery, error)
 	UpdateDelivery(ctx context.Context, d *model.WebhookDelivery) error
 	ListDeliveries(ctx context.Context, tenantID string, limit int) ([]model.WebhookDelivery, error)
+	// GetDelivery (Phase 15): single delivery for replay tooling.
+	GetDelivery(ctx context.Context, tenantID, id string) (*model.WebhookDelivery, error)
 }
 
 type ReferralStore interface {
@@ -231,6 +246,8 @@ type CaseStore interface {
 	UpdateTask(ctx context.Context, t *model.CaseTask) error
 	AddNote(ctx context.Context, n *model.CaseNote) error
 	Notes(ctx context.Context, tenantID, caseID string) ([]model.CaseNote, error)
+	// ForClient: a client's cases, newest first (Phase 15 CRM-360).
+	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.Case, error)
 }
 
 // EmbeddingStore holds per-case semantic vectors (Phase 4 similar-case

@@ -24,6 +24,8 @@ type Deps struct {
 	StripeKey     string // CE_STRIPE_KEY: secret key; empty = sandbox links
 	StripeBase    string // CE_STRIPE_BASE_URL override (tests / sandbox)
 	StripeWHSec   string // CE_STRIPE_WEBHOOK_SECRET for signature verification
+	PaystackKey   string // CE_PAYSTACK_KEY: secret key; empty = disabled (Phase 15)
+	PaystackBase  string // CE_PAYSTACK_BASE_URL override (tests / sandbox)
 	AmadeusBase   string // CE_AMADEUS_BASE_URL (test.api.amadeus.com default)
 	AmadeusID     string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
 	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
@@ -63,6 +65,7 @@ type Services struct {
 	Policy        *PolicyClient
 	Ledger        *LedgerClient
 	Stripe        *StripeClient
+	Paystack      *PaystackClient
 	Events        *EventBus
 	Cipher        *FieldCipher
 	now           func() time.Time
@@ -77,6 +80,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Policy = NewPolicyClient(deps.PolicyURL)
 	s.Ledger = NewLedgerClient(deps.LedgerURL)
 	s.Stripe = NewStripeClient(deps.StripeKey, deps.StripeBase, deps.StripeWHSec, now)
+	s.Paystack = NewPaystackClient(deps.PaystackKey, deps.PaystackBase)
 	s.Events = &EventBus{outbox: st.Outbox(), attribution: st.Attribution()}
 	cipher, err := NewFieldCipher(deps.FieldKeyB64)
 	if err != nil {

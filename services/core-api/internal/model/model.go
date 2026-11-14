@@ -51,6 +51,8 @@ type Client struct {
 	LoyaltyTier string         `json:"loyalty_tier,omitempty"`
 	KYCStatus   string         `json:"kyc_status"`
 	Consent     map[string]any `json:"consent"`
+	Locale      string         `json:"locale,omitempty"`   // BCP-47, e.g. "en-NG" — checkout/outreach localization
+	Timezone    string         `json:"timezone,omitempty"` // IANA, e.g. "Africa/Lagos"
 	CreatedAt   time.Time      `json:"created_at"`
 }
 

@@ -97,7 +97,7 @@ func TestStripeCheckoutSessionAgainstFakeAPI(t *testing.T) {
 		ID: "pi-1", TenantID: "t-1", QuoteID: "q-1", Mode: "DEPOSIT_BALANCE",
 		AmountMinor: 4500, Currency: "EUR", IdempotencyKey: "idem-1",
 	}
-	hostedURL, sessionID, err := c.CreateCheckoutSession(context.Background(), intent)
+	hostedURL, sessionID, err := c.CreateCheckoutSession(context.Background(), intent, "fr", "ada@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestStripeCheckoutSessionAgainstFakeAPI(t *testing.T) {
 
 	// Disabled client refuses live calls.
 	off := NewStripeClient("", "", "", time.Now)
-	if _, _, err := off.CreateCheckoutSession(context.Background(), intent); err == nil {
+	if _, _, err := off.CreateCheckoutSession(context.Background(), intent, "", ""); err == nil {
 		t.Fatal("disabled client attempted a live call")
 	}
 }

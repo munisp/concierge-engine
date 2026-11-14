@@ -208,4 +208,19 @@ utm aliases); console gains a Growth page (funnel, referral codes, outreach
 composer with live consent/cap verdict, send log). Live-pg CI gate covers
 the new outreach store, attribution list/funnel, and referral-code lookup.
 
+**Phase 15 — delivered (see `docs/phase15.md`).** Registration/CRM-360,
+international payments, integration hardening. CRM: consent write API (the
+surface outreach gating reads), profile enrichment with locale/timezone,
+client search, a 360 aggregate view (preferences, requests, bookings, cases,
+conversations, first touch, spend, outreach), and transactional duplicate
+merge that re-points every client-scoped record. Payments: Paystack adapter
+(card/bank transfer/USSD/mobile money for NGN/GHS/KES/ZAR) with HMAC-SHA512
+webhook verification, currency-based PSP routing with explicit override,
+refund initiation (captured-only, replay-safe, webhook-settled), ISO-4217 +
+zero-decimal currency hygiene, a payment-methods discovery endpoint, and
+localized Stripe Checkout (client locale + email). Integrations: event
+catalog endpoint (every kind documented for subscribers), webhook delivery
+replay, secret rotation, synthetic test events. Console gains a Clients 360
+page; Integrations gains rotate/test/replay and the live catalog.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

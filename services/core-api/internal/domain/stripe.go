@@ -65,8 +65,10 @@ func (c *StripeClient) WebhookSecret() string {
 // CreateCheckoutSession creates a hosted checkout session for an intent.
 // Metadata carries tenant/quote/intent so the signed webhook can route back
 // without trusting caller-supplied tenant headers. Idempotent on the intent's
-// idempotency key via Stripe's Idempotency-Key header.
-func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.PaymentIntent) (hostedURL, sessionID string, err error) {
+// idempotency key via Stripe's Idempotency-Key header. Phase 15: locale
+// (BCP-47 from the client profile) localizes the checkout page;
+// customer_email pre-fills and feeds Stripe receipts.
+func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.PaymentIntent, locale, customerEmail string) (hostedURL, sessionID string, err error) {
 	if !c.Enabled() {
 		return "", "", ErrStripeDisabled
 	}
@@ -81,6 +83,12 @@ func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.
 		"metadata[tenant_id]":                           {intent.TenantID},
 		"metadata[quote_id]":                            {intent.QuoteID},
 		"metadata[intent_id]":                           {intent.ID},
+	}
+	if locale != "" {
+		form.Set("locale", locale)
+	}
+	if customerEmail != "" {
+		form.Set("customer_email", customerEmail)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.base+"/v1/checkout/sessions", strings.NewReader(form.Encode()))
@@ -194,4 +202,53 @@ func ParseStripeEvent(payload []byte) (*StripeEvent, error) {
 		return nil, httpx.ErrValidation
 	}
 	return out, nil
+}
+
+// Refund initiates a full refund for a captured Checkout Session (Phase 15).
+// The session id is expanded to its payment_intent, then refunded; Stripe
+// confirms asynchronously via the charge.refunded webhook.
+func (c *StripeClient) Refund(ctx context.Context, sessionID string) error {
+	if !c.Enabled() {
+		return ErrStripeDisabled
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.base+"/v1/checkout/sessions/"+sessionID, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("stripe unreachable: %w", err)
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("stripe %d: %s", resp.StatusCode, string(raw[:min(len(raw), 300)]))
+	}
+	var session struct {
+		PaymentIntent string `json:"payment_intent"`
+	}
+	if err := json.Unmarshal(raw, &session); err != nil || session.PaymentIntent == "" {
+		return fmt.Errorf("stripe: session carries no payment_intent (not captured?)")
+	}
+	form := url.Values{"payment_intent": {session.PaymentIntent}}
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost,
+		c.base+"/v1/refunds", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	req.Header.Set("Idempotency-Key", "refund:"+sessionID)
+	resp, err = c.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("stripe unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("stripe %d: %s", resp.StatusCode, string(raw[:min(len(raw), 300)]))
+	}
+	return nil
 }

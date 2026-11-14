@@ -51,6 +51,8 @@ func main() {
 		StripeKey:     cfg.StripeKey,
 		StripeBase:    cfg.StripeBase,
 		StripeWHSec:   cfg.StripeWHSec,
+		PaystackKey:   cfg.PaystackKey,
+		PaystackBase:  cfg.PaystackBase,
 		AmadeusBase:   cfg.AmadeusBase,
 		AmadeusID:     cfg.AmadeusID,
 		AmadeusSecret: cfg.AmadeusSecret,

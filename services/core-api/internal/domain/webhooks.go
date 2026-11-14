@@ -191,3 +191,66 @@ func (svc *WebhookService) RunDispatcher(ctx context.Context, interval time.Dura
 		}
 	}
 }
+
+// ReplayDelivery re-queues a delivery — the escape hatch for parked
+// (max-attempts) deliveries after the receiver fixes their endpoint.
+func (svc *WebhookService) ReplayDelivery(ctx context.Context, tenantID, deliveryID string) (*model.WebhookDelivery, error) {
+	d, err := svc.s.Store.Webhooks().GetDelivery(ctx, tenantID, deliveryID)
+	if err != nil {
+		return nil, err
+	}
+	d.Attempts = 0
+	d.DeliveredAt = time.Time{}
+	d.LastError = ""
+	d.NextAttemptAt = svc.s.Now()
+	if err := svc.s.Store.Webhooks().UpdateDelivery(ctx, d); err != nil {
+		return nil, err
+	}
+	svc.s.Audit.Log(ctx, tenantID, "api", "webhook.delivery_replayed", "webhook_delivery", deliveryID, nil)
+	return d, nil
+}
+
+// RotateSecret replaces a subscription's signing secret. The old secret stops
+// verifying immediately (simplest honest semantics — receivers must update
+// atomically); the new secret is returned once.
+func (svc *WebhookService) RotateSecret(ctx context.Context, tenantID, subID string) (*model.WebhookSubscription, error) {
+	sub, err := svc.s.Store.Webhooks().GetSubscription(ctx, tenantID, subID)
+	if err != nil {
+		return nil, err
+	}
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, err
+	}
+	sub.Secret = "whk_" + hex.EncodeToString(raw)
+	if err := svc.s.Store.Webhooks().UpdateSubscription(ctx, sub); err != nil {
+		return nil, err
+	}
+	svc.s.Events.Emit(ctx, tenantID, "webhook", subID, "webhook.rotated",
+		map[string]any{"subscription_id": subID})
+	svc.s.Audit.Log(ctx, tenantID, "api", "webhook.rotated", "webhook", subID, nil)
+	return sub, nil
+}
+
+// TestSubscription enqueues a synthetic webhook.test delivery so integrators
+// can verify their endpoint and signature validation end to end.
+func (svc *WebhookService) TestSubscription(ctx context.Context, tenantID, subID string) (*model.WebhookDelivery, error) {
+	sub, err := svc.s.Store.Webhooks().GetSubscription(ctx, tenantID, subID)
+	if err != nil {
+		return nil, err
+	}
+	body, _ := json.Marshal(map[string]any{
+		"id": NewID(), "type": "webhook.test", "tenant_id": tenantID,
+		"created_at": svc.s.Now().UTC(),
+		"data":       map[string]any{"subscription_id": subID},
+	})
+	d := &model.WebhookDelivery{
+		ID: NewID(), TenantID: tenantID, SubscriptionID: sub.ID,
+		EventID: "test-" + sub.ID, EventKind: "webhook.test", Payload: string(body),
+		MaxAttempts: 3, NextAttemptAt: svc.s.Now(), CreatedAt: svc.s.Now(),
+	}
+	if err := svc.s.Store.Webhooks().EnqueueDelivery(ctx, d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}

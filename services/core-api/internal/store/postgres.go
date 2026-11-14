@@ -164,14 +164,15 @@ func (s pgClients) Upsert(ctx context.Context, c *model.Client) error {
 		flags, _ = json.Marshal(c.VIPFlags)
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO clients (id, tenant_id, full_name, email, phone, org_id, vip_flags, loyalty_tier, kyc_status, consent)
+		`INSERT INTO clients (id, tenant_id, full_name, email, phone, org_id, vip_flags, loyalty_tier, kyc_status, consent, locale, timezone)
 		 VALUES ($1,$2,$3,$4,$5,nullif($6,'')::uuid,
 		         coalesce((SELECT array_agg(x) FROM jsonb_array_elements_text($7::jsonb) AS x), '{}'::text[]),
-		         $8,$9,$10)
+		         $8,$9,$10,$11,$12)
 		 ON CONFLICT (id) DO UPDATE SET full_name=$3, email=$4, phone=$5,
 			vip_flags=coalesce((SELECT array_agg(x) FROM jsonb_array_elements_text($7::jsonb) AS x), '{}'::text[]),
-			loyalty_tier=$8, kyc_status=$9, consent=$10`,
-		c.ID, c.TenantID, c.FullName, c.Email, c.Phone, c.OrgID, string(flags), c.LoyaltyTier, c.KYCStatus, consent)
+			loyalty_tier=$8, kyc_status=$9, consent=$10, locale=$11, timezone=$12`,
+		c.ID, c.TenantID, c.FullName, c.Email, c.Phone, c.OrgID, string(flags), c.LoyaltyTier, c.KYCStatus, consent,
+		c.Locale, c.Timezone)
 	if err != nil {
 		return err
 	}
@@ -183,7 +184,7 @@ func (s pgClients) scanClient(row interface{ Scan(...any) error }) (*model.Clien
 	var consent, flags []byte
 	var org *string
 	err := row.Scan(&c.ID, &c.TenantID, &c.FullName, &c.Email, &c.Phone, &org,
-		&flags, &c.LoyaltyTier, &c.KYCStatus, &consent, &c.CreatedAt)
+		&flags, &c.LoyaltyTier, &c.KYCStatus, &consent, &c.Locale, &c.Timezone, &c.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -196,7 +197,7 @@ func (s pgClients) scanClient(row interface{ Scan(...any) error }) (*model.Clien
 }
 
 const clientCols = `id, tenant_id, coalesce(full_name,''), coalesce(email,''), coalesce(phone,''), org_id::text,
-	coalesce(to_jsonb(vip_flags), '[]'::jsonb), coalesce(loyalty_tier,''), kyc_status, consent, created_at`
+	coalesce(to_jsonb(vip_flags), '[]'::jsonb), coalesce(loyalty_tier,''), kyc_status, consent, locale, timezone, created_at`
 
 func (s pgClients) Get(ctx context.Context, tenantID, id string) (*model.Client, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)

@@ -30,6 +30,36 @@ type Delivery = {
   delivered_at?: string;
 };
 
+type EventSpec = {
+  kind: string;
+  aggregate: string;
+  description: string;
+  payload_keys?: string[];
+};
+
+// Event catalog: what third parties can subscribe to (Phase 15).
+function EventCatalog() {
+  const [events, setEvents] = useState<EventSpec[]>([]);
+  useEffect(() => {
+    api.get<EventSpec[]>("/v1/events/catalog").then(setEvents).catch(() => {});
+  }, []);
+  if (events.length === 0) return null;
+  return (
+    <table>
+      <thead><tr><th>Kind</th><th>Aggregate</th><th>Description</th></tr></thead>
+      <tbody>
+        {events.map((e) => (
+          <tr key={e.kind}>
+            <td><code>{e.kind}</code></td>
+            <td>{e.aggregate}</td>
+            <td>{e.description}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function Integrations() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [subs, setSubs] = useState<WebhookSub[]>([]);
@@ -99,6 +129,35 @@ export default function Integrations() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "toggle failed");
+    }
+  }
+
+  // Phase 15: rotate signing secret (shown once), send a test event,
+  // replay a parked delivery.
+  async function rotateSecret(id: string) {
+    try {
+      const res = await api.post<{ secret: string }>(`/v1/webhooks/${id}/rotate-secret`, {});
+      setSecret(res.secret);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "rotate failed");
+    }
+  }
+
+  async function testHook(id: string) {
+    try {
+      await api.post(`/v1/webhooks/${id}/test`, {});
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "test failed");
+    }
+  }
+
+  async function replayDelivery(id: string) {
+    try {
+      await api.post(`/v1/webhooks/deliveries/${id}/replay`, {});
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "replay failed");
     }
   }
 
@@ -181,7 +240,9 @@ export default function Integrations() {
                 <td>
                   <button onClick={() => void toggleHook(s.id, !s.active)}>
                     {s.active ? "Pause" : "Resume"}
-                  </button>
+                  </button>{" "}
+                  <button onClick={() => void rotateSecret(s.id)}>Rotate secret</button>{" "}
+                  <button onClick={() => void testHook(s.id)}>Test</button>
                 </td>
               </tr>
             ))}
@@ -193,7 +254,7 @@ export default function Integrations() {
         <h2>Recent deliveries</h2>
         <table>
           <thead>
-            <tr><th>Event</th><th>Attempts</th><th>Last status</th><th>Delivered</th></tr>
+            <tr><th>Event</th><th>Attempts</th><th>Last status</th><th>Delivered</th><th /></tr>
           </thead>
           <tbody>
             {deliveries.map((d) => (
@@ -202,10 +263,20 @@ export default function Integrations() {
                 <td>{d.attempts}</td>
                 <td>{d.last_status ?? d.last_error ?? "—"}</td>
                 <td>{d.delivered_at ? new Date(d.delivered_at).toLocaleString() : "pending"}</td>
+                <td>
+                  {!d.delivered_at && (
+                    <button onClick={() => void replayDelivery(d.id)}>Replay</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </section>
+
+      <section>
+        <h2>Event catalog</h2>
+        <EventCatalog />
       </section>
     </div>
   );

@@ -127,6 +127,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase6(mux)
 	h.registerPhase7(mux)
 	h.registerPhase8(mux)
+	h.registerPhase9(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
@@ -400,16 +401,12 @@ func (h *handlers) confirmQuote(w http.ResponseWriter, r *http.Request) {
 
 // ------------------------------------------------------------- payments
 func (h *handlers) createPaymentLink(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		QuoteID        string `json:"quote_id"`
-		Mode           string `json:"mode"`
-		IdempotencyKey string `json:"idempotency_key"`
-	}
-	if err := httpx.Decode(r, &body); err != nil {
+	var in domain.CreatePaymentLinkInput
+	if err := httpx.Decode(r, &in); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	intent, err := h.svc.Payments.CreatePaymentLink(r.Context(), tenantOf(r), body.QuoteID, body.Mode, "api", body.IdempotencyKey)
+	intent, err := h.svc.Payments.CreatePaymentLinkV2(r.Context(), tenantOf(r), in)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

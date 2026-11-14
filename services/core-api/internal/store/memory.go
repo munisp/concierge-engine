@@ -345,6 +345,20 @@ func (s *memCatalog) Get(_ context.Context, tenantID, id string) (*model.Catalog
 	return &cp, nil
 }
 
+// ListAll returns every service including inactive — see CatalogStore.
+func (s *memCatalog) ListAll(_ context.Context, tenantID string) ([]model.CatalogService, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	out := []model.CatalogService{}
+	for _, svc := range s.m.catalog {
+		if svc.TenantID == tenantID {
+			out = append(out, *svc)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 func (s *memCatalog) Update(_ context.Context, svc *model.CatalogService) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()

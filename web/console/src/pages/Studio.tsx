@@ -107,19 +107,11 @@ export default function Studio() {
   const removeMedia = async (id: string) => {
     setErr("");
     try {
+      // Phase 33: the server scrubs every reference (catalog card images,
+      // site hero, gallery) before deleting, so this is just del + reload —
+      // load() re-reads the tenant with the references already cleared.
       await api.del(`/v1/media/${id}`);
       setSaved("Image deleted.");
-      // If the deleted image was referenced, clear the references too so the
-      // next save doesn't fight the server's dangling-id validation.
-      if (site) {
-        const next: SiteConfig = {
-          ...site,
-          hero_image_id: site.hero_image_id === id ? "" : site.hero_image_id,
-          gallery_ids: (site.gallery_ids ?? []).filter((g) => g !== id),
-        };
-        setSite(next);
-        await saveSite(next, true);
-      }
       load();
     } catch (e) { setErr(String(e)); }
   };

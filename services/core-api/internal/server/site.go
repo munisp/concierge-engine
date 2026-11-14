@@ -28,6 +28,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -423,6 +424,20 @@ func mediaURL(rawBase, id string) string {
 	return rawBase + "/media/" + id
 }
 
+// liveMediaURL (Phase 33) resolves a tenant_media id to its public URL
+// only when the asset actually exists. DELETE /v1/media scrubs all
+// references, so this is defense-in-depth for legacy rows — a dangling id
+// renders nothing rather than a broken img on the public site.
+func (h *handlers) liveMediaURL(ctx context.Context, tenantID, rawBase, id string) string {
+	if id == "" {
+		return ""
+	}
+	if _, err := h.svc.Store.Media().Get(ctx, tenantID, id); err != nil {
+		return ""
+	}
+	return mediaURL(rawBase, id)
+}
+
 // featureCards assembles the platform-features band (Phase 31). The
 // WhatsApp card describes the concierge-agent channel and is always shown;
 // the payments card is shown only when a payment rail is enabled (the
@@ -479,8 +494,10 @@ func perUnitLabel(currency string, minor int64) string {
 // serviceCards builds the card grid views with localized names, per-locale
 // descriptions (falling back to the localized vertical label), card images
 // (Phase 31 — mediaBase is the raw site base, media is locale-independent)
-// and monogram initials.
-func serviceCards(t *model.Tenant, services []model.CatalogService, base, mediaBase, locale string) []siteServiceView {
+// and monogram initials. live resolves a media id to its URL only when the
+// asset exists (Phase 33 — dangling ids render the monogram, not a broken
+// img).
+func serviceCards(t *model.Tenant, services []model.CatalogService, base, mediaBase, locale string, live func(string) string) []siteServiceView {
 	var out []siteServiceView
 	for _, s := range services {
 		name := localizedServiceName(s, locale)
@@ -495,7 +512,7 @@ func serviceCards(t *model.Tenant, services []model.CatalogService, base, mediaB
 		out = append(out, siteServiceView{
 			Name: name, Desc: desc, PriceLabel: priceLabel(s), Initial: initial,
 			URL:      fmt.Sprintf("%s/book/%s", base, s.ID),
-			ImageURL: mediaURL(mediaBase, s.ImageID),
+			ImageURL: live(s.ImageID),
 		})
 	}
 	return out
@@ -655,16 +672,17 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 	}
 	// Phase 31: hero image (tenant media), stats strip and consented review
 	// quotes. A configured hero doubles as the OG card — a real photo beats
-	// the bitmap renderer for link shares.
-	if t.SiteConfig.HeroImageID != "" {
-		p.HeroImageURL = mediaURL(rawBase, t.SiteConfig.HeroImageID)
-		p.OGImage = p.HeroImageURL
+	// the bitmap renderer for link shares. Phase 33: resolved through
+	// liveMediaURL — a dangling id (legacy rows) falls back to the gradient.
+	if u := h.liveMediaURL(r.Context(), t.ID, rawBase, t.SiteConfig.HeroImageID); u != "" {
+		p.HeroImageURL = u
+		p.OGImage = u
 	}
 	// Phase 32: gallery strip — resolve ids through the media store so a
 	// deleted asset silently drops out rather than rendering a broken img.
 	for _, id := range t.SiteConfig.GalleryIDs {
-		if _, err := h.svc.Store.Media().Get(r.Context(), t.ID, id); err == nil {
-			p.Gallery = append(p.Gallery, mediaURL(rawBase, id))
+		if u := h.liveMediaURL(r.Context(), t.ID, rawBase, id); u != "" {
+			p.Gallery = append(p.Gallery, u)
 		}
 	}
 	if len(services) > 0 {
@@ -684,7 +702,8 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 			p.Reviews = append(p.Reviews, siteReviewView{Stars: stars(rv.Rating), Text: rv.Text})
 		}
 	}
-	p.Services = serviceCards(t, services, base, rawBase, locale)
+	p.Services = serviceCards(t, services, base, rawBase, locale,
+		func(id string) string { return h.liveMediaURL(r.Context(), t.ID, rawBase, id) })
 	for _, a := range areas {
 		p.Areas = append(p.Areas, siteAreaView{
 			Name: localizedAreaName(a, locale),
@@ -796,9 +815,12 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 	p.CTA, p.CTALabel = h.captureURL(t.ID, "svc-"+svc.ID), p.D.BookPrefix+name
 	if svc.ImageID != "" {
 		// Phase 31: the service card image doubles as the page hero.
-		p.HeroImageURL = mediaURL(rawBase, svc.ImageID)
+		// Phase 33: resolved through liveMediaURL — a dangling id renders
+		// the theme hero fallback, not a broken img.
+		p.HeroImageURL = h.liveMediaURL(r.Context(), t.ID, rawBase, svc.ImageID)
 	}
-	p.Services = serviceCards(t, []model.CatalogService{*svc}, base, rawBase, locale)
+	p.Services = serviceCards(t, []model.CatalogService{*svc}, base, rawBase, locale,
+		func(id string) string { return h.liveMediaURL(r.Context(), t.ID, rawBase, id) })
 	p.Sections = []string{guideServiceIntro(t, svc, locale, priceLabel(*svc))}
 	if cov := guideCoverage(name, t.Name, areas, locale); cov != "" {
 		p.Sections = append(p.Sections, cov)
@@ -902,7 +924,8 @@ func (h *handlers) siteArea(w http.ResponseWriter, r *http.Request) {
 			guideAreaTrust(areaName, locale),
 		}
 	}
-	p.Services = serviceCards(t, services, base, rawBase, locale)
+	p.Services = serviceCards(t, services, base, rawBase, locale,
+		func(id string) string { return h.liveMediaURL(r.Context(), t.ID, rawBase, id) })
 	p.JSONLD = marshalLDGraph([]map[string]any{
 		{
 			"@type":      "Service",
@@ -1133,7 +1156,8 @@ func (h *handlers) siteLinks(w http.ResponseWriter, r *http.Request) {
 	p.HrefLangs = h.hreflangCluster(t, rawBase, "/links")
 	p.Heading, p.SubHead = t.Name, "book your concierge"
 	p.CTA, p.CTALabel = h.captureChannelURL(t.ID, "social", "bio", "links"), p.D.BookNow
-	p.Services = serviceCards(t, services, base, rawBase, locale)
+	p.Services = serviceCards(t, services, base, rawBase, locale,
+		func(id string) string { return h.liveMediaURL(r.Context(), t.ID, rawBase, id) })
 	p.JSONLD = marshalLD(map[string]any{
 		"@context": "https://schema.org", "@type": "ItemList",
 		"name": t.Name + " — booking links",

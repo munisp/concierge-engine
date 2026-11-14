@@ -10,6 +10,7 @@ package server
 // decoded payload is sniffed and must match the declared raster type.
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -112,11 +113,65 @@ func (h *handlers) listMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) deleteMedia(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Store.Media().Delete(r.Context(), tenantOf(r), r.PathValue("id")); err != nil {
+	tenantID := tenantOf(r)
+	id := r.PathValue("id")
+	// Scrub every reference BEFORE the delete (Phase 33): a catalog
+	// image_id, hero_image_id or gallery_ids entry pointing at a deleted
+	// asset is a broken img on the public site. Scrub first so a scrub
+	// failure leaves media+refs consistent (media still exists); the
+	// reverse order would leave dangling refs on a half-failure.
+	if err := h.scrubMediaRefs(r.Context(), tenantID, id); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if err := h.svc.Store.Media().Delete(r.Context(), tenantID, id); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// scrubMediaRefs clears all tenant references to a media id: catalog card
+// images (including INACTIVE services — ListAll), the landing hero, and
+// the gallery strip.
+func (h *handlers) scrubMediaRefs(ctx context.Context, tenantID, id string) error {
+	services, err := h.svc.Store.Catalog().ListAll(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	for i := range services {
+		if services[i].ImageID == id {
+			services[i].ImageID = ""
+			if err := h.svc.Store.Catalog().Update(ctx, &services[i]); err != nil {
+				return err
+			}
+		}
+	}
+	t, err := h.svc.Store.Tenants().Get(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	changed := false
+	if t.SiteConfig.HeroImageID == id {
+		t.SiteConfig.HeroImageID = ""
+		changed = true
+	}
+	if len(t.SiteConfig.GalleryIDs) > 0 {
+		keep := t.SiteConfig.GalleryIDs[:0]
+		for _, g := range t.SiteConfig.GalleryIDs {
+			if g != id {
+				keep = append(keep, g)
+			}
+		}
+		if len(keep) != len(t.SiteConfig.GalleryIDs) {
+			t.SiteConfig.GalleryIDs = keep
+			changed = true
+		}
+	}
+	if changed {
+		return h.svc.Store.Tenants().UpdateConfig(ctx, t)
+	}
+	return nil
 }
 
 // rawMedia streams one tenant-owned asset back with its stored content

@@ -214,7 +214,10 @@ export default function Catalog() {
                     <strong>{s.name}</strong>{" "}
                     <span className="badge">{s.vertical}</span>{" "}
                     {!s.active && <span className="badge">inactive</span>}{" "}
-                    {!s.auto_quotable && <span className="badge">manual quote</span>}
+                    {!s.auto_quotable && <span className="badge">manual quote</span>}{" "}
+                    {/* Phase 33: surfaces the service_imagery onboarding gap
+                        right where it is fixed. */}
+                    {s.active && !s.image_id && <span className="badge">no card image</span>}
                     <p className="muted" style={{ margin: 0 }}>
                       {money(s.base_minor, s.currency)} base
                       {s.per_km_minor > 0 && ` + ${money(s.per_km_minor, s.currency)}/km`}

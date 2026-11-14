@@ -512,3 +512,16 @@ ids skipped at render. `ValidateSiteConfig` now runs on BOTH write paths
 validation). Puck (MIT) evaluated as a future visual site builder —
 documented spike, recommendation: stay curated. 5 server + 2 pg tests.
 
+**Phase 33 — delivered (see `docs/phase33.md`).** Imagery honesty across
+the onboarding/catalog/media triangle. New derived `service_imagery`
+onboarding step (22 total): every ACTIVE service must carry a card image
+— coverage reported honestly ("1 of 2…"), empty catalogs guided to
+services first, inactive services don't block. `DELETE /v1/media/{id}`
+now scrubs every reference BEFORE deleting (catalog `image_id` on active
+AND inactive services via the new `CatalogStore.ListAll`, site hero,
+gallery) — a scrub failure leaves media and references consistent instead
+of dangling. Render-time defense for legacy rows: every public-site media
+reference resolves through `liveMediaURL`, so a dangling id falls back to
+the gradient/monogram and never reaches the HTML. Console: "no card
+image" badge on the Catalog page; Studio media delete simplified to
+del + reload. 4 server + 1 pg tests.

@@ -71,9 +71,13 @@ func (svc *Services) Onboarding(ctx context.Context, tenantID string) (*Onboardi
 		return nil, err
 	}
 	activeSvc := 0
+	svcWithImg := 0
 	for _, s := range services {
 		if s.Active {
 			activeSvc++
+			if s.ImageID != "" {
+				svcWithImg++
+			}
 		}
 	}
 	areas, err := svc.Store.Geo().Areas(ctx, tenantID)
@@ -203,6 +207,13 @@ func (svc *Services) Onboarding(ctx context.Context, tenantID string) (*Onboardi
 	if t.SiteConfig.HeroImageID == "" {
 		imageryDetail = "No hero image — the hero falls back to a flat gradient. Upload real photography (or generate it) in the Studio; it is the single biggest trust signal on the page."
 	}
+	// Phase 33: per-service card imagery is its own step — the hero alone
+	// used to mark "imagery" done while every service card rendered a
+	// monogram tile.
+	svcImgDetail := fmt.Sprintf("%d of %d active services have a card image.", svcWithImg, activeSvc)
+	if activeSvc == 0 {
+		svcImgDetail = "Add services first — card images are attached per service on the Catalog page."
+	}
 	socialDetail := fmt.Sprintf("%d social profiles linked (feeds link-in-bio + search-entity graph).", len(t.SiteConfig.SocialLinks))
 	if len(t.SiteConfig.SocialLinks) == 0 {
 		socialDetail = "Link your Instagram/Facebook/TikTok profiles (Settings → public site) — they populate your link-in-bio page and the search knowledge graph."
@@ -246,6 +257,7 @@ func (svc *Services) Onboarding(ctx context.Context, tenantID string) (*Onboardi
 			true, siteDetail, "/onboarding"), // live by construction — the step is "know it exists"
 		step("site_design", "presence", "Site design", t.SiteConfig.Theme != nil && t.SiteConfig.Theme.Preset != "", designDetail, "/studio"),
 		step("imagery", "presence", "Photography & hero", t.SiteConfig.HeroImageID != "", imageryDetail, "/studio"),
+		step("service_imagery", "presence", "Service card images", activeSvc > 0 && svcWithImg == activeSvc, svcImgDetail, "/catalog"),
 		step("socials", "presence", "Social profiles", len(t.SiteConfig.SocialLinks) > 0, socialDetail, "/settings"),
 		step("custom_domain", "presence", "Custom domain", len(t.SiteConfig.CustomDomains) > 0, domainDetail, "/settings"),
 		// — growth: what turns one booking into the next ten —
@@ -299,7 +311,7 @@ func (svc *Services) UpdateOnboarding(ctx context.Context, tenantID, track strin
 	known := map[string]bool{"profile": true, "catalog": true, "areas": true, "payments": true,
 		"pricing": true, "tax": true,
 		"whatsapp": true, "team": true, "fleet": true, "drivers": true, "dispatch_cfg": true,
-		"website": true, "site_design": true, "imagery": true, "socials": true, "custom_domain": true,
+		"website": true, "site_design": true, "imagery": true, "service_imagery": true, "socials": true, "custom_domain": true,
 		"templates": true, "lifecycle": true, "first_campaign": true, "first_booking": true, "go_live": true}
 	for _, id := range skip {
 		id = strings.TrimSpace(id)

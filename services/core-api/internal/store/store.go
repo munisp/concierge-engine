@@ -52,6 +52,10 @@ type CatalogStore interface {
 	// the update path must be able to find — and reactivate — a
 	// deactivated service.
 	Get(ctx context.Context, tenantID, id string) (*model.CatalogService, error)
+	// ListAll (Phase 33): every service including inactive. Used by
+	// reference-scrubbing (media delete) which must reach deactivated
+	// services too — a dangling image_id rots just the same there.
+	ListAll(ctx context.Context, tenantID string) ([]model.CatalogService, error)
 	// Update (Phase 30): persist mutable catalog fields — currently the
 	// i18n presentation maps the design studio writes. Tenant-scoped.
 	Update(ctx context.Context, s *model.CatalogService) error

@@ -395,18 +395,9 @@ func (s pgCatalog) Update(ctx context.Context, svc *model.CatalogService) error 
 	return tx.Commit()
 }
 
-func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogService, error) {
-	tx, err := s.p.tenantTx(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n, coalesce(image_id,'')
-		 FROM catalog_services WHERE active ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
+const catalogCols = `id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n, coalesce(image_id,'')`
+
+func scanCatalog(rows *sql.Rows) ([]model.CatalogService, error) {
 	defer rows.Close()
 	out := []model.CatalogService{}
 	for rows.Next() {
@@ -429,7 +420,41 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 		}
 		out = append(out, svc)
 	}
-	if err := rows.Err(); err != nil {
+	return out, rows.Err()
+}
+
+func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogService, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT `+catalogCols+` FROM catalog_services WHERE active ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	out, err := scanCatalog(rows)
+	if err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
+}
+
+// ListAll returns every service including inactive — see CatalogStore.
+func (s pgCatalog) ListAll(ctx context.Context, tenantID string) ([]model.CatalogService, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT `+catalogCols+` FROM catalog_services ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	out, err := scanCatalog(rows)
+	if err != nil {
 		return nil, err
 	}
 	return out, tx.Commit()

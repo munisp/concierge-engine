@@ -246,4 +246,17 @@ grand total, engine provenance stored (`tax_engine`) and emitted on
 disables PSP rails per tenant in routing and methods discovery. Migration
 0012. 7 domain + 1 pg tests.
 
+**Phase 18 — delivered (see `docs/phase18.md`).** Referrer ledger rewards +
+pg CI coverage extension. The Phase-14 referral spine now pays out: the
+referrer accrues credit on the referee's first booking (5% of booking value
+by default, tenant-overridable via `PricingRules.ReferralRewardPct`;
+idempotent per source booking; self-referrals excluded). Accrued credit is
+applied to the referrer's own payment links (`reward_applied_minor` — the
+intent keeps the full obligation, the PSP charges the reduced amount),
+redeemed oldest-first at capture with a `PLATFORM_FEES → CLIENT_CLEARING`
+compensation posting, and returned to the balance on refund — a refund
+never burns referral credit. Migration 0013 (`client_rewards` + RLS).
+pg CI gate extended to rewards (incl. cross-tenant RLS), dispatch,
+payments, handoffs and zero-`expires_at` quotes. 5 domain + 5 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

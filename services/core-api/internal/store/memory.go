@@ -36,6 +36,7 @@ type memory struct {
 	conversations map[string]*model.Conversation
 	messages      map[string][]model.Message
 	handoffs      map[string]*model.HandoffItem
+	rewards       map[string]*model.ClientReward
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
 	partners      map[string]*model.Partner
@@ -81,6 +82,7 @@ func NewMemory() Store {
 		conversations: map[string]*model.Conversation{},
 		messages:      map[string][]model.Message{},
 		handoffs:      map[string]*model.HandoffItem{},
+		rewards:       map[string]*model.ClientReward{},
 		partners:      map[string]*model.Partner{},
 		corporate:     map[string]*model.CorporateAccount{},
 		invoices:      map[string]*model.CorporateInvoice{},
@@ -124,6 +126,7 @@ func (m *memory) Payouts() PayoutStore             { return &memPayouts{m} }
 func (m *memory) Audit() AuditStore                { return &memAudit{m} }
 func (m *memory) ApiKeys() ApiKeyStore             { return &memApiKeys{m} }
 func (m *memory) Webhooks() WebhookStore           { return &memWebhooks{m} }
+func (m *memory) Rewards() RewardStore             { return &memRewards{m} }
 func (m *memory) Referrals() ReferralStore         { return &memReferrals{m} }
 func (m *memory) Cases() CaseStore                 { return &memCases{m} }
 func (m *memory) Embeddings() EmbeddingStore       { return &memEmbeddings{m} }

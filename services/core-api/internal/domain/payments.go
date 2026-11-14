@@ -110,8 +110,9 @@ func (svc *PaymentService) CreatePaymentLinkV2(ctx context.Context, tenantID str
 		amount = q.DepositMinor
 	}
 	// Localization: resolve the client behind the quote for locale + email.
-	locale, email := "", ""
+	locale, email, clientID := "", "", ""
 	if r, err := svc.s.Store.Requests().Get(ctx, tenantID, q.RequestID); err == nil && r.ClientID != "" {
+		clientID = r.ClientID
 		if cl, err := svc.s.Store.Clients().Get(ctx, tenantID, r.ClientID); err == nil {
 			locale, email = cl.Locale, cl.Email
 		}
@@ -132,14 +133,28 @@ func (svc *PaymentService) CreatePaymentLinkV2(ctx context.Context, tenantID str
 		AmountMinor: amount, Currency: q.Currency, PSP: psp,
 		State: "LINK_SENT", IdempotencyKey: in.IdempotencyKey, CreatedAt: svc.s.Now(),
 	}
+	// Phase 18: apply the client's accrued referral rewards — the PSP is
+	// charged AmountMinor - RewardAppliedMinor; the platform covers the
+	// difference via a compensation posting at capture, so the tenant's
+	// settlement is computed on the full obligation.
+	if clientID != "" {
+		if bal, err := svc.s.Store.Rewards().Balance(ctx, tenantID, clientID); err == nil && bal > 0 {
+			if bal > amount {
+				bal = amount
+			}
+			intent.RewardAppliedMinor = bal
+		}
+	}
 	// Hosted link is brand-skinned and PCI-safe; no card data through chat.
 	// With a PSP configured we mint a real hosted page; otherwise the
 	// deterministic sandbox URL keeps dev/CI network-free.
 	intent.HostedURL = fmt.Sprintf("https://pay.concierge.engine/p/%s", intent.ID)
+	charge := *intent
+	charge.AmountMinor = intent.AmountMinor - intent.RewardAppliedMinor
 	switch psp {
 	case "stripe":
 		if svc.s.Stripe.Enabled() {
-			hostedURL, sessionID, err := svc.s.Stripe.CreateCheckoutSession(ctx, intent, locale, email,
+			hostedURL, sessionID, err := svc.s.Stripe.CreateCheckoutSession(ctx, &charge, locale, email,
 				stripeChannelsFor(q.Currency))
 			if err != nil {
 				return nil, err
@@ -148,7 +163,7 @@ func (svc *PaymentService) CreatePaymentLinkV2(ctx context.Context, tenantID str
 		}
 	case "paystack":
 		if svc.s.Paystack.Enabled() {
-			hostedURL, reference, err := svc.s.Paystack.InitializeTransaction(ctx, intent, email, in.Channels)
+			hostedURL, reference, err := svc.s.Paystack.InitializeTransaction(ctx, &charge, email, in.Channels)
 			if err != nil {
 				return nil, err
 			}
@@ -159,7 +174,8 @@ func (svc *PaymentService) CreatePaymentLinkV2(ctx context.Context, tenantID str
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "payment", intent.ID, "payment.link_created",
-		map[string]any{"quote_id": in.QuoteID, "amount_minor": amount, "mode": in.Mode, "psp": psp})
+		map[string]any{"quote_id": in.QuoteID, "amount_minor": amount, "mode": in.Mode, "psp": psp,
+			"reward_applied_minor": intent.RewardAppliedMinor})
 	return intent, nil
 }
 
@@ -187,7 +203,9 @@ func (svc *PaymentService) Refund(ctx context.Context, tenantID, intentID string
 		}
 	case "paystack":
 		if svc.s.Paystack.Enabled() {
-			if err := svc.s.Paystack.Refund(ctx, intent.PSPRef, intent.AmountMinor); err != nil {
+			// The PSP captured the reward-reduced amount; refund no more.
+			if err := svc.s.Paystack.Refund(ctx, intent.PSPRef,
+				intent.AmountMinor-intent.RewardAppliedMinor); err != nil {
 				return nil, err
 			}
 		}
@@ -215,11 +233,40 @@ func (svc *PaymentService) HandlePSPWebhook(ctx context.Context, tenantID, inten
 		if err := svc.s.Store.Payments().UpdateIntentState(ctx, tenantID, intentID, "CAPTURED", pspRef); err != nil {
 			return err
 		}
+		// Phase 18: settle on the FULL obligation, redeem the client's
+		// rewards against this intent, and post the platform compensation
+		// (PLATFORM_FEES -> CLIENT_CLEARING) so the clearing account nets
+		// to what the PSP actually captured.
 		if err := svc.settle(ctx, intent); err != nil {
 			return err
 		}
+		if intent.RewardAppliedMinor > 0 {
+			clientID := ""
+			if q, err := svc.s.Store.Quotes().Get(ctx, tenantID, intent.QuoteID); err == nil {
+				if r, err := svc.s.Store.Requests().Get(ctx, tenantID, q.RequestID); err == nil {
+					clientID = r.ClientID
+				}
+			}
+			if clientID != "" {
+				covered, err := svc.s.Store.Rewards().Redeem(ctx, tenantID, clientID,
+					intentID, intent.RewardAppliedMinor)
+				if err != nil {
+					return err
+				}
+				if covered > 0 {
+					if err := svc.post(ctx, tenantID, intent.BookingID,
+						"PLATFORM_FEES", "CLIENT_CLEARING", covered, intent.Currency,
+						"reward:redeem:"+intentID); err != nil {
+						return err
+					}
+					svc.s.Events.Emit(ctx, tenantID, "client", clientID, "referral.reward_redeemed",
+						map[string]any{"intent_id": intentID, "amount_minor": covered})
+				}
+			}
+		}
 		svc.s.Events.Emit(ctx, tenantID, "payment", intentID, "payment.captured",
-			map[string]any{"amount_minor": intent.AmountMinor, "psp_ref": pspRef})
+			map[string]any{"amount_minor": intent.AmountMinor, "psp_ref": pspRef,
+				"reward_applied_minor": intent.RewardAppliedMinor})
 	case "payment.failed":
 		if err := svc.s.Store.Payments().UpdateIntentState(ctx, tenantID, intentID, "FAILED", pspRef); err != nil {
 			return err
@@ -233,6 +280,18 @@ func (svc *PaymentService) HandlePSPWebhook(ctx context.Context, tenantID, inten
 			"TENANT_REVENUE", "CLIENT_CLEARING", intent.AmountMinor, intent.Currency,
 			"refund:"+intentID); err != nil {
 			return err
+		}
+		// Reverse the reward compensation and return the rewards to the
+		// client's balance — a refund never burns referral credit.
+		if intent.RewardAppliedMinor > 0 {
+			if err := svc.post(ctx, intent.TenantID, intent.BookingID,
+				"CLIENT_CLEARING", "PLATFORM_FEES", intent.RewardAppliedMinor, intent.Currency,
+				"reward:refund-clawback:"+intentID); err != nil {
+				return err
+			}
+			if err := svc.s.Store.Rewards().RefundRedemption(ctx, intent.TenantID, intentID); err != nil {
+				return err
+			}
 		}
 		svc.s.Events.Emit(ctx, tenantID, "payment", intentID, "payment.refunded", nil)
 	}

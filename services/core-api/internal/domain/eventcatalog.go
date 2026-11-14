@@ -23,6 +23,8 @@ var EventCatalog = []EventSpec{
 	{"dsar.preferences_deleted", "client", "Preference memory deleted (DSAR cascade)", nil},
 	{"dsar.exported", "client", "Data-subject access export assembled (GDPR Art. 15 / CCPA)", nil},
 	{"client.erased", "client", "Right to erasure executed — identity scrubbed to pseudonymous tombstone", nil},
+	{"referral.reward_accrued", "client", "Referrer credited on referee's first booking (Phase 18)", []string{"amount_minor", "source_booking_id", "referee_client_id"}},
+	{"referral.reward_redeemed", "client", "Referral credit applied to a captured payment", []string{"intent_id", "amount_minor"}},
 
 	{"conversation.started", "conversation", "Inbound message opened a conversation", []string{"channel", "client_id"}},
 	{"message.appended", "conversation", "Message added to a conversation timeline", []string{"author"}},

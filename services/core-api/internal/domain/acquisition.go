@@ -9,13 +9,14 @@ package domain
 //
 // Client referral codes: every client has a deterministic code
 // (model.ClientReferralCode). A referee arriving via a capture link carries
-// campaign "ref:<code>"; their first booking fires referral.converted and a
-// referral_converted attribution row carrying the booking value. Ledger
-// rewards are a documented deferral (docs/phase14.md) — the conversion is
-// visible in the funnel and event stream today.
+// campaign "ref:<code>"; their first booking fires referral.converted, a
+// referral_converted attribution row carrying the booking value, and
+// (Phase 18) accrues the referrer's reward credit — redeemable against
+// their next payment link.
 
 import (
 	"context"
+	"math"
 	"strings"
 
 	"concierge-engine/services/core-api/internal/model"
@@ -56,7 +57,7 @@ func (svc *Services) TrackInherited(ctx context.Context, e *model.AttributionEve
 // ReferralConversion checks whether this booking is a referee's FIRST booking
 // under a "ref:<code>" campaign; if so it emits referral.converted and tracks
 // the conversion value. Advisory: never blocks confirmation.
-func (svc *Services) ReferralConversion(ctx context.Context, tenantID, clientID string, b *model.Booking, valueMinor int64) {
+func (svc *Services) ReferralConversion(ctx context.Context, tenantID, clientID string, b *model.Booking, valueMinor int64, currency string) {
 	if clientID == "" {
 		return
 	}
@@ -84,6 +85,29 @@ func (svc *Services) ReferralConversion(ctx context.Context, tenantID, clientID 
 	}
 	if referrer, err := svc.Store.Clients().FindByReferralCode(ctx, tenantID, code); err == nil {
 		payload["referrer_client_id"] = referrer.ID
+		// Phase 18: the referrer earns credit on the referee's first booking.
+		// Advisory — a reward failure never blocks a booking confirmation.
+		if referrer.ID != clientID {
+			pct := 0.05
+			if t, terr := svc.Store.Tenants().Get(ctx, tenantID); terr == nil &&
+				t.PricingRules.ReferralRewardPct > 0 {
+				pct = t.PricingRules.ReferralRewardPct
+			}
+			reward := &model.ClientReward{
+				ID: NewID(), TenantID: tenantID, ClientID: referrer.ID,
+				SourceBookingID: b.ID, Kind: "referral_reward",
+				AmountMinor: int64(math.Round(float64(valueMinor) * pct)),
+				Currency:    currency, State: model.RewardAccrued, CreatedAt: svc.Now(),
+			}
+			if reward.AmountMinor > 0 {
+				if err := svc.Store.Rewards().Accrue(ctx, reward); err == nil {
+					payload["reward_minor"] = reward.AmountMinor
+					svc.Events.Emit(ctx, tenantID, "client", referrer.ID, "referral.reward_accrued",
+						map[string]any{"amount_minor": reward.AmountMinor,
+							"source_booking_id": b.ID, "referee_client_id": clientID})
+				}
+			}
+		}
 	}
 	svc.Events.Emit(ctx, tenantID, "referral", b.ID, "referral.converted", payload)
 	svc.Events.Track(ctx, &model.AttributionEvent{

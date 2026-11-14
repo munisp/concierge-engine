@@ -229,7 +229,7 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 	// first-booking detection doesn't count this booking itself; the booking
 	// event then inherits first-touch channel/campaign.
 	if r, rerr := svc.s.Store.Requests().Get(ctx, tenantID, q.RequestID); rerr == nil {
-		svc.s.ReferralConversion(ctx, tenantID, r.ClientID, b, q.TotalMinor)
+		svc.s.ReferralConversion(ctx, tenantID, r.ClientID, b, q.TotalMinor, q.Currency)
 		svc.s.TrackInherited(ctx, &model.AttributionEvent{
 			TenantID: tenantID, Kind: "booking", ClientID: r.ClientID,
 			RequestID: q.RequestID, ValueMinor: q.TotalMinor,

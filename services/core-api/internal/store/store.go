@@ -101,6 +101,22 @@ type HandoffStore interface {
 	ListOpen(ctx context.Context, tenantID string) ([]model.HandoffItem, error)
 }
 
+// RewardStore is client referral credit (Phase 18): accrual on conversion,
+// balance for payment-link application, oldest-first redemption at capture.
+type RewardStore interface {
+	// Accrue credits a reward; idempotent per (tenant, client, source
+	// booking) — a replayed conversion never double-credits.
+	Accrue(ctx context.Context, r *model.ClientReward) error
+	// Balance sums ACCRUED rewards for a client.
+	Balance(ctx context.Context, tenantID, clientID string) (int64, error)
+	// Redeem marks up to amount of ACCRUED rewards REDEEMED against a
+	// payment intent, oldest first. Returns the amount actually covered.
+	Redeem(ctx context.Context, tenantID, clientID, intentID string, amount int64) (int64, error)
+	// RefundRedemption returns rewards redeemed on a refunded intent to
+	// ACCRUED — the client never loses credit to a refund.
+	RefundRedemption(ctx context.Context, tenantID, intentID string) error
+}
+
 type OutboxStore interface {
 	Add(ctx context.Context, e *model.OutboxEvent) error
 	Unpublished(ctx context.Context, limit int) ([]model.OutboxEvent, error)
@@ -278,6 +294,7 @@ type Store interface {
 	Audit() AuditStore
 	ApiKeys() ApiKeyStore
 	Webhooks() WebhookStore
+	Rewards() RewardStore
 	Referrals() ReferralStore
 	Cases() CaseStore
 	Embeddings() EmbeddingStore

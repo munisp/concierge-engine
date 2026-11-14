@@ -481,7 +481,7 @@ func (s pgQuotes) Create(ctx context.Context, q *model.Quote) error {
 		`INSERT INTO quotes (id, tenant_id, request_id, version, origin, total_minor, deposit_minor, currency, tax_minor, tax_engine, lines, expires_at, policy_verdict_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		q.ID, q.TenantID, q.RequestID, q.Version, q.Origin, q.TotalMinor, q.DepositMinor,
-		q.Currency, q.TaxMinor, q.TaxEngine, lines, q.ExpiresAt, q.PolicyVerdictID)
+		q.Currency, q.TaxMinor, q.TaxEngine, lines, nilIfZero(q.ExpiresAt), q.PolicyVerdictID)
 	if err != nil {
 		return err
 	}
@@ -491,10 +491,14 @@ func (s pgQuotes) Create(ctx context.Context, q *model.Quote) error {
 func (s pgQuotes) scan(row *sql.Row) (*model.Quote, error) {
 	var q model.Quote
 	var lines []byte
+	var expiresAt sql.NullTime
 	err := row.Scan(&q.ID, &q.TenantID, &q.RequestID, &q.Version, &q.Origin, &q.TotalMinor,
-		&q.DepositMinor, &q.Currency, &q.TaxMinor, &q.TaxEngine, &lines, &q.ExpiresAt, &q.PolicyVerdictID, &q.CreatedAt)
+		&q.DepositMinor, &q.Currency, &q.TaxMinor, &q.TaxEngine, &lines, &expiresAt, &q.PolicyVerdictID, &q.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
+	}
+	if expiresAt.Valid {
+		q.ExpiresAt = expiresAt.Time
 	}
 	_ = json.Unmarshal(lines, &q.Lines)
 	return &q, nil
@@ -763,10 +767,11 @@ func (s pgPayments) CreateIntent(ctx context.Context, pi *model.PaymentIntent) e
 	if err == nil {
 		row := tx.QueryRowContext(ctx,
 			`SELECT id, tenant_id, coalesce(booking_id::text,''), coalesce(quote_id::text,''), mode, amount_minor,
-			        currency, psp, coalesce(psp_ref,''), coalesce(hosted_url,''), state, idempotency_key, created_at
+			        currency, psp, coalesce(psp_ref,''), coalesce(hosted_url,''), state, idempotency_key, reward_applied_minor, created_at
 			 FROM payment_intents WHERE id=$1`, existing)
 		if err := row.Scan(&pi.ID, &pi.TenantID, &pi.BookingID, &pi.QuoteID, &pi.Mode, &pi.AmountMinor,
-			&pi.Currency, &pi.PSP, &pi.PSPRef, &pi.HostedURL, &pi.State, &pi.IdempotencyKey); err != nil {
+			&pi.Currency, &pi.PSP, &pi.PSPRef, &pi.HostedURL, &pi.State, &pi.IdempotencyKey,
+			&pi.RewardAppliedMinor); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -775,10 +780,10 @@ func (s pgPayments) CreateIntent(ctx context.Context, pi *model.PaymentIntent) e
 		return err
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO payment_intents (id, tenant_id, booking_id, quote_id, mode, amount_minor, currency, psp, hosted_url, state, idempotency_key)
-		 VALUES ($1,$2,nullif($3,'')::uuid,nullif($4,'')::uuid,$5,$6,$7,$8,$9,$10,$11)`,
+		`INSERT INTO payment_intents (id, tenant_id, booking_id, quote_id, mode, amount_minor, currency, psp, hosted_url, state, idempotency_key, reward_applied_minor)
+		 VALUES ($1,$2,nullif($3,'')::uuid,nullif($4,'')::uuid,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		pi.ID, pi.TenantID, pi.BookingID, pi.QuoteID, pi.Mode, pi.AmountMinor, pi.Currency,
-		pi.PSP, pi.HostedURL, pi.State, pi.IdempotencyKey)
+		pi.PSP, pi.HostedURL, pi.State, pi.IdempotencyKey, pi.RewardAppliedMinor)
 	if err != nil {
 		return err
 	}
@@ -794,10 +799,11 @@ func (s pgPayments) GetIntent(ctx context.Context, tenantID, id string) (*model.
 	var pi model.PaymentIntent
 	err = tx.QueryRowContext(ctx,
 		`SELECT id, tenant_id, coalesce(booking_id::text,''), coalesce(quote_id::text,''), mode, amount_minor,
-		        currency, psp, coalesce(psp_ref,''), coalesce(hosted_url,''), state, idempotency_key, created_at
+		        currency, psp, coalesce(psp_ref,''), coalesce(hosted_url,''), state, idempotency_key, reward_applied_minor, created_at
 		 FROM payment_intents WHERE id=$1`, id).
 		Scan(&pi.ID, &pi.TenantID, &pi.BookingID, &pi.QuoteID, &pi.Mode, &pi.AmountMinor,
-			&pi.Currency, &pi.PSP, &pi.PSPRef, &pi.HostedURL, &pi.State, &pi.IdempotencyKey, &pi.CreatedAt)
+			&pi.Currency, &pi.PSP, &pi.PSPRef, &pi.HostedURL, &pi.State, &pi.IdempotencyKey,
+			&pi.RewardAppliedMinor, &pi.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}

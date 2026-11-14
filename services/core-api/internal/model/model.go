@@ -53,6 +53,9 @@ type PricingRules struct {
 	QuoteTTLSeconds    int64   `json:"quote_ttl_seconds"` // default 3600
 	PlatformFeePct     float64 `json:"platform_fee_pct"`  // take rate 0.02–0.05
 	PerKMAdjustmentPct float64 `json:"per_km_adjustment_pct"`
+	// ReferralRewardPct is the referrer's reward as a fraction of the
+	// referee's first booking value (Phase 18). Default 0.05 when unset.
+	ReferralRewardPct float64 `json:"referral_reward_pct,omitempty"`
 }
 
 type SLAConfig struct {
@@ -282,9 +285,37 @@ type PaymentIntent struct {
 	PSPRef         string    `json:"psp_ref,omitempty"`
 	HostedURL      string    `json:"hosted_url,omitempty"`
 	State          string    `json:"state"`
-	IdempotencyKey string    `json:"-"`
-	CreatedAt      time.Time `json:"created_at"`
+	// RewardAppliedMinor is the portion of AmountMinor covered by the
+	// client's accrued referral rewards instead of the PSP charge
+	// (Phase 18). PSP charge = AmountMinor - RewardAppliedMinor; the
+	// platform subsidizes the reward via a compensation posting.
+	RewardAppliedMinor int64     `json:"reward_applied_minor,omitempty"`
+	IdempotencyKey     string    `json:"-"`
+	CreatedAt          time.Time `json:"created_at"`
 }
+
+// ClientReward is referral-credit accrued to a referrer when their referee's
+// first booking confirms (Phase 18). ACCRUED rewards reduce the referrer's
+// next payment link (platform-subsidized — the ledger compensation posting
+// keeps the tenant whole); REDEEMED rewards are spent.
+type ClientReward struct {
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	ClientID         string    `json:"client_id"`         // the referrer
+	SourceBookingID  string    `json:"source_booking_id"` // referee's first booking
+	Kind             string    `json:"kind"`              // referral_reward
+	AmountMinor      int64     `json:"amount_minor"`
+	Currency         string    `json:"currency"`
+	State            string    `json:"state"` // ACCRUED | REDEEMED
+	RedeemedIntentID string    `json:"redeemed_intent_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	RedeemedAt       time.Time `json:"redeemed_at,omitempty"`
+}
+
+const (
+	RewardAccrued  = "ACCRUED"
+	RewardRedeemed = "REDEEMED"
+)
 
 type LedgerPosting struct {
 	ID             string    `json:"id"`

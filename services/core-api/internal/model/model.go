@@ -25,6 +25,8 @@ type Tenant struct {
 	// Phase 17: tax + payment configuration (EU/US launch readiness).
 	TaxConfig     TaxConfig     `json:"tax_config"`
 	PaymentConfig PaymentConfig `json:"payment_config"`
+	// Phase 19: two-sided reward sharing program.
+	RewardProgram RewardProgram `json:"reward_program"`
 	CreatedAt     time.Time     `json:"created_at"`
 }
 
@@ -56,6 +58,21 @@ type PricingRules struct {
 	// ReferralRewardPct is the referrer's reward as a fraction of the
 	// referee's first booking value (Phase 18). Default 0.05 when unset.
 	ReferralRewardPct float64 `json:"referral_reward_pct,omitempty"`
+}
+
+// RewardProgram is the tenant's two-sided reward sharing configuration
+// (Phase 19). The referrer earns ReferrerPct of the referee's first booking
+// value; the referee earns RefereePct as a welcome credit on the same
+// booking. Zero RefereePct means no referee credit. ReferrerPct zero falls
+// back to the legacy PricingRules.ReferralRewardPct, then to 0.05.
+// MaxRewardMinor caps each accrual (0 = uncapped); ExpiryDays sets credit
+// validity (0 = never expires — never silently burn a client's credit).
+type RewardProgram struct {
+	Disabled       bool    `json:"disabled,omitempty"`
+	ReferrerPct    float64 `json:"referrer_pct,omitempty"`
+	RefereePct     float64 `json:"referee_pct,omitempty"`
+	MaxRewardMinor int64   `json:"max_reward_minor,omitempty"`
+	ExpiryDays     int     `json:"expiry_days,omitempty"`
 }
 
 type SLAConfig struct {
@@ -294,27 +311,31 @@ type PaymentIntent struct {
 	CreatedAt          time.Time `json:"created_at"`
 }
 
-// ClientReward is referral-credit accrued to a referrer when their referee's
-// first booking confirms (Phase 18). ACCRUED rewards reduce the referrer's
-// next payment link (platform-subsidized — the ledger compensation posting
-// keeps the tenant whole); REDEEMED rewards are spent.
+// ClientReward is credit accrued under the tenant's reward sharing program
+// (Phase 18 referrer credit; Phase 19 two-sided: the referee also earns a
+// welcome credit). ACCRUED rewards reduce the client's next payment link
+// (platform-subsidized — the ledger compensation posting keeps the tenant
+// whole); REDEEMED rewards are spent; EXPIRED rewards lapsed unused
+// (only when the program sets ExpiryDays — credit never expires silently).
 type ClientReward struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`
-	ClientID         string    `json:"client_id"`         // the referrer
+	ClientID         string    `json:"client_id"`         // who holds the credit (referrer or referee)
 	SourceBookingID  string    `json:"source_booking_id"` // referee's first booking
-	Kind             string    `json:"kind"`              // referral_reward
+	Kind             string    `json:"kind"`              // referral_reward | referee_welcome
 	AmountMinor      int64     `json:"amount_minor"`
 	Currency         string    `json:"currency"`
-	State            string    `json:"state"` // ACCRUED | REDEEMED
+	State            string    `json:"state"` // ACCRUED | REDEEMED | EXPIRED
 	RedeemedIntentID string    `json:"redeemed_intent_id,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	RedeemedAt       time.Time `json:"redeemed_at,omitempty"`
+	ExpiresAt        time.Time `json:"expires_at,omitempty"`
 }
 
 const (
 	RewardAccrued  = "ACCRUED"
 	RewardRedeemed = "REDEEMED"
+	RewardExpired  = "EXPIRED"
 )
 
 type LedgerPosting struct {

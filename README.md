@@ -259,4 +259,18 @@ never burns referral credit. Migration 0013 (`client_rewards` + RLS).
 pg CI gate extended to rewards (incl. cross-tenant RLS), dispatch,
 payments, handoffs and zero-`expires_at` quotes. 5 domain + 5 pg tests.
 
+**Phase 19 — delivered (see `docs/phase19.md`).** Reward sharing program.
+Two-sided referral credit per tenant (`reward_program` jsonb, patched via
+PUT /v1/tenant): referrer earns `referrer_pct` of the referee's first
+booking (legacy `ReferralRewardPct` fallback, then 5%), the referee earns a
+`referee_pct` welcome credit on the same booking; per-accrual cap
+(`max_reward_minor`), optional expiry (`expiry_days`, 0 = never — credit is
+never silently burned), kill-switch (`disabled`). Expiry is lazy-swept to
+EXPIRED on balance/redeem/list access; lapsed credit never redeems but
+stays visible in history. `GET /v1/clients/{id}/rewards` returns the
+expiry-aware balance + full history; console growth board gains a rewards
+lookup (balance + history table). Redemption, compensation posting and
+refund safety unchanged from Phase 18. Migration 0014. 5 domain + 2 pg
+tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

@@ -111,10 +111,13 @@ type RewardStore interface {
 	Balance(ctx context.Context, tenantID, clientID string) (int64, error)
 	// Redeem marks up to amount of ACCRUED rewards REDEEMED against a
 	// payment intent, oldest first. Returns the amount actually covered.
+	// Expired rewards are swept to EXPIRED and never redeemed.
 	Redeem(ctx context.Context, tenantID, clientID, intentID string, amount int64) (int64, error)
 	// RefundRedemption returns rewards redeemed on a refunded intent to
 	// ACCRUED — the client never loses credit to a refund.
 	RefundRedemption(ctx context.Context, tenantID, intentID string) error
+	// List returns the client's reward history, newest first (Phase 19).
+	List(ctx context.Context, tenantID, clientID string) ([]model.ClientReward, error)
 }
 
 type OutboxStore interface {

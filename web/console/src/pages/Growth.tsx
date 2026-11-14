@@ -21,6 +21,23 @@ type Verdict = {
   marketing_consent: boolean;
 };
 
+type RewardRow = {
+  id: string;
+  kind: string;
+  amount_minor: number;
+  currency: string;
+  state: string;
+  created_at: string;
+  expires_at?: string;
+  redeemed_intent_id?: string;
+};
+
+type RewardSummary = {
+  client_id: string;
+  balance_minor: number;
+  rewards: RewardRow[];
+};
+
 type Send = {
   id: string;
   client_id: string;
@@ -43,6 +60,7 @@ export default function Growth() {
   // referral code lookup
   const [clientId, setClientId] = useState("");
   const [code, setCode] = useState("");
+  const [rewards, setRewards] = useState<RewardSummary | null>(null);
 
   // outreach composer
   const [oClient, setOClient] = useState("");
@@ -63,6 +81,13 @@ export default function Growth() {
     try {
       const r = await api.get<{ code: string }>(`/v1/clients/${encodeURIComponent(clientId)}/referral-code`);
       setCode(r.code);
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const getRewards = async () => {
+    setErr(""); setRewards(null);
+    try {
+      setRewards(await api.get<RewardSummary>(`/v1/clients/${encodeURIComponent(clientId)}/rewards`));
     } catch (e) { setErr(String(e)); }
   };
 
@@ -138,12 +163,40 @@ export default function Growth() {
         <div className="row">
           <input placeholder="client id" value={clientId} onChange={(e) => setClientId(e.target.value)} />
           <button onClick={getCode}>Get code</button>
+          <button onClick={getRewards} disabled={!clientId}>Rewards</button>
           {code && <strong>{code}</strong>}
         </div>
         <p className="muted">
           Share as a capture link: <code>/capture?ref={code || "VIP-…"}</code> — the referee's
           first booking fires <code>referral.converted</code> and lands in the funnel above.
+          Both sides earn credit per the tenant's reward program (referrer % + referee
+          welcome %, optional cap and expiry); credit redeems against the holder's next
+          payment link and a refund never burns it.
         </p>
+        {rewards && (
+          <>
+            <p>
+              Redeemable balance: <strong>{(rewards.balance_minor / 100).toFixed(2)}</strong>
+              {rewards.rewards[0] ? ` ${rewards.rewards[0].currency}` : ""}
+            </p>
+            {rewards.rewards.length === 0 ? <p>No rewards yet.</p> : (
+              <table>
+                <thead><tr><th>When</th><th>Kind</th><th>Amount</th><th>State</th><th>Expires</th></tr></thead>
+                <tbody>
+                  {rewards.rewards.map((rw) => (
+                    <tr key={rw.id}>
+                      <td>{new Date(rw.created_at).toLocaleString()}</td>
+                      <td>{rw.kind === "referee_welcome" ? "welcome credit" : "referral reward"}</td>
+                      <td>{(rw.amount_minor / 100).toFixed(2)} {rw.currency}</td>
+                      <td>{rw.state}</td>
+                      <td>{rw.expires_at ? new Date(rw.expires_at).toLocaleDateString() : "never"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
       </div>
 
       <div className="card">

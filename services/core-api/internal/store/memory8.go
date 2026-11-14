@@ -31,9 +31,22 @@ func (s *memRewards) Accrue(_ context.Context, r *model.ClientReward) error {
 	return nil
 }
 
+// sweepExpiredLocked marks lapsed ACCRUED rewards EXPIRED. Callers hold the
+// write lock. Expiry is lazy (on access) — no background goroutine in the
+// in-memory engine.
+func (s *memRewards) sweepExpiredLocked(tenantID, clientID string, now time.Time) {
+	for _, e := range s.m.rewards {
+		if e.TenantID == tenantID && e.ClientID == clientID &&
+			e.State == model.RewardAccrued && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+			e.State = model.RewardExpired
+		}
+	}
+}
+
 func (s *memRewards) Balance(_ context.Context, tenantID, clientID string) (int64, error) {
-	s.m.mu.RLock()
-	defer s.m.mu.RUnlock()
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	s.sweepExpiredLocked(tenantID, clientID, time.Now().UTC())
 	var bal int64
 	for _, e := range s.m.rewards {
 		if e.TenantID == tenantID && e.ClientID == clientID && e.State == model.RewardAccrued {
@@ -46,6 +59,7 @@ func (s *memRewards) Balance(_ context.Context, tenantID, clientID string) (int6
 func (s *memRewards) Redeem(_ context.Context, tenantID, clientID, intentID string, amount int64) (int64, error) {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
+	s.sweepExpiredLocked(tenantID, clientID, time.Now().UTC())
 	var accrued []*model.ClientReward
 	for _, e := range s.m.rewards {
 		if e.TenantID == tenantID && e.ClientID == clientID && e.State == model.RewardAccrued {
@@ -65,6 +79,20 @@ func (s *memRewards) Redeem(_ context.Context, tenantID, clientID, intentID stri
 		covered += e.AmountMinor
 	}
 	return covered, nil
+}
+
+func (s *memRewards) List(_ context.Context, tenantID, clientID string) ([]model.ClientReward, error) {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	s.sweepExpiredLocked(tenantID, clientID, time.Now().UTC())
+	var out []model.ClientReward
+	for _, e := range s.m.rewards {
+		if e.TenantID == tenantID && e.ClientID == clientID {
+			out = append(out, *e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
 }
 
 func (s *memRewards) RefundRedemption(_ context.Context, tenantID, intentID string) error {

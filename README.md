@@ -287,4 +287,17 @@ X" from the intent's actual `reward_applied_minor`; WhatsApp agent payment
 links carry reward fields so replies state the applied credit honestly.
 Migration 0015. 5 domain + 2 pg tests.
 
+**Phase 21 — delivered (see `docs/phase21.md`).** Tenant-managed outreach
+templates (`POST/GET/DELETE /v1/outreach/templates`, upsert by name,
+server-side `{{client_name}}`/`{{tenant_name}}` rendering with the rendered
+text recorded for provenance, marketing templates refused on the service
+lane); per-tenant operator rosters (`operator_config.alert_phones` override
+`CE_OPERATOR_PHONE` for SLA failure alerts, empty = fallback); WhatsApp
+message reactions normalized on Meta + Infobip into conversation-timeline
+provenance lines that skip intake and the agent turn; webhook dual-secret
+rotation window (24h default, deliveries signed with both secrets during the
+window, latent pg secret-persistence bug fixed); event schema versioning
+(envelope `schema_version` + versioned catalog). Migration 0016. 5 domain +
+4 pg + 5 adapter tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

@@ -53,6 +53,12 @@ type SendOutreachInput struct {
 	Template       string   `json:"template,omitempty"`
 	Params         []string `json:"params,omitempty"`
 	IdempotencyKey string   `json:"idempotency_key"`
+	// TemplateID (Phase 21): a tenant-managed message template. The body is
+	// rendered server-side ({{client_name}}, {{tenant_name}}) and the
+	// rendered text — not the template reference — is what gets recorded
+	// and delivered. A template whose purpose is "marketing" cannot be
+	// sent as "service" (the frequency cap is not a suggestion).
+	TemplateID string `json:"template_id,omitempty"`
 }
 
 // Verdict reports whether a send to this client would be allowed right now,
@@ -114,6 +120,13 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 	}
 	if in.Purpose != model.OutreachService && in.Purpose != model.OutreachMarketing {
 		return nil, httpx.ErrValidation
+	}
+	if in.TemplateID != "" {
+		rendered, err := svc.renderTemplate(ctx, tenantID, in)
+		if err != nil {
+			return nil, err
+		}
+		in.Body = rendered
 	}
 	if in.Body == "" && in.Template == "" {
 		return nil, httpx.ErrValidation
@@ -241,4 +254,84 @@ func (svc *OutreachService) deliver(ctx context.Context, tenantID, phone string,
 // Sends lists recent outreach sends (console growth board).
 func (svc *OutreachService) Sends(ctx context.Context, tenantID string, limit int) ([]model.OutreachSend, error) {
 	return svc.s.Store.Outreach().ListSends(ctx, tenantID, limit)
+}
+
+// ---------------------------------------------------------- Phase 21: templates
+
+// UpsertTemplate creates or updates a tenant-managed outreach template,
+// keyed by (tenant, name) — the console save button is naturally idempotent.
+func (svc *OutreachService) UpsertTemplate(ctx context.Context, tenantID, name, purpose, body string) (*model.MessageTemplate, error) {
+	name = strings.TrimSpace(name)
+	body = strings.TrimSpace(body)
+	if len(name) < 2 || len(name) > 64 || body == "" {
+		return nil, httpx.ErrValidation
+	}
+	if purpose == "" {
+		purpose = model.TemplatePurposeAny
+	}
+	if purpose != model.OutreachService && purpose != model.OutreachMarketing && purpose != model.TemplatePurposeAny {
+		return nil, httpx.ErrValidation
+	}
+	now := svc.s.Now()
+	t := &model.MessageTemplate{
+		ID: NewID(), TenantID: tenantID, Name: name,
+		Purpose: purpose, Body: body, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := svc.s.Store.Templates().Upsert(ctx, t); err != nil {
+		return nil, err
+	}
+	svc.s.Audit.Log(ctx, tenantID, "api", "outreach.template_saved", "message_template", t.ID,
+		map[string]any{"name": t.Name, "purpose": t.Purpose})
+	return t, nil
+}
+
+func (svc *OutreachService) ListTemplates(ctx context.Context, tenantID string) ([]model.MessageTemplate, error) {
+	return svc.s.Store.Templates().List(ctx, tenantID)
+}
+
+func (svc *OutreachService) DeleteTemplate(ctx context.Context, tenantID, id string) error {
+	if err := svc.s.Store.Templates().Delete(ctx, tenantID, id); err != nil {
+		return err
+	}
+	svc.s.Audit.Log(ctx, tenantID, "api", "outreach.template_deleted", "message_template", id, nil)
+	return nil
+}
+
+// renderTemplate resolves a template send: load, purpose-guard, substitute.
+func (svc *OutreachService) renderTemplate(ctx context.Context, tenantID string, in SendOutreachInput) (string, error) {
+	tmpl, err := svc.s.Store.Templates().Get(ctx, tenantID, in.TemplateID)
+	if err != nil {
+		return "", err
+	}
+	purpose := in.Purpose
+	if purpose == "" {
+		purpose = model.OutreachService
+	}
+	if tmpl.Purpose != model.TemplatePurposeAny && tmpl.Purpose != purpose {
+		// A marketing template sent as "service" would bypass the consent
+		// and frequency gates — refuse loudly.
+		return "", fmt.Errorf("%w: template purpose %q cannot be sent as %q",
+			httpx.ErrValidation, tmpl.Purpose, purpose)
+	}
+	cl, err := svc.s.Store.Clients().Get(ctx, tenantID, in.ClientID)
+	if err != nil {
+		return "", err
+	}
+	t, err := svc.s.Store.Tenants().Get(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	return RenderTemplate(tmpl.Body, cl, t), nil
+}
+
+// RenderTemplate substitutes the supported variables. Unknown placeholders
+// are left as-is — visible in the audit trail, never silently dropped.
+func RenderTemplate(body string, cl *model.Client, t *model.Tenant) string {
+	name := cl.FullName
+	if name == "" {
+		name = cl.Phone
+	}
+	out := strings.ReplaceAll(body, "{{client_name}}", name)
+	out = strings.ReplaceAll(out, "{{tenant_name}}", t.Name)
+	return out
 }

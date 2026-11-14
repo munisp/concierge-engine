@@ -155,7 +155,7 @@ func (h *handlers) paystackWebhook(w http.ResponseWriter, r *http.Request) {
 // ------------------------------------------------------------- events & integrations
 
 func (h *handlers) eventCatalog(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, domain.EventCatalog)
+	httpx.WriteJSON(w, http.StatusOK, domain.CatalogJSON())
 }
 
 func (h *handlers) rotateWebhookSecret(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +166,7 @@ func (h *handlers) rotateWebhookSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{
 		"id": sub.ID, "secret": sub.Secret,
-		"note": "old secret invalid immediately — update your receiver now",
+		"note": "previous secret keeps signing alongside the new one for the rotation window — update your receiver, both verify until the window closes",
 	})
 }
 

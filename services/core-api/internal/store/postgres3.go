@@ -120,9 +120,10 @@ func (s pgWebhooks) CreateSubscription(ctx context.Context, sub *model.WebhookSu
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO webhook_subscriptions (id, tenant_id, url, events, secret, active)
-		 VALUES ($1,$2,$3,$4,$5,$6)`,
-		sub.ID, sub.TenantID, sub.URL, events, sub.Secret, sub.Active)
+		`INSERT INTO webhook_subscriptions (id, tenant_id, url, events, secret, active, prev_secret, secret_rotated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		sub.ID, sub.TenantID, sub.URL, events, sub.Secret, sub.Active,
+		sub.PrevSecret, nilIfZero(sub.SecretRotatedAt))
 	if err != nil {
 		return err
 	}
@@ -132,15 +133,18 @@ func (s pgWebhooks) CreateSubscription(ctx context.Context, sub *model.WebhookSu
 func scanSubscription(row interface{ Scan(...any) error }) (*model.WebhookSubscription, error) {
 	var sub model.WebhookSubscription
 	var events []byte
-	err := row.Scan(&sub.ID, &sub.TenantID, &sub.URL, &events, &sub.Secret, &sub.Active, &sub.CreatedAt)
+	var rotatedAt sql.NullTime
+	err := row.Scan(&sub.ID, &sub.TenantID, &sub.URL, &events, &sub.Secret, &sub.Active,
+		&sub.CreatedAt, &sub.PrevSecret, &rotatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(events, &sub.Events)
+	sub.SecretRotatedAt = rotatedAt.Time
 	return &sub, nil
 }
 
-const webhookSubCols = `id, tenant_id, url, events, secret, active, created_at`
+const webhookSubCols = `id, tenant_id, url, events, secret, active, created_at, prev_secret, secret_rotated_at`
 
 func (s pgWebhooks) GetSubscription(ctx context.Context, tenantID, id string) (*model.WebhookSubscription, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -187,8 +191,8 @@ func (s pgWebhooks) UpdateSubscription(ctx context.Context, sub *model.WebhookSu
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`UPDATE webhook_subscriptions SET url=$2, events=$3, active=$4 WHERE id=$1`,
-		sub.ID, sub.URL, events, sub.Active)
+		`UPDATE webhook_subscriptions SET url=$2, events=$3, active=$4, secret=$5, prev_secret=$6, secret_rotated_at=$7 WHERE id=$1`,
+		sub.ID, sub.URL, events, sub.Active, sub.Secret, sub.PrevSecret, nilIfZero(sub.SecretRotatedAt))
 	if err != nil {
 		return err
 	}

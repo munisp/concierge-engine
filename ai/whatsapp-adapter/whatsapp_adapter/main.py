@@ -38,6 +38,7 @@ class WebhookMessage(BaseModel):
     longitude: Optional[float] = None
     location_name: str = ""
     location_address: str = ""
+    reaction: bool = False  # emoji reaction event — conversation signal, never intake
 
 
 class OutboundRequest(BaseModel):
@@ -149,7 +150,14 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
         # message warrants an accountable case (incidents, VIP, P1/P2).
         # Idempotent per WhatsApp message id, so webhook redeliveries never
         # double-open. Advisory — intake failure never breaks the message.
+        # Reactions skip intake: an emoji acknowledgement is conversation
+        # context, not a service request — it never reaches the triage model
+        # and can never open a junk case.
         intake_result: dict[str, Any] = {}
+        if msg.reaction:
+            return {"status": "recorded", "conversation_id": conversation["id"],
+                    "client_id": client_id, "reaction": True,
+                    **({"media": media_result} if media_result else {})}
         try:
             idem = f"wa:{msg.external_ref}" if msg.external_ref else _stable_idem(
                 msg.tenant_id, msg.contact, text)
@@ -370,7 +378,20 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         external_ref=msg.get("id", ""),
                         display_name=contacts.get(contact, "")))
                     processed += 1
-                # remaining types (reactions, ...): next iteration
+                elif mtype == "reaction":
+                    # Emoji reaction to a message — ours or the client's own.
+                    # Empty emoji = reaction removed. Kept as a bracketed
+                    # provenance line on the conversation timeline.
+                    rxn = msg.get("reaction", {})
+                    emoji = rxn.get("emoji", "")
+                    text = f"[reaction: {emoji}]" if emoji else "[reaction removed]"
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact, text=text,
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, ""),
+                        reaction=True))
+                    processed += 1
+                # remaining types (e2e nacks, ...): skipped honestly
     return {"processed": processed}
 
 
@@ -469,6 +490,19 @@ async def infobip_inbound(request: Request) -> dict[str, Any]:
                 tenant_id=tenant_id, contact=contact,
                 text=f"[contact shared: {'; '.join(cards)}]",
                 external_ref=ref))
+            processed += 1
+        elif mtype == "REACTION":
+            # Infobip: message.reaction = {action: REACT|UNREACT, emoji,
+            # messageId} (older payloads nest it under content.reaction).
+            rxn = message.get("reaction") or \
+                (message.get("content", {}) or {}).get("reaction", {}) or {}
+            action = str(rxn.get("action", "REACT")).upper()
+            emoji = rxn.get("emoji", "")
+            text = f"[reaction: {emoji}]" \
+                if (emoji and action != "UNREACT") else "[reaction removed]"
+            await inbound(WebhookMessage(
+                tenant_id=tenant_id, contact=contact, text=text,
+                external_ref=ref, reaction=True))
             processed += 1
         # other types: not normalized yet — skipped honestly
     return {"processed": processed}

@@ -30,3 +30,24 @@ const (
 	OutreachService   = "service"   // booking updates, safety — always allowed
 	OutreachMarketing = "marketing" // offers, win-back — consent + cap gated
 )
+
+// MessageTemplate (Phase 21) is a tenant-managed outreach message body.
+// Templates are rendered server-side at send time — {{client_name}} and
+// {{tenant_name}} substitutions — so the stored send record and the channel
+// both carry the final text (provenance: the record keeps the rendered
+// body, not just the template reference). Purpose guards the cap: a
+// "marketing" template cannot be sent as "service" to dodge the frequency
+// cap; "any" follows the send's purpose.
+type MessageTemplate struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
+	Name      string    `json:"name"`
+	Purpose   string    `json:"purpose"` // service | marketing | any
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+const (
+	TemplatePurposeAny = "any"
+)

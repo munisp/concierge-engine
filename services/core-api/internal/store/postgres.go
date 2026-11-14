@@ -78,18 +78,19 @@ func (s pgTenants) Create(ctx context.Context, t *model.Tenant) error {
 	payCfg, _ := json.Marshal(t.PaymentConfig)
 	rewardCfg, _ := json.Marshal(t.RewardProgram)
 	outreachCfg, _ := json.Marshal(t.OutreachConfig)
+	operatorCfg, _ := json.Marshal(t.OperatorConfig)
 	_, err := s.p.db.ExecContext(ctx,
-		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg)
+		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg)
 	return err
 }
 
 func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	var t model.Tenant
-	var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg []byte
+	var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg []byte
 	err := row.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &t.CreatedAt)
+		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &t.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -100,18 +101,19 @@ func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	_ = json.Unmarshal(payCfg, &t.PaymentConfig)
 	_ = json.Unmarshal(rewardCfg, &t.RewardProgram)
 	_ = json.Unmarshal(outreachCfg, &t.OutreachConfig)
+	_ = json.Unmarshal(operatorCfg, &t.OperatorConfig)
 	return &t, nil
 }
 
 func (s pgTenants) Get(ctx context.Context, tenantID string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, created_at
 		 FROM tenants WHERE id = $1`, tenantID))
 }
 
 func (s pgTenants) GetBySlug(ctx context.Context, slug string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, created_at
 		 FROM tenants WHERE slug = $1`, slug))
 }
 
@@ -123,9 +125,10 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 	payCfg, _ := json.Marshal(t.PaymentConfig)
 	rewardCfg, _ := json.Marshal(t.RewardProgram)
 	outreachCfg, _ := json.Marshal(t.OutreachConfig)
+	operatorCfg, _ := json.Marshal(t.OperatorConfig)
 	res, err := s.p.db.ExecContext(ctx,
-		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9, reward_program=$10, outreach_config=$11
-		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg)
+		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9, reward_program=$10, outreach_config=$11, operator_config=$12
+		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg)
 	if err != nil {
 		return err
 	}
@@ -137,7 +140,7 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 
 func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	rows, err := s.p.db.QueryContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, created_at
 		 FROM tenants ORDER BY slug`)
 	if err != nil {
 		return nil, err
@@ -146,14 +149,19 @@ func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	out := []model.Tenant{}
 	for rows.Next() {
 		var t model.Tenant
-		var brand, pricing, sla []byte
+		var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg []byte
 		if err := rows.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-			&t.AutonomyDial, &t.Tier2LimitMinor, &t.CreatedAt); err != nil {
+			&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(brand, &t.Brand)
 		_ = json.Unmarshal(pricing, &t.PricingRules)
 		_ = json.Unmarshal(sla, &t.SLAConfig)
+		_ = json.Unmarshal(taxCfg, &t.TaxConfig)
+		_ = json.Unmarshal(payCfg, &t.PaymentConfig)
+		_ = json.Unmarshal(rewardCfg, &t.RewardProgram)
+		_ = json.Unmarshal(outreachCfg, &t.OutreachConfig)
+		_ = json.Unmarshal(operatorCfg, &t.OperatorConfig)
 		out = append(out, t)
 	}
 	return out, rows.Err()

@@ -168,6 +168,18 @@ type OutreachStore interface {
 	ListSends(ctx context.Context, tenantID string, limit int) ([]model.OutreachSend, error)
 }
 
+// TemplateStore (Phase 21): tenant-managed outreach message templates.
+// Upsert is keyed by (tenant, name) so re-saving a name is an update, not
+// a conflict — the console save button is naturally idempotent.
+type TemplateStore interface {
+	Upsert(ctx context.Context, t *model.MessageTemplate) error
+	Get(ctx context.Context, tenantID, id string) (*model.MessageTemplate, error)
+	// GetByName resolves the composer picker's selection at send time.
+	GetByName(ctx context.Context, tenantID, name string) (*model.MessageTemplate, error)
+	List(ctx context.Context, tenantID string) ([]model.MessageTemplate, error)
+	Delete(ctx context.Context, tenantID, id string) error
+}
+
 // ---------------------------------------------------------- Phase 6 geo
 
 type GeoStore interface {
@@ -316,5 +328,6 @@ type Store interface {
 	Geo() GeoStore
 	Receipts() ReceiptStore
 	Outreach() OutreachStore
+	Templates() TemplateStore
 	Close()
 }

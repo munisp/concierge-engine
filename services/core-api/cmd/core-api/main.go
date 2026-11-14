@@ -39,6 +39,9 @@ func main() {
 	}
 	defer st.Close()
 
+	if cfg.WebhookRotationWindowHours > 0 {
+		domain.WebhookRotationWindow = time.Duration(cfg.WebhookRotationWindowHours) * time.Hour
+	}
 	svc := domain.NewServices(st, domain.Deps{
 		PolicyURL:     cfg.PolicyEngineURL,
 		LedgerURL:     cfg.LedgerAdapterURL,

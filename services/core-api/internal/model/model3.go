@@ -30,6 +30,13 @@ type WebhookSubscription struct {
 	Secret    string    `json:"-"`      // returned once at creation, never re-exposed
 	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
+	// Phase 21: dual-secret rotation window. RotateSecret keeps the previous
+	// secret here; while SecretRotatedAt is within WebhookRotationWindow the
+	// dispatcher signs with BOTH secrets (comma-separated header) so
+	// receivers can cut over without dropping deliveries. PrevSecret is
+	// never exposed over the API.
+	PrevSecret      string    `json:"-"`
+	SecretRotatedAt time.Time `json:"secret_rotated_at,omitempty"`
 }
 
 // WebhookDelivery is one outbound attempt record (at-least-once). The

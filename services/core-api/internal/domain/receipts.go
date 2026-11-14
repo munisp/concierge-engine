@@ -110,16 +110,41 @@ func (svc *ReceiptsService) alertLinkedCase(ctx context.Context, tenantID string
 
 // pushOperatorAlert (Phase 13): the SLA breach evidence lands where the
 // operator actually looks — WhatsApp — through the same channel adapter.
+// Phase 21: per-tenant operator rosters — Tenant.OperatorConfig.AlertPhones
+// overrides the platform-global CE_OPERATOR_PHONE (empty roster = fallback).
 // Advisory: alert delivery failure never blocks receipt recording, and the
 // event stream already carries case.reply_failed for everything else.
 func (svc *ReceiptsService) pushOperatorAlert(ctx context.Context, tenantID string, c *model.Case, rc *model.MessageReceipt) {
-	if svc.waURL == "" || svc.operatorPhone == "" {
+	if svc.waURL == "" {
+		return
+	}
+	phones := svc.alertPhones(ctx, tenantID)
+	if len(phones) == 0 {
 		return
 	}
 	body := fmt.Sprintf("DELIVERY FAILED — case %s (%s): your approved reply never reached the client (ref %s). Resend advised.",
 		c.ID[:8], c.Title, rc.ExternalRef)
+	for _, phone := range phones {
+		svc.pushAlert(ctx, tenantID, phone, body)
+	}
+}
+
+// alertPhones resolves the tenant's operator roster; an empty roster falls
+// back to the platform-global operator phone.
+func (svc *ReceiptsService) alertPhones(ctx context.Context, tenantID string) []string {
+	if t, err := svc.s.Store.Tenants().Get(ctx, tenantID); err == nil &&
+		len(t.OperatorConfig.AlertPhones) > 0 {
+		return t.OperatorConfig.AlertPhones
+	}
+	if svc.operatorPhone != "" {
+		return []string{svc.operatorPhone}
+	}
+	return nil
+}
+
+func (svc *ReceiptsService) pushAlert(ctx context.Context, tenantID, phone, body string) {
 	payload, _ := json.Marshal(map[string]string{
-		"tenant_id": tenantID, "contact": svc.operatorPhone, "body": body})
+		"tenant_id": tenantID, "contact": phone, "body": body})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		strings.TrimSuffix(svc.waURL, "/")+"/v1/send", strings.NewReader(string(payload)))
 	if err != nil {

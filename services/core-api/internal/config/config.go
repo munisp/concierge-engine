@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	ListenAddr       string
@@ -27,6 +30,9 @@ type Config struct {
 	OperatorPhone    string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
 	GeocodeURL       string // CE_GEOCODE_URL: Nominatim-compatible geocoder; empty = built-in gazetteer
 	GeocodeKey       string // CE_GEOCODE_API_KEY
+	// CE_WEBHOOK_ROTATION_WINDOW_HOURS: dual-secret signing window after a
+	// webhook secret rotation; default 24 (domain.WebhookRotationWindow).
+	WebhookRotationWindowHours int
 }
 
 func getenv(k, def string) string {
@@ -62,5 +68,15 @@ func Load() Config {
 		OperatorPhone:    getenv("CE_OPERATOR_PHONE", ""),
 		GeocodeURL:       getenv("CE_GEOCODE_URL", ""),
 		GeocodeKey:       getenv("CE_GEOCODE_API_KEY", ""),
+		WebhookRotationWindowHours: getenvInt("CE_WEBHOOK_ROTATION_WINDOW_HOURS", 24),
 	}
+}
+
+func getenvInt(k string, def int) int {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
 }

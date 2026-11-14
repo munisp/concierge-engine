@@ -101,3 +101,37 @@ var EventCatalog = []EventSpec{
 	{"webhook.test", "webhook", "Synthetic test delivery for endpoint verification", []string{"subscription_id"}},
 	{"webhook.rotated", "webhook", "Subscription signing secret rotated", []string{"subscription_id"}},
 }
+
+// ------------------------------------------------------------ Phase 21:
+// schema versioning. The catalog is the integrator contract; webhook
+// envelopes stamp "schema_version" so receivers pin parsing to a version
+// instead of guessing payload shape from the kind alone. All kinds are v1
+// today — a payload-breaking change registers the new version here (and
+// keeps emitting the old shape for pinned receivers until they migrate).
+var eventVersions = map[string]int{
+	// "kind": 2 — example of a future bump; empty map = everything is v1.
+}
+
+// CatalogVersion reports the payload schema version for an event kind.
+// Kinds without an explicit entry are v1 (and webhook.test is v1).
+func CatalogVersion(kind string) int {
+	if v, ok := eventVersions[kind]; ok {
+		return v
+	}
+	return 1
+}
+
+// EventSpecJSON is the catalog wire shape: the spec plus its schema version.
+type EventSpecJSON struct {
+	EventSpec
+	Version int `json:"version"`
+}
+
+// CatalogJSON renders the full catalog with per-kind schema versions.
+func CatalogJSON() []EventSpecJSON {
+	out := make([]EventSpecJSON, 0, len(EventCatalog))
+	for _, e := range EventCatalog {
+		out = append(out, EventSpecJSON{e, CatalogVersion(e.Kind)})
+	}
+	return out
+}

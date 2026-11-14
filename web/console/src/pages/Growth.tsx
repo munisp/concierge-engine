@@ -61,6 +61,15 @@ type Send = {
   created_at: string;
 };
 
+type MsgTemplate = {
+  id: string;
+  name: string;
+  purpose: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
 const KIND_ORDER = ["page_view", "ad_click", "conversation_started", "request_created", "booking", "outreach_sent", "referral_converted"];
 
 export default function Growth() {
@@ -81,6 +90,13 @@ export default function Growth() {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [sentMsg, setSentMsg] = useState("");
 
+  // message templates (Phase 21)
+  const [templates, setTemplates] = useState<MsgTemplate[]>([]);
+  const [tplName, setTplName] = useState("");
+  const [tplPurpose, setTplPurpose] = useState("any");
+  const [tplBody, setTplBody] = useState("");
+  const [oTemplateId, setOTemplateId] = useState("");
+
   const [promos, setPromos] = useState<Promo[]>([]);
   const [pCode, setPCode] = useState("");
   const [pCredit, setPCredit] = useState("");
@@ -92,6 +108,27 @@ export default function Growth() {
     api.get<FunnelRow[]>("/v1/attribution/funnel").then(setFunnel).catch((e) => setErr(String(e)));
     api.get<Send[]>("/v1/outreach/sends?limit=20").then(setSends).catch((e) => setErr(String(e)));
     api.get<Promo[]>("/v1/promos").then(setPromos).catch((e) => setErr(String(e)));
+    api.get<MsgTemplate[]>("/v1/outreach/templates").then(setTemplates).catch((e) => setErr(String(e)));
+  };
+
+  const saveTemplate = async () => {
+    setErr("");
+    try {
+      await api.post<MsgTemplate>("/v1/outreach/templates", {
+        name: tplName, purpose: tplPurpose, body: tplBody,
+      });
+      setTplName(""); setTplBody("");
+      load();
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const deleteTemplate = async (id: string) => {
+    setErr("");
+    try {
+      await api.del(`/v1/outreach/templates/${id}`);
+      if (oTemplateId === id) setOTemplateId("");
+      load();
+    } catch (e) { setErr(String(e)); }
   };
 
   const createPromo = async () => {
@@ -138,7 +175,7 @@ export default function Growth() {
     try {
       const o = await api.post<Send>("/v1/outreach/send", {
         client_id: oClient, purpose: oPurpose, body: oBody || undefined,
-        template: oTemplate || undefined,
+        template: oTemplate || undefined, template_id: oTemplateId || undefined,
         idempotency_key: `console-${Date.now()}`,
       });
       setSentMsg(`${o.status}${o.detail ? ` — ${o.detail}` : ""}${o.external_ref ? ` (ref ${o.external_ref})` : ""}`);
@@ -286,13 +323,56 @@ export default function Growth() {
           </p>
         )}
         <div className="row">
-          <input placeholder="body (freeform, inside 24h session)" value={oBody} onChange={(e) => setOBody(e.target.value)} />
+          <input placeholder="body (freeform, inside 24h session)" value={oBody}
+            onChange={(e) => setOBody(e.target.value)} disabled={!!oTemplateId} />
         </div>
         <div className="row">
-          <input placeholder="or approved template name" value={oTemplate} onChange={(e) => setOTemplate(e.target.value)} />
-          <button onClick={send} disabled={!oClient || (!oBody && !oTemplate)}>Send</button>
+          <select value={oTemplateId} onChange={(e) => setOTemplateId(e.target.value)}>
+            <option value="">saved template… (rendered server-side)</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.purpose})</option>
+            ))}
+          </select>
+          <input placeholder="or approved WA template name" value={oTemplate} onChange={(e) => setOTemplate(e.target.value)} />
+          <button onClick={send} disabled={!oClient || (!oBody && !oTemplate && !oTemplateId)}>Send</button>
         </div>
+        {oTemplateId && (
+          <p className="muted">Body renders server-side from the template — {"{{client_name}}"} and {"{{tenant_name}}"} are substituted at send time.</p>
+        )}
         {sentMsg && <p className="ok">{sentMsg}</p>}
+      </div>
+
+      <div className="card">
+        <h2>Message templates</h2>
+        <div className="row">
+          <input placeholder="name (e.g. winback-q4)" value={tplName} onChange={(e) => setTplName(e.target.value)} />
+          <select value={tplPurpose} onChange={(e) => setTplPurpose(e.target.value)}>
+            <option value="any">any purpose</option>
+            <option value="service">service</option>
+            <option value="marketing">marketing</option>
+          </select>
+          <button onClick={saveTemplate} disabled={!tplName || !tplBody}>Save template</button>
+        </div>
+        <div className="row">
+          <input style={{ flex: 1 }} placeholder="body — {{client_name}} and {{tenant_name}} substituted at send time"
+            value={tplBody} onChange={(e) => setTplBody(e.target.value)} />
+        </div>
+        {templates.length === 0 ? <p>No templates yet.</p> : (
+          <table>
+            <thead><tr><th>Name</th><th>Purpose</th><th>Body</th><th>Updated</th><th></th></tr></thead>
+            <tbody>
+              {templates.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.name}</td>
+                  <td>{t.purpose}</td>
+                  <td>{t.body.length > 60 ? t.body.slice(0, 60) + "…" : t.body}</td>
+                  <td>{new Date(t.updated_at).toLocaleDateString()}</td>
+                  <td><button onClick={() => void deleteTemplate(t.id)}>Delete</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="card">

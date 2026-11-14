@@ -29,7 +29,17 @@ type Tenant struct {
 	RewardProgram RewardProgram `json:"reward_program"`
 	// Phase 20: per-tenant outreach configuration.
 	OutreachConfig OutreachConfig `json:"outreach_config"`
+	// Phase 21: per-tenant operator roster — SLA/failure alert recipients.
+	// Empty roster = platform fallback (CE_OPERATOR_PHONE).
+	OperatorConfig OperatorConfig `json:"operator_config"`
 	CreatedAt      time.Time      `json:"created_at"`
+}
+
+// OperatorConfig is the tenant's operator roster. AlertPhones receive
+// WhatsApp alerts on SLA-relevant failures (e.g. a failed delivery of an
+// approved case reply). Empty = the platform-wide CE_OPERATOR_PHONE.
+type OperatorConfig struct {
+	AlertPhones []string `json:"alert_phones,omitempty"`
 }
 
 // TaxConfig is the tenant's tax posture. Engine picks the calculator:

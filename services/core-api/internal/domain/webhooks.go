@@ -24,6 +24,12 @@ import (
 	"concierge-engine/services/core-api/internal/model"
 )
 
+// WebhookRotationWindow is how long a rotated-out secret keeps signing
+// (alongside the new one) after RotateSecret. Receivers get the window to
+// cut over without dropping deliveries. Overridable via
+// CE_WEBHOOK_ROTATION_WINDOW_HOURS (wired in main).
+var WebhookRotationWindow = 24 * time.Hour
+
 type WebhookService struct {
 	s  *Services
 	hc *http.Client
@@ -96,6 +102,9 @@ func (svc *WebhookService) FanOut(ctx context.Context, tenantID, eventType, even
 		body, err := json.Marshal(map[string]any{
 			"id": eventID, "type": eventType, "tenant_id": tenantID,
 			"created_at": svc.s.Now().UTC(), "data": payload,
+			// Phase 21: schema versioning — receivers pin parsing to a
+			// version instead of guessing payload shape from kind alone.
+			"schema_version": CatalogVersion(eventType),
 		})
 		if err != nil {
 			continue
@@ -128,6 +137,30 @@ func SignDelivery(secret string, payload []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// activeSecrets returns the secrets that must sign a delivery right now:
+// the current secret always, plus the previous one while the rotation
+// window is still open (Phase 21 dual-secret window).
+func activeSecrets(sub *model.WebhookSubscription, now time.Time) []string {
+	secrets := []string{sub.Secret}
+	if sub.PrevSecret != "" && !sub.SecretRotatedAt.IsZero() &&
+		now.Sub(sub.SecretRotatedAt) < WebhookRotationWindow {
+		secrets = append(secrets, sub.PrevSecret)
+	}
+	return secrets
+}
+
+// SignDeliveryAny computes the X-Concierge-Signature header covering every
+// active secret: "sha256=<new>" outside a rotation window,
+// "sha256=<new>,sha256=<prev>" inside it. Receivers accept ANY matching
+// signature — the receiver-side cutover pattern (Stripe-style v1 lists).
+func SignDeliveryAny(secrets []string, payload []byte) string {
+	parts := make([]string, 0, len(secrets))
+	for _, s := range secrets {
+		parts = append(parts, SignDelivery(s, payload))
+	}
+	return strings.Join(parts, ",")
+}
+
 // DispatchDue delivers up to limit due deliveries. 2xx marks delivered; any
 // other outcome retries with exponential backoff until MaxAttempts, then the
 // delivery is parked (visible via ListDeliveries for manual replay).
@@ -148,7 +181,7 @@ func (svc *WebhookService) DispatchDue(ctx context.Context, now time.Time, limit
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Concierge-Signature", SignDelivery(sub.Secret, []byte(d.Payload)))
+		req.Header.Set("X-Concierge-Signature", SignDeliveryAny(activeSecrets(sub, now), []byte(d.Payload)))
 		req.Header.Set("X-Concierge-Event", d.EventKind)
 		req.Header.Set("X-Concierge-Delivery", d.ID)
 		resp, err := svc.hc.Do(req)
@@ -210,9 +243,11 @@ func (svc *WebhookService) ReplayDelivery(ctx context.Context, tenantID, deliver
 	return d, nil
 }
 
-// RotateSecret replaces a subscription's signing secret. The old secret stops
-// verifying immediately (simplest honest semantics — receivers must update
-// atomically); the new secret is returned once.
+// RotateSecret replaces a subscription's signing secret. The previous
+// secret keeps signing alongside the new one for WebhookRotationWindow
+// (Phase 21 dual-secret window) so receivers can cut over without missing
+// deliveries; after the window only the new secret signs. The new secret
+// is returned once.
 func (svc *WebhookService) RotateSecret(ctx context.Context, tenantID, subID string) (*model.WebhookSubscription, error) {
 	sub, err := svc.s.Store.Webhooks().GetSubscription(ctx, tenantID, subID)
 	if err != nil {
@@ -222,12 +257,14 @@ func (svc *WebhookService) RotateSecret(ctx context.Context, tenantID, subID str
 	if _, err := rand.Read(raw); err != nil {
 		return nil, err
 	}
+	sub.PrevSecret = sub.Secret
 	sub.Secret = "whk_" + hex.EncodeToString(raw)
+	sub.SecretRotatedAt = svc.s.Now()
 	if err := svc.s.Store.Webhooks().UpdateSubscription(ctx, sub); err != nil {
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "webhook", subID, "webhook.rotated",
-		map[string]any{"subscription_id": subID})
+		map[string]any{"subscription_id": subID, "rotated_at": sub.SecretRotatedAt})
 	svc.s.Audit.Log(ctx, tenantID, "api", "webhook.rotated", "webhook", subID, nil)
 	return sub, nil
 }
@@ -243,6 +280,7 @@ func (svc *WebhookService) TestSubscription(ctx context.Context, tenantID, subID
 		"id": NewID(), "type": "webhook.test", "tenant_id": tenantID,
 		"created_at": svc.s.Now().UTC(),
 		"data":       map[string]any{"subscription_id": subID},
+		"schema_version": CatalogVersion("webhook.test"),
 	})
 	d := &model.WebhookDelivery{
 		ID: NewID(), TenantID: tenantID, SubscriptionID: sub.ID,

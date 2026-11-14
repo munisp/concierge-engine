@@ -19,6 +19,7 @@ type WebhookSub = {
   events: string[];
   active: boolean;
   created_at: string;
+  secret_rotated_at?: string; // set while a dual-secret rotation window is open
 };
 
 type Delivery = {
@@ -69,6 +70,7 @@ export default function Integrations() {
   const [hookURL, setHookURL] = useState("");
   const [hookEvents, setHookEvents] = useState("booking.*");
   const [secret, setSecret] = useState("");
+  const [secretNote, setSecretNote] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -133,11 +135,14 @@ export default function Integrations() {
   }
 
   // Phase 15: rotate signing secret (shown once), send a test event,
-  // replay a parked delivery.
+  // replay a parked delivery. Phase 21: the previous secret keeps signing
+  // alongside the new one for the rotation window (default 24h), so the
+  // receiver cutover doesn't drop deliveries.
   async function rotateSecret(id: string) {
     try {
-      const res = await api.post<{ secret: string }>(`/v1/webhooks/${id}/rotate-secret`, {});
+      const res = await api.post<{ secret: string; note?: string }>(`/v1/webhooks/${id}/rotate-secret`, {});
       setSecret(res.secret);
+      if (res.note) setSecretNote(res.note);
     } catch (e) {
       setError(e instanceof Error ? e.message : "rotate failed");
     }
@@ -168,6 +173,7 @@ export default function Integrations() {
       {secret && (
         <p className="notice">
           Secret (shown once — copy now): <code>{secret}</code>
+          {secretNote && <><br />{secretNote}</>}
         </p>
       )}
 
@@ -236,7 +242,11 @@ export default function Integrations() {
               <tr key={s.id}>
                 <td>{s.url}</td>
                 <td>{s.events.join(", ")}</td>
-                <td>{s.active ? "active" : "paused"}</td>
+                <td>
+                  {s.active ? "active" : "paused"}
+                  {s.secret_rotated_at &&
+                    ` · rotated ${new Date(s.secret_rotated_at).toLocaleString()} (both secrets sign during the window)`}
+                </td>
                 <td>
                   <button onClick={() => void toggleHook(s.id, !s.active)}>
                     {s.active ? "Pause" : "Resume"}

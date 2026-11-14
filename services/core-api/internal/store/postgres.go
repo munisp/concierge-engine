@@ -156,11 +156,21 @@ func (s pgClients) Upsert(ctx context.Context, c *model.Client) error {
 	}
 	defer tx.Rollback()
 	consent, _ := json.Marshal(c.Consent)
+	// vip_flags is text[]: database/sql can't bind []string through pgx's
+	// stdlib shim, so cross over as jsonb and rebuild the array server-side.
+	flags := []byte("[]")
+	if len(c.VIPFlags) > 0 {
+		flags, _ = json.Marshal(c.VIPFlags)
+	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO clients (id, tenant_id, full_name, email, phone, org_id, vip_flags, loyalty_tier, kyc_status, consent)
-		 VALUES ($1,$2,$3,$4,$5,nullif($6,'')::uuid,$7,$8,$9,$10)
-		 ON CONFLICT (id) DO UPDATE SET full_name=$3, email=$4, phone=$5, vip_flags=$7, loyalty_tier=$8, kyc_status=$9, consent=$10`,
-		c.ID, c.TenantID, c.FullName, c.Email, c.Phone, c.OrgID, c.VIPFlags, c.LoyaltyTier, c.KYCStatus, consent)
+		 VALUES ($1,$2,$3,$4,$5,nullif($6,'')::uuid,
+		         coalesce((SELECT array_agg(x) FROM jsonb_array_elements_text($7::jsonb) AS x), '{}'::text[]),
+		         $8,$9,$10)
+		 ON CONFLICT (id) DO UPDATE SET full_name=$3, email=$4, phone=$5,
+			vip_flags=coalesce((SELECT array_agg(x) FROM jsonb_array_elements_text($7::jsonb) AS x), '{}'::text[]),
+			loyalty_tier=$8, kyc_status=$9, consent=$10`,
+		c.ID, c.TenantID, c.FullName, c.Email, c.Phone, c.OrgID, string(flags), c.LoyaltyTier, c.KYCStatus, consent)
 	if err != nil {
 		return err
 	}
@@ -169,22 +179,23 @@ func (s pgClients) Upsert(ctx context.Context, c *model.Client) error {
 
 func (s pgClients) scanClient(row interface{ Scan(...any) error }) (*model.Client, error) {
 	var c model.Client
-	var consent []byte
+	var consent, flags []byte
 	var org *string
 	err := row.Scan(&c.ID, &c.TenantID, &c.FullName, &c.Email, &c.Phone, &org,
-		&c.VIPFlags, &c.LoyaltyTier, &c.KYCStatus, &consent, &c.CreatedAt)
+		&flags, &c.LoyaltyTier, &c.KYCStatus, &consent, &c.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	if org != nil {
 		c.OrgID = *org
 	}
+	_ = json.Unmarshal(flags, &c.VIPFlags)
 	_ = json.Unmarshal(consent, &c.Consent)
 	return &c, nil
 }
 
 const clientCols = `id, tenant_id, coalesce(full_name,''), coalesce(email,''), coalesce(phone,''), org_id::text,
-	vip_flags, coalesce(loyalty_tier,''), kyc_status, consent, created_at`
+	coalesce(to_jsonb(vip_flags), '[]'::jsonb), coalesce(loyalty_tier,''), kyc_status, consent, created_at`
 
 func (s pgClients) Get(ctx context.Context, tenantID, id string) (*model.Client, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)

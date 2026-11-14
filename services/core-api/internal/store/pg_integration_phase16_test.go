@@ -59,8 +59,7 @@ func TestPGClientErasureRoundtrip(t *testing.T) {
 		t.Fatalf("request: %v", err)
 	}
 	bk := &model.Booking{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
-		State: "CONFIRMED", Version: 1, IdempotencyKey: "pg-erasure-b1",
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+		State: "CONFIRMED", CreatedAt: time.Now().UTC()}
 	if err := s.Bookings().Create(ctx, bk); err != nil {
 		t.Fatalf("booking: %v", err)
 	}

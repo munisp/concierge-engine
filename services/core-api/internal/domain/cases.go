@@ -569,10 +569,11 @@ func (svc *CaseService) DraftReply(ctx context.Context, tenantID, id string) (st
 
 // ReplyResult reports an approved outbound reply.
 type ReplyResult struct {
-	Sent     bool   `json:"sent"`     // delivered to the channel adapter
-	Recorded bool   `json:"recorded"` // appended to the conversation timeline
-	Engine   string `json:"engine"`   // draft provenance passed through by the operator
-	Detail   string `json:"detail"`
+	Sent        bool   `json:"sent"`                   // delivered to the channel adapter
+	Recorded    bool   `json:"recorded"`               // appended to the conversation timeline
+	Engine      string `json:"engine"`                 // draft provenance passed through by the operator
+	ExternalRef string `json:"external_ref,omitempty"` // channel message id — receipts attach here
+	Detail      string `json:"detail"`
 }
 
 // SendReply is the operator-approval gate: the operator reviews/edits the
@@ -610,8 +611,21 @@ func (svc *CaseService) SendReply(ctx context.Context, tenantID, id, body, opera
 			req.Header.Set("Content-Type", "application/json")
 			hc := &http.Client{Timeout: 10 * time.Second}
 			if resp, err := hc.Do(req); err == nil {
-				resp.Body.Close()
 				res.Sent = resp.StatusCode < 300
+				// Capture the channel's message id so delivery/read receipts
+				// (Phase 11) attach to this reply.
+				var sendBody struct {
+					Body struct {
+						Messages []struct {
+							ID string `json:"id"`
+						} `json:"messages"`
+					} `json:"body"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&sendBody); err == nil &&
+					len(sendBody.Body.Messages) > 0 {
+					res.ExternalRef = sendBody.Body.Messages[0].ID
+				}
+				resp.Body.Close()
 				if !res.Sent {
 					res.Detail = fmt.Sprintf("channel adapter returned %d", resp.StatusCode)
 				}

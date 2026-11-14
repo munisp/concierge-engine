@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 
 	"concierge-engine/services/core-api/internal/model"
 )
@@ -24,6 +25,46 @@ func (g *memGeo) Areas(ctx context.Context, tenantID string) ([]model.ServiceAre
 	for k, a := range g.m.geoAreas {
 		if k[:len(tenantID)+1] == tenantID+"|" {
 			out = append(out, *a)
+		}
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------- Phase 11 receipts
+
+// In-memory receipts: idempotent per (tenant, external_ref, status) — the
+// key IS the dedupe, so channel redelivery replays are free.
+type memReceipts struct{ m *memory }
+
+func (s *memReceipts) AddReceipt(ctx context.Context, rc *model.MessageReceipt) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	s.m.receipts[rc.TenantID+"|"+rc.ExternalRef+"|"+rc.Status] = rc
+	return nil
+}
+
+func (s *memReceipts) Receipts(ctx context.Context, tenantID, externalRef string) ([]model.MessageReceipt, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	prefix := tenantID + "|" + externalRef + "|"
+	out := []model.MessageReceipt{}
+	for k, rc := range s.m.receipts {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			out = append(out, *rc)
+		}
+	}
+	return out, nil
+}
+
+func (s *memReceipts) ReceiptCounts(ctx context.Context, tenantID string) (map[string]int, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	prefix := tenantID + "|"
+	out := map[string]int{}
+	for k := range s.m.receipts {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			status := k[strings.LastIndex(k, "|")+1:]
+			out[status]++
 		}
 	}
 	return out, nil

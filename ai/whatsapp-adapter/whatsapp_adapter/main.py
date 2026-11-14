@@ -125,10 +125,13 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
                     "lat": msg.latitude, "lng": msg.longitude})
                 chk.raise_for_status()
                 geo = chk.json()
+                # areas arrive as name strings from core-api; tolerate dicts
+                raw_areas = geo.get("areas", [])
+                area_names = ", ".join(
+                    a.get("name", "") if isinstance(a, dict) else str(a) for a in raw_areas)
                 geo_result = {"serviceable": geo.get("serviceable", False),
-                              "areas": geo.get("areas", [])}
+                              "areas": area_names.split(", ") if area_names else []}
                 verdict = "yes" if geo.get("serviceable") else "no"
-                area_names = ", ".join(a.get("name", "") for a in geo.get("areas", []))
                 text += f" → serviceable: {verdict}" + (f" ({area_names})" if area_names else "")
             except Exception:
                 geo_result = {"serviceable": None, "detail": "geo check unavailable"}
@@ -274,6 +277,15 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
             tenant_id = tenant_of_phone(phone_id, tenant_map)
             if not tenant_id:
                 continue
+            # Delivery/read receipts for OUR outbound messages — SLA evidence.
+            # Advisory: receipt recording never blocks message processing.
+            for status in value.get("statuses", []):
+                ref = status.get("id", "")
+                st = status.get("status", "")
+                if ref and st in ("sent", "delivered", "read", "failed"):
+                    await _record_receipt(tenant_id, "whatsapp", ref, st,
+                                          status.get("timestamp", ""))
+                    processed += 1
             contacts = {c.get("wa_id"): c.get("profile", {}).get("name", "")
                         for c in value.get("contacts", [])}
             for msg in value.get("messages", []):
@@ -341,8 +353,44 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         location_name=loc.get("name", ""),
                         location_address=loc.get("address", "")))
                     processed += 1
-                # remaining types (contacts, reactions, ...): next iteration
+                elif mtype == "contacts":
+                    # Shared contact card(s): fold into text for intake —
+                    # "my assistant will coordinate" is a classic concierge move.
+                    cards = []
+                    for c in msg.get("contacts", []):
+                        name = (c.get("name", {}) or {}).get("formatted_name", "")
+                        phones = c.get("phones", []) or []
+                        phone = phones[0].get("phone", "") if phones else ""
+                        cards.append(" — ".join(p for p in (name, phone) if p))
+                    if not any(cards):
+                        continue
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact,
+                        text=f"[contact shared: {'; '.join(cards)}]",
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, "")))
+                    processed += 1
+                # remaining types (reactions, ...): next iteration
     return {"processed": processed}
+
+
+async def _record_receipt(tenant_id: str, channel: str, external_ref: str,
+                          status: str, at: str) -> None:
+    """Forward a delivery/read receipt to core-api. Advisory — receipts are
+    SLA evidence, never on the message path's critical line."""
+    import httpx
+
+    if at and at.isdigit():
+        from datetime import datetime, timezone
+        at = datetime.fromtimestamp(int(at), tz=timezone.utc).isoformat()
+    try:
+        async with httpx.AsyncClient(base_url=CORE_API_URL, timeout=5.0,
+                                     headers={"X-Tenant-ID": tenant_id}) as client:
+            await client.post("/v1/channels/receipts", json={
+                "channel": channel, "external_ref": external_ref,
+                "status": status, "at": at})
+    except Exception:
+        pass
 
 
 def tenant_of_phone(phone_id: str, tenant_map: dict[str, str]) -> str:
@@ -408,5 +456,44 @@ async def infobip_inbound(request: Request) -> dict[str, Any]:
                 location_name=message.get("name", ""),
                 location_address=message.get("address", "")))
             processed += 1
+        elif mtype == "CONTACT":
+            cards = []
+            for c in message.get("contacts", []):
+                name = (c.get("name", {}) or {}).get("formatted_name", "")
+                phones = c.get("phones", []) or []
+                phone = phones[0].get("phone", "") if phones else ""
+                cards.append(" — ".join(p for p in (name, phone) if p))
+            if not any(cards):
+                continue
+            await inbound(WebhookMessage(
+                tenant_id=tenant_id, contact=contact,
+                text=f"[contact shared: {'; '.join(cards)}]",
+                external_ref=ref))
+            processed += 1
         # other types: not normalized yet — skipped honestly
+    return {"processed": processed}
+
+
+# Infobip delivery reports (separate webhook URL in the BSP console):
+# {"results": [{"messageId": ..., "status": {"groupName": ...}}]}
+_INFOBIP_STATUS_MAP = {
+    "ACCEPTED": "sent", "PENDING": "sent", "DELIVERED": "delivered",
+    "SEEN": "read", "READ": "read",
+    "REJECTED": "failed", "UNDELIVERABLE": "failed", "EXPIRED": "failed",
+}
+
+
+@app.post("/webhooks/whatsapp/infobip/status")
+async def infobip_status(request: Request) -> dict[str, Any]:
+    payload = await request.json()
+    processed = 0
+    for result in payload.get("results", []):
+        tenant_id = _infobip_tenant(str(result.get("to", "")))
+        ref = str(result.get("messageId", ""))
+        group = str((result.get("status") or {}).get("groupName", "")).upper()
+        status = _INFOBIP_STATUS_MAP.get(group)
+        if not tenant_id or not ref or not status:
+            continue
+        await _record_receipt(tenant_id, "whatsapp", ref, status, "")
+        processed += 1
     return {"processed": processed}

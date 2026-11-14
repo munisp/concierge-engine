@@ -350,7 +350,9 @@ func TestCaseDraftAndSendReply(t *testing.T) {
 		var b map[string]string
 		json.NewDecoder(r.Body).Decode(&b)
 		sent = append(sent, b)
-		json.NewEncoder(w).Encode(map[string]string{"mode": "freeform"})
+		// Meta-shaped response: receipts attach to this id.
+		json.NewEncoder(w).Encode(map[string]any{"mode": "freeform",
+			"body": map[string]any{"messages": []map[string]string{{"id": "wamid.reply-1"}}}})
 	}))
 	defer waSrv.Close()
 
@@ -391,6 +393,9 @@ func TestCaseDraftAndSendReply(t *testing.T) {
 	}
 	if len(sent) != 1 || sent[0]["contact"] != "+971501234567" || sent[0]["body"] != draft {
 		t.Fatalf("adapter got wrong payload: %+v", sent)
+	}
+	if res.ExternalRef != "wamid.reply-1" {
+		t.Fatalf("channel message id must be captured for receipts: %+v", res)
 	}
 	// timeline holds the staff reply; case timeline holds the approval note
 	msgs, err := s.Conversations.Timeline(ctx, tenantID, conv.ID)

@@ -81,3 +81,79 @@ func parseWKTPolygon(wkt string) [][2]float64 {
 	}
 	return ring
 }
+
+func (p *postgres) Geo() GeoStore { return pgGeo{p} }
+
+// ---------------------------------------------------------- Phase 11 receipts
+
+func (p *postgres) Receipts() ReceiptStore { return pgReceipts{p} }
+
+type pgReceipts struct{ p *postgres }
+
+func (s pgReceipts) AddReceipt(ctx context.Context, rc *model.MessageReceipt) error {
+	tx, err := s.p.tenantTx(ctx, rc.TenantID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO message_receipts (id, tenant_id, channel, external_ref, status, at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (tenant_id, external_ref, status) DO NOTHING`,
+		rc.ID, rc.TenantID, rc.Channel, rc.ExternalRef, rc.Status, rc.At, rc.CreatedAt)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s pgReceipts) Receipts(ctx context.Context, tenantID, externalRef string) ([]model.MessageReceipt, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, tenant_id, channel, external_ref, status, at, created_at
+		 FROM message_receipts WHERE tenant_id = $1 AND external_ref = $2
+		 ORDER BY at`, tenantID, externalRef)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.MessageReceipt{}
+	for rows.Next() {
+		var rc model.MessageReceipt
+		if err := rows.Scan(&rc.ID, &rc.TenantID, &rc.Channel, &rc.ExternalRef,
+			&rc.Status, &rc.At, &rc.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, rc)
+	}
+	return out, rows.Err()
+}
+
+func (s pgReceipts) ReceiptCounts(ctx context.Context, tenantID string) (map[string]int, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT status, COUNT(*) FROM message_receipts WHERE tenant_id = $1 GROUP BY status`,
+		tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		out[status] = n
+	}
+	return out, rows.Err()
+}

@@ -125,6 +125,7 @@ func New(svc *domain.Services) http.Handler {
 	// Phase 4: case management (CRM stays the identity spine; cases are the work)
 	h.registerPhase4(mux)
 	h.registerPhase6(mux)
+	h.registerPhase7(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)

@@ -1052,8 +1052,8 @@ func (s pgOutbox) Add(ctx context.Context, e *model.OutboxEvent) error {
 	return tx.Commit()
 }
 
-func (s pgOutbox) platformTx(ctx context.Context) (*sql.Tx, error) {
-	tx, err := s.p.db.BeginTx(ctx, nil)
+func (p *postgres) platformTx(ctx context.Context) (*sql.Tx, error) {
+	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

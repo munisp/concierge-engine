@@ -102,6 +102,16 @@ type GeoStore interface {
 	Areas(ctx context.Context, tenantID string) ([]model.ServiceArea, error)
 }
 
+// ---------------------------------------------------------- Phase 11 receipts
+
+type ReceiptStore interface {
+	// AddReceipt is idempotent per (tenant, external_ref, status): channel
+	// redelivery must not double-count.
+	AddReceipt(ctx context.Context, rc *model.MessageReceipt) error
+	Receipts(ctx context.Context, tenantID, externalRef string) ([]model.MessageReceipt, error)
+	ReceiptCounts(ctx context.Context, tenantID string) (map[string]int, error)
+}
+
 // ---------------------------------------------------------- Phase 2 stores
 
 type PartnerStore interface {
@@ -214,5 +224,6 @@ type Store interface {
 	Cases() CaseStore
 	Embeddings() EmbeddingStore
 	Geo() GeoStore
+	Receipts() ReceiptStore
 	Close()
 }

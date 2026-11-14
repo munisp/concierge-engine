@@ -154,4 +154,15 @@ infobip` normalizes text/media/location, media fetches are provider-
 agnostic (`fetch_media`: direct URL + App-key auth for BSPs, Meta two-step
 for ids), so all Phase 7–9 extraction works on BSP media unchanged.
 
+**Phase 11 — delivered (see `docs/phase11.md`).** Delivery/read receipts:
+Meta `statuses[]` and Infobip status callbacks are normalized and recorded
+as idempotent, tenant-isolated SLA evidence (`POST/GET
+/v1/channels/receipts`, counts endpoint); `SendReply` now captures the
+provider `wamid` so outbound replies join inbound status callbacks.
+Contacts/vCard intake on both channels. Console geo page (`/geo`):
+service-area CRUD, serviceability tester, nearest partners. Latent fixes:
+geo verdicts no longer degrade against real core responses (areas are
+strings, not dicts), and the `pg` build tag compiles for the first time
+(pgx module, `platformTx` receiver, missing `Geo()` accessor).
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

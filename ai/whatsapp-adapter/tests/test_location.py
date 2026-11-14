@@ -42,7 +42,8 @@ class _FakeCoreGeo:
         if self.geo_fails:
             raise RuntimeError("geo down")
         if self.serviceable:
-            return _Resp({"serviceable": True, "areas": [{"name": "Victoria Island"}]})
+            # parity with the real core-api: areas arrive as name strings
+            return _Resp({"serviceable": True, "areas": ["Victoria Island"]})
         return _Resp({"serviceable": False, "areas": []})
 
 

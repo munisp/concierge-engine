@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+httpx>=0.27
+# Live media plane (voice worker only — the API/tests run without these):
+#   pip install 'pipecat-ai[livekit,deepgram,cartesia,elevenlabs,silero]'

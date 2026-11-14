@@ -313,4 +313,19 @@ not messages. Cross-channel: `GET /v1/clients/{id}/conversations` plus a
 web "Message your concierge" box on the capture page sharing the same
 threaded model as WhatsApp. Migration 0017. 5 domain + 3 pg tests.
 
+**Phase 23 — delivered (see `docs/phase23.md`).** Voice concierge channel:
+`ai/voice-adapter` (FastAPI) puts real-time calls on the platform —
+LiveKit as the self-hostable WebRTC/SIP media plane, Pipecat as the
+VAD/turn-taking/STT→TTS pipeline over its LiveKit transport, and the
+existing concierge-agent as the LLM stage (`/v1/turns`), so policy gating,
+tool tiers, budget caps and shadow mode apply to voice unchanged. Every
+spoken turn is a provenance line on the client's VOICE thread (Phase 22
+threading: repeat calls continue one conversation), per-turn advisory case
+intake idempotent at `voice:{session}:{turn}`, barge-in markers, signed
+LiveKit webhooks (HS256 + body-sha256 binding, stdlib-verified), session
+API with tenant scoping and hangup. Config-gated (`CE_VOICE_ENABLED` +
+provider keys); `/health` and 503s list exactly what's missing; live media
+cutover steps in `docs/deferred-register.md`. 33 tests, hermetic (no audio
+hardware required).
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

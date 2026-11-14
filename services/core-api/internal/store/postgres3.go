@@ -218,11 +218,19 @@ func (s pgWebhooks) EnqueueDelivery(ctx context.Context, d *model.WebhookDeliver
 
 func scanDelivery(row interface{ Scan(...any) error }) (*model.WebhookDelivery, error) {
 	var d model.WebhookDelivery
+	// delivered_at and last_status are nullable until the first delivery
+	// succeeds — scan them nullable or any pending delivery is unreadable.
+	var deliveredAt sql.NullTime
+	var lastStatus sql.NullInt64
 	err := row.Scan(&d.ID, &d.TenantID, &d.SubscriptionID, &d.EventID, &d.EventKind,
-		&d.Payload, &d.Attempts, &d.MaxAttempts, &d.NextAttemptAt, &d.DeliveredAt,
-		&d.LastStatus, &d.LastError, &d.CreatedAt)
+		&d.Payload, &d.Attempts, &d.MaxAttempts, &d.NextAttemptAt, &deliveredAt,
+		&lastStatus, &d.LastError, &d.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
+	}
+	d.DeliveredAt = deliveredAt.Time
+	if lastStatus.Valid {
+		d.LastStatus = int(lastStatus.Int64)
 	}
 	return &d, nil
 }
@@ -259,7 +267,7 @@ func (s pgWebhooks) UpdateDelivery(ctx context.Context, d *model.WebhookDelivery
 	res, err := tx.ExecContext(ctx,
 		`UPDATE webhook_deliveries SET attempts=$2, next_attempt_at=$3, delivered_at=$4,
 		 last_status=$5, last_error=$6 WHERE id=$1`,
-		d.ID, d.Attempts, d.NextAttemptAt, d.DeliveredAt, d.LastStatus, d.LastError)
+		d.ID, d.Attempts, d.NextAttemptAt, nilIfZero(d.DeliveredAt), nullZeroInt(d.LastStatus), d.LastError)
 	if err != nil {
 		return err
 	}
@@ -406,4 +414,13 @@ func (s pgReferrals) Update(ctx context.Context, r *model.Referral) error {
 		return httpx.ErrNotFound
 	}
 	return tx.Commit()
+}
+
+// nullZeroInt maps 0 to NULL for columns where 0 is not a real value
+// (e.g. last_status before the first delivery attempt).
+func nullZeroInt(v int) any {
+	if v == 0 {
+		return nil
+	}
+	return v
 }

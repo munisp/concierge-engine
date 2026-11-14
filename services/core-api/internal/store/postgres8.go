@@ -38,7 +38,7 @@ func (s pgRewards) Accrue(ctx context.Context, r *model.ClientReward) error {
 	// client per code, Phase 20).
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO client_rewards (id, tenant_id, client_id, source_booking_id, kind, amount_minor, currency, expires_at, promo_code)
-		 VALUES ($1,$2,nullif($3,'')::uuid,$4,$5,$6,$7,$8,$9)
+		 VALUES ($1,$2,$3,nullif($4,'')::uuid,$5,$6,$7,$8,$9)
 		 ON CONFLICT DO NOTHING RETURNING id`,
 		r.ID, r.TenantID, r.ClientID, r.SourceBookingID, r.Kind, r.AmountMinor, r.Currency,
 		nilIfZero(r.ExpiresAt), r.PromoCode).Scan(&id)

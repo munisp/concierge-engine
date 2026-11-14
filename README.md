@@ -237,4 +237,13 @@ subjects. Regional consent defaults at registration (EU/EEA/UK/CH opt-in,
 US/CA opt-out, unknown conservative) derived from phone calling codes.
 Registration captures browser locale/timezone automatically.
 
+**Phase 17 — delivered (see `docs/phase17.md`).** Tax/VAT readiness +
+per-tenant payment config. Per-tenant tax engine — none (default), flat
+(basis-points rate, inclusive or exclusive per market convention), or live
+Stripe Tax with honest flat fallback; tax line on the quote, deposit on the
+grand total, engine provenance stored (`tax_engine`) and emitted on
+`quote.created`; Stripe Checkout marked tax-inclusive. Tenant payment config
+disables PSP rails per tenant in routing and methods discovery. Migration
+0012. 7 domain + 1 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

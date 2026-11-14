@@ -188,8 +188,10 @@ func TestStripeMarketRails(t *testing.T) {
 
 func TestPaymentMethodsLaunchMarkets(t *testing.T) {
 	s := testServices(t, Deps{})
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
 	for _, cur := range []string{"EUR", "USD", "GBP"} {
-		methods, err := s.Payments.PaymentMethods(cur)
+		methods, err := s.Payments.PaymentMethods(ctx, tenantID, cur)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +203,7 @@ func TestPaymentMethodsLaunchMarkets(t *testing.T) {
 		}
 	}
 	// African currencies still offer Paystack first.
-	methods, err := s.Payments.PaymentMethods("NGN")
+	methods, err := s.Payments.PaymentMethods(ctx, tenantID, "NGN")
 	if err != nil {
 		t.Fatal(err)
 	}

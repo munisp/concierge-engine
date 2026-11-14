@@ -126,6 +126,12 @@ export default function Capture() {
             <p key={i}>{l.description} — <strong>{money(l.amount_minor, quote.currency)}</strong></p>
           ))}
           <h3>Total: {money(quote.total_minor, quote.currency)}</h3>
+          {quote.tax_minor ? (
+            <p className="muted">
+              Includes {money(quote.tax_minor, quote.currency)} tax
+              {quote.tax_engine === "stripe-tax" ? " (calculated by Stripe Tax)" : ""}
+            </p>
+          ) : null}
           <p className="muted">Valid until {new Date(quote.expires_at).toLocaleString()}</p>
           {!paymentUrl
             ? <button onClick={pay}>Confirm & pay</button>

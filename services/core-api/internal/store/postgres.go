@@ -74,36 +74,40 @@ func (s pgTenants) Create(ctx context.Context, t *model.Tenant) error {
 	brand, _ := json.Marshal(t.Brand)
 	pricing, _ := json.Marshal(t.PricingRules)
 	sla, _ := json.Marshal(t.SLAConfig)
+	taxCfg, _ := json.Marshal(t.TaxConfig)
+	payCfg, _ := json.Marshal(t.PaymentConfig)
 	_, err := s.p.db.ExecContext(ctx,
-		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor)
+		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg)
 	return err
 }
 
 func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	var t model.Tenant
-	var brand, pricing, sla []byte
+	var brand, pricing, sla, taxCfg, payCfg []byte
 	err := row.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-		&t.AutonomyDial, &t.Tier2LimitMinor, &t.CreatedAt)
+		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &t.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(brand, &t.Brand)
 	_ = json.Unmarshal(pricing, &t.PricingRules)
 	_ = json.Unmarshal(sla, &t.SLAConfig)
+	_ = json.Unmarshal(taxCfg, &t.TaxConfig)
+	_ = json.Unmarshal(payCfg, &t.PaymentConfig)
 	return &t, nil
 }
 
 func (s pgTenants) Get(ctx context.Context, tenantID string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, created_at
 		 FROM tenants WHERE id = $1`, tenantID))
 }
 
 func (s pgTenants) GetBySlug(ctx context.Context, slug string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, created_at
 		 FROM tenants WHERE slug = $1`, slug))
 }
 
@@ -111,9 +115,11 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 	brand, _ := json.Marshal(t.Brand)
 	pricing, _ := json.Marshal(t.PricingRules)
 	sla, _ := json.Marshal(t.SLAConfig)
+	taxCfg, _ := json.Marshal(t.TaxConfig)
+	payCfg, _ := json.Marshal(t.PaymentConfig)
 	res, err := s.p.db.ExecContext(ctx,
-		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7
-		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor)
+		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9
+		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg)
 	if err != nil {
 		return err
 	}
@@ -125,7 +131,7 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 
 func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	rows, err := s.p.db.QueryContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, created_at
 		 FROM tenants ORDER BY slug`)
 	if err != nil {
 		return nil, err
@@ -472,10 +478,10 @@ func (s pgQuotes) Create(ctx context.Context, q *model.Quote) error {
 	defer tx.Rollback()
 	lines, _ := json.Marshal(q.Lines)
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO quotes (id, tenant_id, request_id, version, origin, total_minor, deposit_minor, currency, lines, expires_at, policy_verdict_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		`INSERT INTO quotes (id, tenant_id, request_id, version, origin, total_minor, deposit_minor, currency, tax_minor, tax_engine, lines, expires_at, policy_verdict_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		q.ID, q.TenantID, q.RequestID, q.Version, q.Origin, q.TotalMinor, q.DepositMinor,
-		q.Currency, lines, q.ExpiresAt, q.PolicyVerdictID)
+		q.Currency, q.TaxMinor, q.TaxEngine, lines, q.ExpiresAt, q.PolicyVerdictID)
 	if err != nil {
 		return err
 	}
@@ -486,7 +492,7 @@ func (s pgQuotes) scan(row *sql.Row) (*model.Quote, error) {
 	var q model.Quote
 	var lines []byte
 	err := row.Scan(&q.ID, &q.TenantID, &q.RequestID, &q.Version, &q.Origin, &q.TotalMinor,
-		&q.DepositMinor, &q.Currency, &lines, &q.ExpiresAt, &q.PolicyVerdictID, &q.CreatedAt)
+		&q.DepositMinor, &q.Currency, &q.TaxMinor, &q.TaxEngine, &lines, &q.ExpiresAt, &q.PolicyVerdictID, &q.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -494,7 +500,7 @@ func (s pgQuotes) scan(row *sql.Row) (*model.Quote, error) {
 	return &q, nil
 }
 
-const quoteCols = `id, tenant_id, request_id, version, origin, total_minor, deposit_minor, currency, lines, expires_at, coalesce(policy_verdict_id,''), created_at`
+const quoteCols = `id, tenant_id, request_id, version, origin, total_minor, deposit_minor, currency, tax_minor, tax_engine, lines, expires_at, coalesce(policy_verdict_id,''), created_at`
 
 func (s pgQuotes) Get(ctx context.Context, tenantID, id string) (*model.Quote, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)

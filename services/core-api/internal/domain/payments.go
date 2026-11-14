@@ -31,43 +31,53 @@ type CreatePaymentLinkInput struct {
 }
 
 // choosePSP routes a payment to the rail that converts in the customer's
-// market: explicit request wins; NGN/GHS/KES/ZAR default to Paystack when
-// configured (Africa wave); everything else — the EU/US-first launch
-// markets — routes to Stripe; sandbox link when neither is live.
-func (svc *PaymentService) choosePSP(currency, requested string) string {
+// market: explicit request wins (unless the tenant disabled that PSP);
+// NGN/GHS/KES/ZAR default to Paystack when configured (Africa wave);
+// everything else — the EU/US-first launch markets — routes to Stripe;
+// sandbox link when neither is live. Tenant.PaymentConfig disables rails
+// the tenant has no PSP account/entity for (Phase 17).
+func (svc *PaymentService) choosePSP(currency, requested string, pc model.PaymentConfig) string {
 	if requested != "" {
 		return strings.ToLower(requested)
 	}
-	if _, ok := paystackCurrencies[strings.ToUpper(currency)]; ok && svc.s.Paystack.Enabled() {
+	if _, ok := paystackCurrencies[strings.ToUpper(currency)]; ok &&
+		svc.s.Paystack.Enabled() && !pc.DisablePaystack {
 		return "paystack"
 	}
-	if svc.s.Stripe.Enabled() {
+	if svc.s.Stripe.Enabled() && !pc.DisableStripe {
 		return "stripe"
 	}
-	if svc.s.Paystack.Enabled() {
+	if svc.s.Paystack.Enabled() && !pc.DisablePaystack {
 		return "paystack"
 	}
 	return "sandbox"
 }
 
 // PaymentMethods answers "how can a customer pay in this currency?" — the
-// integrator discovery surface for international checkout.
-func (svc *PaymentService) PaymentMethods(currency string) ([]PaymentMethod, error) {
+// integrator discovery surface for international checkout. Tenant payment
+// config filters out disabled rails (Phase 17).
+func (svc *PaymentService) PaymentMethods(ctx context.Context, tenantID, currency string) ([]PaymentMethod, error) {
 	if err := validateCurrency(currency); err != nil {
 		return nil, err
 	}
+	var pc model.PaymentConfig
+	if t, err := svc.s.Store.Tenants().Get(ctx, tenantID); err == nil {
+		pc = t.PaymentConfig
+	}
 	cur := strings.ToUpper(currency)
 	var out []PaymentMethod
-	if channels, ok := paystackCurrencies[cur]; ok {
+	if channels, ok := paystackCurrencies[cur]; ok && !pc.DisablePaystack {
 		out = append(out, PaymentMethod{
 			PSP: "paystack", Currency: cur, Channels: channels,
 			Live: svc.s.Paystack.Enabled(),
 		})
 	}
-	out = append(out, PaymentMethod{
-		PSP: "stripe", Currency: cur, Channels: stripeChannelsFor(cur),
-		Live: svc.s.Stripe.Enabled(),
-	})
+	if !pc.DisableStripe {
+		out = append(out, PaymentMethod{
+			PSP: "stripe", Currency: cur, Channels: stripeChannelsFor(cur),
+			Live: svc.s.Stripe.Enabled(),
+		})
+	}
 	return out, nil
 }
 
@@ -106,10 +116,17 @@ func (svc *PaymentService) CreatePaymentLinkV2(ctx context.Context, tenantID str
 			locale, email = cl.Locale, cl.Email
 		}
 	}
-	psp := svc.choosePSP(q.Currency, in.PSP)
+	var pc model.PaymentConfig
+	if t, err := svc.s.Store.Tenants().Get(ctx, tenantID); err == nil {
+		pc = t.PaymentConfig
+	}
 	if in.PSP != "" && in.PSP != "stripe" && in.PSP != "paystack" {
 		return nil, fmt.Errorf("%w: unknown psp %q", httpx.ErrValidation, in.PSP)
 	}
+	if in.PSP == "stripe" && pc.DisableStripe || in.PSP == "paystack" && pc.DisablePaystack {
+		return nil, fmt.Errorf("%w: psp %q disabled for this tenant", httpx.ErrValidation, in.PSP)
+	}
+	psp := svc.choosePSP(q.Currency, in.PSP, pc)
 	intent := &model.PaymentIntent{
 		ID: NewID(), TenantID: tenantID, QuoteID: q.ID, Mode: in.Mode,
 		AmountMinor: amount, Currency: q.Currency, PSP: psp,

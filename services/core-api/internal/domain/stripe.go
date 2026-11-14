@@ -82,6 +82,7 @@ func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.
 		"line_items[0][price_data][currency]":    {strings.ToLower(intent.Currency)},
 		"line_items[0][price_data][unit_amount]": {strconv.FormatInt(intent.AmountMinor, 10)},
 		"line_items[0][price_data][product_data][name]": {"Concierge service — " + intent.Mode},
+		"line_items[0][price_data][tax_behavior]":        {"inclusive"},
 		"metadata[tenant_id]":                           {intent.TenantID},
 		"metadata[quote_id]":                            {intent.QuoteID},
 		"metadata[intent_id]":                           {intent.ID},
@@ -207,6 +208,52 @@ func ParseStripeEvent(payload []byte) (*StripeEvent, error) {
 		return nil, httpx.ErrValidation
 	}
 	return out, nil
+}
+
+// CalculateTax estimates the tax on a net amount via Stripe Tax
+// (Phase 17). Requires tax registrations in the tenant's Stripe dashboard;
+// callers fall back to their flat rate on any failure. country is the
+// customer country (ISO alpha-2); empty is accepted by Stripe only when
+// the account has a default origin — callers should pass one.
+func (c *StripeClient) CalculateTax(ctx context.Context, currency string, subtotalMinor int64, country string) (int64, error) {
+	if !c.Enabled() {
+		return 0, ErrStripeDisabled
+	}
+	form := url.Values{
+		"currency":                          {strings.ToLower(currency)},
+		"line_items[0][amount]":             {strconv.FormatInt(subtotalMinor, 10)},
+		"line_items[0][reference]":          {"concierge-service"},
+		"line_items[0][tax_behavior]":       {"exclusive"},
+		"customer_details[address_source]":  {"shipping"},
+	}
+	if country != "" {
+		form.Set("customer_details[address][country]", country)
+		form.Set("customer_details[address_source]", "billing")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.base+"/v1/tax/calculations", strings.NewReader(form.Encode()))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	req.Header.Set("Idempotency-Key", fmt.Sprintf("tax:%s:%d:%s", currency, subtotalMinor, country))
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("stripe unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("stripe %d: %s", resp.StatusCode, string(body[:min(len(body), 300)]))
+	}
+	var calc struct {
+		TaxAmountExclusive int64 `json:"tax_amount_exclusive"`
+	}
+	if err := json.Unmarshal(body, &calc); err != nil {
+		return 0, fmt.Errorf("stripe: malformed calculation response")
+	}
+	return calc.TaxAmountExclusive, nil
 }
 
 // Refund initiates a full refund for a captured Checkout Session (Phase 15).

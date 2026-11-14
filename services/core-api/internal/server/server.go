@@ -187,6 +187,8 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 	t.Brand = patch.Brand
 	t.PricingRules = patch.PricingRules
 	t.SLAConfig = patch.SLAConfig
+	t.TaxConfig = patch.TaxConfig
+	t.PaymentConfig = patch.PaymentConfig
 	updated, err := h.svc.Tenants.UpdateConfig(r.Context(), t)
 	if err != nil {
 		httpx.WriteError(w, err)

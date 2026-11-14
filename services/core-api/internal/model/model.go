@@ -22,7 +22,29 @@ type Tenant struct {
 	Region           string    `json:"region"` // EU (default) | UAE
 	AcceptsReferrals bool      `json:"accepts_referrals"`
 	ReferralFeePct   float64   `json:"referral_fee_pct,omitempty"` // default 0.10
-	CreatedAt        time.Time `json:"created_at"`
+	// Phase 17: tax + payment configuration (EU/US launch readiness).
+	TaxConfig     TaxConfig     `json:"tax_config"`
+	PaymentConfig PaymentConfig `json:"payment_config"`
+	CreatedAt     time.Time     `json:"created_at"`
+}
+
+// TaxConfig is the tenant's tax posture. Engine picks the calculator:
+// "" (default) = none (B2B/exempt or not registered — totals carry no tax);
+// "flat" = tenant-configured rate (VAT/GST/sales tax) applied to the service
+// subtotal; "stripe-tax" = live Stripe Tax calculation per quote.
+type TaxConfig struct {
+	Engine            string `json:"engine,omitempty"`   // flat | stripe-tax | "" (none)
+	Country           string `json:"country,omitempty"`  // ISO 3166-1 alpha-2 of the tax registration
+	VATRateBP         int    `json:"vat_rate_bp,omitempty"` // basis points, e.g. 1900 = 19%
+	PricesIncludeTax  bool   `json:"prices_include_tax,omitempty"` // EU B2C convention
+}
+
+// PaymentConfig lets a tenant disable PSPs it has no account/entity for
+// (e.g. an EU-only tenant disables Paystack; a Nigeria-only tenant disables
+// Stripe). Both false = route purely by currency.
+type PaymentConfig struct {
+	DisableStripe   bool `json:"disable_stripe,omitempty"`
+	DisablePaystack bool `json:"disable_paystack,omitempty"`
 }
 
 type PricingRules struct {
@@ -186,9 +208,11 @@ type Quote struct {
 	RequestID       string      `json:"request_id"`
 	Version         int         `json:"version"`
 	Origin          string      `json:"origin"` // INSTANT | HUMAN
-	TotalMinor      int64       `json:"total_minor"`
+	TotalMinor      int64       `json:"total_minor"`  // grand total, tax included
 	DepositMinor    int64       `json:"deposit_minor"`
 	Currency        string      `json:"currency"`
+	TaxMinor        int64       `json:"tax_minor"`           // Phase 17: tax component of TotalMinor
+	TaxEngine       string      `json:"tax_engine,omitempty"` // flat | stripe-tax | "" (none) — provenance
 	Lines           []QuoteLine `json:"lines"`
 	ExpiresAt       time.Time   `json:"expires_at"`
 	PolicyVerdictID string      `json:"policy_verdict_id,omitempty"`

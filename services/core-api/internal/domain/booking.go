@@ -4,6 +4,7 @@ package domain
 
 import (
 	"context"
+	"math"
 
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
@@ -138,6 +139,25 @@ func (svc *BookingService) QuoteRequest(ctx context.Context, tenantID, requestID
 	}
 	lines, total, deposit, currency, instant := BuildQuote(*tenant, catalog, r, svc.s.Now())
 
+	// Phase 17: tax. Applied to the service subtotal per the tenant's tax
+	// posture; the deposit base is the grand total (the client pays tax on
+	// the deposit too). The client's locale feeds Stripe Tax's country
+	// signal; engine provenance is stored on the quote.
+	clientLocale := ""
+	if r.ClientID != "" {
+		if cl, err := svc.s.Store.Clients().Get(ctx, tenantID, r.ClientID); err == nil {
+			clientLocale = cl.Locale
+		}
+	}
+	taxLine, taxMinor, taxEngine := svc.applyTax(ctx, tenant, total, currency, clientLocale)
+	if taxLine != nil {
+		lines = append(lines, *taxLine)
+		total += taxMinor
+		if tenant.PricingRules.DepositPct > 0 {
+			deposit = int64(math.Round(float64(total) * tenant.PricingRules.DepositPct))
+		}
+	}
+
 	// Value-based routing (AI spec §4.1): requests above the TIER-2 limit
 	// escalate to a human owner — AI drafts, human owns.
 	if total > tenant.Tier2LimitMinor {
@@ -166,6 +186,7 @@ func (svc *BookingService) QuoteRequest(ctx context.Context, tenantID, requestID
 	q := &model.Quote{
 		ID: NewID(), TenantID: tenantID, RequestID: requestID, Version: 1,
 		Origin: "INSTANT", TotalMinor: total, DepositMinor: deposit, Currency: currency,
+		TaxMinor: taxMinor, TaxEngine: taxEngine,
 		Lines: lines, ExpiresAt: QuoteExpiry(tenant.PricingRules, svc.s.Now()), CreatedAt: svc.s.Now(),
 	}
 	if err := svc.s.Store.Quotes().Create(ctx, q); err != nil {
@@ -177,7 +198,8 @@ func (svc *BookingService) QuoteRequest(ctx context.Context, tenantID, requestID
 		}
 	}
 	svc.s.Events.Emit(ctx, tenantID, "quote", q.ID, "quote.created",
-		map[string]any{"total_minor": total, "currency": currency, "origin": "INSTANT"})
+		map[string]any{"total_minor": total, "currency": currency, "origin": "INSTANT",
+			"tax_minor": taxMinor, "tax_engine": taxEngine})
 	return q, true, nil
 }
 

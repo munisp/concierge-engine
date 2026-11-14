@@ -30,7 +30,7 @@ var EventCatalog = []EventSpec{
 	{"request.created", "service_request", "Service request captured", []string{"state", "items"}},
 	{"request.amended", "service_request", "Request amended (versioned)", []string{"version"}},
 	{"request.state_changed", "service_request", "Request state machine transition", []string{"from", "to"}},
-	{"quote.created", "quote", "Quote issued (instant or human)", []string{"total_minor", "currency", "origin"}},
+	{"quote.created", "quote", "Quote issued (instant or human)", []string{"total_minor", "currency", "origin", "tax_minor", "tax_engine"}},
 	{"quote.human_required", "service_request", "Request exceeds instant-quote rules — human quoting with SLA", []string{"sla_seconds"}},
 	{"booking.confirmed", "booking", "Quote converted to booking", []string{"quote_id", "total_minor"}},
 

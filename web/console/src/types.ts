@@ -38,6 +38,8 @@ export interface Quote {
   total_minor: number;
   deposit_minor: number;
   currency: string;
+  tax_minor?: number;
+  tax_engine?: string;
   lines: { description: string; amount_minor: number }[];
   expires_at: string;
 }

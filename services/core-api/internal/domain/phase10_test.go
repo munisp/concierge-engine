@@ -210,20 +210,20 @@ func TestPSPRouting(t *testing.T) {
 	s.Paystack = NewPaystackClient("sk_test", paystackStub(t).URL)
 	s.Stripe = NewStripeClient("sk_test", "https://api.stripe.com", "", time.Now)
 
-	if got := s.Payments.choosePSP("NGN", ""); got != "paystack" {
+	if got := s.Payments.choosePSP("NGN", "", model.PaymentConfig{}); got != "paystack" {
 		t.Fatalf("NGN must route to paystack, got %s", got)
 	}
-	if got := s.Payments.choosePSP("EUR", ""); got != "stripe" {
+	if got := s.Payments.choosePSP("EUR", "", model.PaymentConfig{}); got != "stripe" {
 		t.Fatalf("EUR must route to stripe, got %s", got)
 	}
-	if got := s.Payments.choosePSP("EUR", "paystack"); got != "paystack" {
+	if got := s.Payments.choosePSP("EUR", "paystack", model.PaymentConfig{}); got != "paystack" {
 		t.Fatalf("explicit override: %s", got)
 	}
 	// Neither live → sandbox.
 	s2 := testServices(t, Deps{})
 	s2.Paystack = NewPaystackClient("", "")
 	s2.Stripe = NewStripeClient("", "", "", time.Now)
-	if got := s2.Payments.choosePSP("NGN", ""); got != "sandbox" {
+	if got := s2.Payments.choosePSP("NGN", "", model.PaymentConfig{}); got != "sandbox" {
 		t.Fatalf("no PSP configured must degrade to sandbox, got %s", got)
 	}
 }
@@ -334,8 +334,10 @@ func TestPaymentMethodsDiscovery(t *testing.T) {
 	s := testServices(t, Deps{})
 	s.Paystack = NewPaystackClient("sk_test", paystackStub(t).URL)
 	s.Stripe = NewStripeClient("", "", "", time.Now)
+	ctx := context.Background()
+	tenantID := seedTenant(t, s)
 
-	methods, err := s.Payments.PaymentMethods("NGN")
+	methods, err := s.Payments.PaymentMethods(ctx, tenantID, "NGN")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +347,7 @@ func TestPaymentMethodsDiscovery(t *testing.T) {
 	if methods[1].PSP != "stripe" || methods[1].Live {
 		t.Fatalf("stripe must be listed but not live: %+v", methods[1])
 	}
-	if _, err := s.Payments.PaymentMethods("US"); err != httpx.ErrValidation {
+	if _, err := s.Payments.PaymentMethods(ctx, tenantID, "US"); err != httpx.ErrValidation {
 		t.Fatalf("malformed currency: %v", err)
 	}
 	if MinorExponent("JPY") != 0 || MinorExponent("USD") != 2 || MinorExponent("NGN") != 2 {

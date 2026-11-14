@@ -111,7 +111,7 @@ func (h *handlers) refundIntent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) paymentMethods(w http.ResponseWriter, r *http.Request) {
-	methods, err := h.svc.Payments.PaymentMethods(r.URL.Query().Get("currency"))
+	methods, err := h.svc.Payments.PaymentMethods(r.Context(), tenantOf(r), r.URL.Query().Get("currency"))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

@@ -65,6 +65,7 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     if msg.media_id:
         from .ocr import fetch_meta_media, ocr_image
         from .transcribe import transcribe_audio
+        from .video import video_to_text
 
         try:
             data, mime = await fetch_meta_media(msg.media_id)
@@ -72,6 +73,9 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
             if mime.startswith("audio/"):
                 extracted = transcribe_audio(data, mime)
                 label = "voice note"
+            elif mime.startswith("video/"):
+                extracted = video_to_text(data, mime)
+                label = "video note OCR"
             else:
                 extracted = ocr_image(data, mime)
                 label = "media OCR"
@@ -253,7 +257,7 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         external_ref=msg.get("id", ""),
                         display_name=contacts.get(contact, "")))
                     processed += 1
-                elif mtype in ("image", "document", "audio"):
+                elif mtype in ("image", "document", "audio", "video"):
                     media = msg.get(mtype, {})
                     await inbound(WebhookMessage(
                         tenant_id=tenant_id, contact=contact,
@@ -263,7 +267,35 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         media_id=media.get("id", ""),
                         media_mime=media.get("mime_type", "")))
                     processed += 1
-                # other types (video, interactive replies, ...): next iteration
+                elif mtype == "interactive":
+                    # Taps on our outbound list/button options come back as
+                    # interactive replies — treat the selection as the
+                    # message, keeping the option id for provenance.
+                    inter = msg.get("interactive", {})
+                    reply = inter.get("button_reply") or inter.get("list_reply") or {}
+                    title, rid = reply.get("title", ""), reply.get("id", "")
+                    if not title:
+                        continue
+                    text = f"{title} [option: {rid}]" if rid else title
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact, text=text,
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, "")))
+                    processed += 1
+                elif mtype == "button":
+                    # Legacy quick-reply buttons.
+                    btn = msg.get("button", {})
+                    text, payload_id = btn.get("text", ""), btn.get("payload", "")
+                    if not text:
+                        continue
+                    if payload_id:
+                        text = f"{text} [option: {payload_id}]"
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact, text=text,
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, "")))
+                    processed += 1
+                # remaining types (location, contacts, reactions, ...): next iteration
     return {"processed": processed}
 
 

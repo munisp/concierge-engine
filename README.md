@@ -139,4 +139,11 @@ survives sandbox wipes); latency eval `docs/eval-voice-latency.md`
 validated); media block routes audio→transcription, images→OCR, same
 provenance/idempotency/advisory discipline.
 
+**Phase 9 — delivered (see `docs/phase9.md`).** Video notes → ffmpeg
+keyframe sampling (1 fps, `CE_VIDEO_MAX_FRAMES`) → Phase 7 OCR chain →
+intake, real ffmpeg-rendered fixture gate in CI; interactive replies
+(list/button taps) routed into intake as typed-equivalent text with option
+ids kept for provenance — the webhook now handles every message type the
+platform itself can send.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

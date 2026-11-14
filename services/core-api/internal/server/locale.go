@@ -34,6 +34,34 @@ type siteDict struct {
 	SecurePayment     string
 	WhatsAppConfirm   string
 	FooterTagline     string
+	// Phase 31: premium template sections. en + pt-PT are fully translated;
+	// other locales backfill from English in dictFor (honest degrade — the
+	// same policy as guide prose, no machine-translated marketing copy).
+	HowItWorks     string
+	Step1Title     string
+	Step1Body      string
+	Step2Title     string
+	Step2Body      string
+	Step2BodyNoPay string // no payment rail enabled — no payment-link claim
+	Step3Title     string
+	Step3Body      string
+	PlatformBand   string // dark platform-features band heading
+	WidgetTitle    string
+	WidgetBody     string
+	ConciergeTitle string
+	ConciergeBody  string
+	TrackingTitle  string
+	TrackingBody   string
+	PaymentsTitle  string
+	PaymentsBody   string
+	FleetTitle     string
+	FleetBody      string
+	ReviewsHeading string
+	ServicesWord   string // stats strip plural: "services"
+	AreasWord      string // stats strip plural: "areas"
+	CTABandTitle   string
+	CTABandBody    string
+	VerifiedClient string // review attribution line
 }
 
 var siteDicts = map[string]siteDict{
@@ -43,6 +71,28 @@ var siteDicts = map[string]siteDict{
 		OurPartners: "Our partners", ClientReviews: "client reviews", FromPrefix: "from",
 		ChatWhatsApp: "Chat on WhatsApp", SecurePayment: "Secure online payment",
 		WhatsAppConfirm: "WhatsApp confirmation", FooterTagline: "concierge, arranged end to end.",
+		HowItWorks: "How it works",
+		Step1Title: "Tell us what you need", Step1Body: "Book online or message us on WhatsApp — dates, pickup, passengers, wishes.",
+		Step2Title: "Your concierge confirms", Step2Body: "A dedicated concierge confirms every detail and sends one secure payment link.",
+		Step2BodyNoPay: "A dedicated concierge confirms every detail and the full price with you before anything is booked.",
+		Step3Title:     "Travel with live tracking", Step3Body: "Driver details before pickup, live trip tracking, and receipts in the same thread.",
+		PlatformBand:   "One platform behind every booking",
+		WidgetTitle:    "Instant online booking",
+		WidgetBody:     "Real-time quotes and confirmed bookings right on this page — no phone calls, no waiting.",
+		ConciergeTitle: "WhatsApp concierge",
+		ConciergeBody:  "An AI-assisted concierge answers in minutes, 24/7, with a human specialist on hand for anything complex.",
+		TrackingTitle:  "Live trip tracking",
+		TrackingBody:   "Every trip carries a live tracking link — passengers and bookers see the driver arrive in real time.",
+		PaymentsTitle:  "Secure payments",
+		PaymentsBody:   "One secure payment link per booking — major cards and local payment methods, receipts issued automatically.",
+		FleetTitle:     "Vetted fleet & chauffeurs",
+		FleetBody:      "Quality-scored vehicles and certified professional chauffeurs, assigned and monitored per trip.",
+		ReviewsHeading: "What clients say",
+		ServicesWord:   "services",
+		AreasWord:      "areas",
+		CTABandTitle:   "Ready when you are",
+		CTABandBody:    "Book in under a minute — your concierge takes it from there.",
+		VerifiedClient: "Verified client",
 	},
 	"pt-PT": {
 		BookYourConcierge: "Reserve o seu concierge", BookNow: "Reserve já", BookPrefix: "Reservar ",
@@ -50,6 +100,28 @@ var siteDicts = map[string]siteDict{
 		OurPartners: "Os nossos parceiros", ClientReviews: "avaliações de clientes", FromPrefix: "desde",
 		ChatWhatsApp: "Fale connosco no WhatsApp", SecurePayment: "Pagamento online seguro",
 		WhatsAppConfirm: "Confirmação por WhatsApp", FooterTagline: "concierge, organizado de ponta a ponta.",
+		HowItWorks: "Como funciona",
+		Step1Title: "Diga-nos o que precisa", Step1Body: "Reserve online ou envie-nos mensagem no WhatsApp — datas, recolha, passageiros, preferências.",
+		Step2Title: "O seu concierge confirma", Step2Body: "Um concierge dedicado confirma cada detalhe e envia um único link de pagamento seguro.",
+		Step2BodyNoPay: "Um concierge dedicado confirma cada detalhe e o preço total consigo antes de reservar.",
+		Step3Title:     "Viaje com acompanhamento", Step3Body: "Dados do motorista antes da recolha, acompanhamento em direto e recibos na mesma conversa.",
+		PlatformBand:   "Uma plataforma por trás de cada reserva",
+		WidgetTitle:    "Reserva online imediata",
+		WidgetBody:     "Preços em tempo real e reservas confirmadas nesta página — sem telefonemas, sem esperas.",
+		ConciergeTitle: "Concierge no WhatsApp",
+		ConciergeBody:  "Um concierge assistido por IA responde em minutos, 24/7, com um especialista humano disponível para o que for complexo.",
+		TrackingTitle:  "Acompanhamento em direto",
+		TrackingBody:   "Cada viagem tem um link de acompanhamento — passageiros e clientes veem o motorista chegar em tempo real.",
+		PaymentsTitle:  "Pagamentos seguros",
+		PaymentsBody:   "Um link de pagamento seguro por reserva — cartões e métodos locais, recibos emitidos automaticamente.",
+		FleetTitle:     "Frota e motoristas certificados",
+		FleetBody:      "Veículos avaliados por qualidade e motoristas profissionais certificados, atribuídos e monitorizados por viagem.",
+		ReviewsHeading: "O que dizem os clientes",
+		ServicesWord:   "serviços",
+		AreasWord:      "zonas",
+		CTABandTitle:   "Prontos quando quiser",
+		CTABandBody:    "Reserve em menos de um minuto — o seu concierge trata do resto.",
+		VerifiedClient: "Cliente verificado",
 	},
 	"de": {
 		BookYourConcierge: "Ihren Concierge buchen", BookNow: "Jetzt buchen", BookPrefix: "Buchen: ",
@@ -75,12 +147,36 @@ var siteDicts = map[string]siteDict{
 }
 
 // dictFor resolves the UI dictionary; unknown locales get English chrome.
+// Phase 31 section strings backfill from English when a locale leaves them
+// empty (honest degrade — no machine-translated marketing copy).
 func dictFor(locale string) siteDict {
-	if d, ok := siteDicts[locale]; ok {
-		return d
+	d, ok := siteDicts[locale]
+	if !ok {
+		d = siteDicts["en"]
 	}
-	// try the language part (e.g. pt-BR → no entry → en)
-	return siteDicts["en"]
+	en := siteDicts["en"]
+	for _, f := range []struct{ dst, src *string }{
+		{&d.HowItWorks, &en.HowItWorks},
+		{&d.Step1Title, &en.Step1Title}, {&d.Step1Body, &en.Step1Body},
+		{&d.Step2Title, &en.Step2Title}, {&d.Step2Body, &en.Step2Body},
+		{&d.Step2BodyNoPay, &en.Step2BodyNoPay},
+		{&d.Step3Title, &en.Step3Title}, {&d.Step3Body, &en.Step3Body},
+		{&d.PlatformBand, &en.PlatformBand},
+		{&d.WidgetTitle, &en.WidgetTitle}, {&d.WidgetBody, &en.WidgetBody},
+		{&d.ConciergeTitle, &en.ConciergeTitle}, {&d.ConciergeBody, &en.ConciergeBody},
+		{&d.TrackingTitle, &en.TrackingTitle}, {&d.TrackingBody, &en.TrackingBody},
+		{&d.PaymentsTitle, &en.PaymentsTitle}, {&d.PaymentsBody, &en.PaymentsBody},
+		{&d.FleetTitle, &en.FleetTitle}, {&d.FleetBody, &en.FleetBody},
+		{&d.ReviewsHeading, &en.ReviewsHeading},
+		{&d.ServicesWord, &en.ServicesWord}, {&d.AreasWord, &en.AreasWord},
+		{&d.CTABandTitle, &en.CTABandTitle}, {&d.CTABandBody, &en.CTABandBody},
+		{&d.VerifiedClient, &en.VerifiedClient},
+	} {
+		if *f.dst == "" {
+			*f.dst = *f.src
+		}
+	}
+	return d
 }
 
 // tenantLocales is the ordered locale set: site_config.locales when

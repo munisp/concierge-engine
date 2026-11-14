@@ -20,6 +20,13 @@ func (svc *CatalogService) Add(ctx context.Context, c *model.CatalogService) (*m
 	// deliberate operation. Without this, POST /v1/catalog creates an entry
 	// that is invisible to the quote engine (List filters on Active).
 	c.Active = true
+	// Phase 31: a card image must reference an existing tenant media row —
+	// dangling ids are rejected at write time, not discovered on the site.
+	if c.ImageID != "" {
+		if _, err := svc.s.Store.Media().Get(ctx, c.TenantID, c.ImageID); err != nil {
+			return nil, httpx.ErrValidation
+		}
+	}
 	if err := svc.s.Store.Catalog().Add(ctx, c); err != nil {
 		return nil, err
 	}

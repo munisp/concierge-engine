@@ -467,3 +467,20 @@ console `/studio` and `/insights` dashboards. 5 server + 4 domain + 2 pg
 tests.
 
 Deferred components and un-defer triggers: `docs/deferred-register.md`.
+**Phase 31 — delivered (see `docs/phase31.md`).** Media pipeline + premium
+site template v2. Tenants upload site imagery (`POST /v1/media`, JSON
+base64, raster-only with content sniffing, 8 MB cap, tenant-scoped bytea
+with RLS) served publicly at `/site/{slug}/media/{id}` with immutable
+cache headers; catalog services carry `image_id` (validated at write —
+dangling ids rejected) and `site_config.hero_image_id` sets the landing
+hero. The SSR template is rebuilt: sticky glass nav, full-bleed hero with
+gradient overlay (theme-gradient fallback), stats strip (services / areas
+/ rating), 16:9 image service cards with monogram fallback, how-it-works,
+a dark platform-features band (instant booking, WhatsApp concierge, live
+tracking, secure payments — payment claims still vanish when no rail is
+enabled — and vetted fleet) with the inline `/embed/{slug}` booking
+widget, consented review quotes, area pills, FAQ and CTA band. Static
+export now bundles referenced media files and rewrites URLs to the flat
+layout. New chrome strings ship full en + pt-PT, English backfill
+elsewhere (honest degrade). 3 server + 2 pg tests.
+

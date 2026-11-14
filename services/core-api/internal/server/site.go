@@ -84,6 +84,7 @@ func (h *handlers) registerSite(mux *http.ServeMux) {
 var siteReserved = map[string]bool{
 	"book": true, "areas": true, "links": true, "partners": true,
 	"sitemap.xml": true, "robots.txt": true, "og.png": true,
+	"media": true, // Phase 31: public media serving
 }
 
 // siteDispatch routes /site/{slug}/... manually: optional {locale} prefix,
@@ -130,6 +131,9 @@ func (h *handlers) siteDispatch(w http.ResponseWriter, r *http.Request) {
 	case len(segs) == 2 && segs[0] == "areas":
 		r.SetPathValue("areaID", segs[1])
 		h.siteArea(w, r)
+	case len(segs) == 2 && segs[0] == "media":
+		r.SetPathValue("mediaID", segs[1])
+		h.siteMedia(w, r)
 	default:
 		httpx.WriteError(w, httpx.ErrNotFound)
 	}
@@ -216,6 +220,23 @@ type siteServiceView struct {
 	PriceLabel string
 	URL        string
 	Initial    string // first letter, rendered as the card monogram
+	ImageURL   string // Phase 31: card image; empty = monogram tile
+}
+
+type siteStat struct {
+	Value string
+	Label string
+}
+
+type siteReviewView struct {
+	Stars string // e.g. "★★★★★"
+	Text  string
+}
+
+type siteFeature struct {
+	Icon  template.HTML // static inline SVG (trusted constants)
+	Title string
+	Body  string
 }
 
 type siteAreaView struct {
@@ -271,6 +292,16 @@ type sitePage struct {
 	// ThemeCSS (Phase 30): :root overrides from the studio theme — pure
 	// design tokens, never structural.
 	ThemeCSS template.CSS
+	// Phase 31: premium template v2 — hero imagery, stats, consented review
+	// quotes, the platform-features band and the inline booking widget.
+	// EmbedURL always points at the platform origin (PublicBase): the
+	// hostRewrite middleware only maps the /site/ surface, so an iframe src
+	// on a custom domain would miss the /embed route.
+	HeroImageURL string
+	EmbedURL     string
+	Stats        []siteStat
+	Reviews      []siteReviewView
+	Features     []siteFeature
 }
 
 // hreflangCluster builds the alternate set for a page path: every
@@ -283,111 +314,6 @@ func (h *handlers) hreflangCluster(t *model.Tenant, base, pagePath string) []hre
 	out = append(out, hrefAlt{Lang: "x-default", URL: localeBase(base, t, defaultLocale(t)) + pagePath})
 	return out
 }
-
-var siteTmpl = template.Must(template.New("site").Parse(`<!doctype html>
-<html lang="{{.Lang}}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}}</title>
-<meta name="description" content="{{.Description}}">
-<link rel="canonical" href="{{.Canonical}}">
-{{range .HrefLangs}}<link rel="alternate" hreflang="{{.Lang}}" href="{{.URL}}">
-{{end}}{{if .Verification}}<meta name="google-site-verification" content="{{.Verification}}">{{end}}
-<meta property="og:type" content="website">
-<meta property="og:title" content="{{.Title}}">
-<meta property="og:description" content="{{.Description}}">
-<meta property="og:url" content="{{.Canonical}}">
-{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="{{.OGImage}}">{{else}}<meta name="twitter:card" content="summary">{{end}}
-<script type="application/ld+json">{{.JSONLD}}</script>
-<style>
-:root{--ink:#0e1626;--accent:#c9a227;--muted:#5b6672;--bg:#faf9f6;--radius:8px;--font-main:Georgia,'Times New Roman',serif}
-{{.ThemeCSS}}
-*{box-sizing:border-box}
-body{font-family:var(--font-main);margin:0;color:var(--ink);background:var(--bg)}
-header{background:linear-gradient(160deg,var(--ink) 0%,color-mix(in srgb,var(--ink) 80%,white) 100%);color:#fff;padding:72px 24px 56px;text-align:center}
-header .brand{font-size:2.6rem;letter-spacing:.12em;margin:0 0 10px;font-weight:400}
-header .tag{margin:0;opacity:.82;font-size:1.1rem;font-family:system-ui,sans-serif}
-.rating{display:inline-block;margin-top:16px;padding:6px 16px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);font-family:system-ui,sans-serif;font-size:.9rem}
-.cta-row{margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.btn{display:inline-block;padding:14px 32px;border-radius:var(--radius);font-weight:600;font-family:system-ui,sans-serif;text-decoration:none;font-size:1rem}
-.btn-primary{background:var(--accent);color:var(--ink)}
-.btn-primary:hover{filter:brightness(1.1)}
-.btn-ghost{border:1px solid rgba(255,255,255,.5);color:#fff}
-.btn-ghost:hover{border-color:#fff}
-main{max-width:880px;margin:0 auto;padding:40px 20px 120px}
-.trust{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:-24px 0 32px}
-.trust span{background:#fff;border:1px solid #e8e2d2;border-radius:999px;padding:8px 16px;font-family:system-ui,sans-serif;font-size:.82rem;color:var(--muted)}
-h2{font-size:1.15rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #e3ddc9;padding-bottom:8px;font-family:system-ui,sans-serif;color:var(--muted)}
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;list-style:none;padding:0}
-.cards li{background:#fff;border:1px solid #ece7d8;border-radius:var(--radius);overflow:hidden;transition:box-shadow .15s}
-.cards li:hover{box-shadow:0 6px 24px rgba(14,22,38,.10)}
-.card-top{background:linear-gradient(135deg,color-mix(in srgb,var(--ink) 85%,white),var(--ink));color:var(--accent);font-size:2rem;display:flex;align-items:center;justify-content:center;height:96px;letter-spacing:.1em}
-.card-body{padding:16px}
-.card-body .nm{font-size:1.05rem;margin:0 0 4px}
-.card-body .ds{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted);margin:0 0 12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.card-foot{display:flex;justify-content:space-between;align-items:center;font-family:system-ui,sans-serif}
-.card-foot .pr{color:var(--muted);font-size:.9rem}
-.card-foot a{color:var(--ink);font-weight:600;text-decoration:none;border-bottom:2px solid var(--accent)}
-.areas{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:10px}
-.areas li a{display:block;background:#fff;border:1px solid #e8e2d2;border-radius:999px;padding:10px 20px;color:var(--ink);text-decoration:none;font-family:system-ui,sans-serif;font-size:.9rem}
-.areas li a:hover{border-color:var(--accent)}
-.guide{line-height:1.7;color:#3a4350;font-size:1.02rem}
-dl dt{font-weight:600;margin-top:16px;font-size:1.02rem}
-dl dd{margin:6px 0 0;color:#4a5560;line-height:1.6;font-family:system-ui,sans-serif;font-size:.92rem}
-ul.plist{list-style:none;padding:0}
-ul.plist li{padding:12px 0;border-bottom:1px solid #eee;font-family:system-ui,sans-serif}
-.sticky{position:fixed;bottom:0;left:0;right:0;background:var(--ink);padding:12px 20px;display:flex;gap:10px;justify-content:center;z-index:50}
-.sticky .btn{padding:12px 24px;font-size:.95rem}
-footer{text-align:center;color:#8a8f98;font-size:.85rem;padding:32px 24px 110px;font-family:system-ui,sans-serif}
-footer a{color:#8a8f98}
-@media (max-width:640px){.cards{grid-template-columns:1fr}header .brand{font-size:2rem}}
-@media (min-width:900px){.sticky{display:none}}
-</style>
-</head>
-<body>
-<header>
-<h1 class="brand">{{.Heading}}</h1>
-<p class="tag">{{.Description}}</p>
-{{if .ReviewCount}}<span class="rating">★ {{.ReviewAvg}} · {{.ReviewCount}} {{.D.ClientReviews}}</span>{{end}}
-<div class="cta-row">
-<a class="btn btn-primary" href="{{.CTA}}">{{.CTALabel}}</a>
-{{if .WhatsApp}}<a class="btn btn-ghost" href="{{.WhatsApp}}">{{.D.ChatWhatsApp}}</a>{{end}}
-</div>
-</header>
-<main>
-<div class="trust">
-{{if .TrustedPayment}}<span>✓ {{.D.SecurePayment}}</span>{{end}}
-{{if .WhatsApp}}<span>✓ {{.D.WhatsAppConfirm}}</span>{{end}}
-{{if .ReviewCount}}<span>★ {{.ReviewAvg}} ({{.ReviewCount}})</span>{{end}}
-</div>
-{{range .Sections}}<p class="guide">{{.}}</p>{{end}}
-{{if .Services}}<h2>{{.D.Services}}</h2><ul class="cards">{{range .Services}}
-<li><div class="card-top">{{.Initial}}</div><div class="card-body"><p class="nm">{{.Name}}</p>{{if .Desc}}<p class="ds">{{.Desc}}</p>{{end}}
-<div class="card-foot">{{if .PriceLabel}}<span class="pr">{{$.D.FromPrefix}} {{.PriceLabel}}</span>{{else}}<span></span>{{end}}<a href="{{.URL}}">{{$.D.BookNow}} →</a></div></div></li>
-{{end}}</ul>{{end}}
-{{if .Areas}}<h2>{{.D.WhereWeOperate}}</h2><ul class="areas">{{range .Areas}}
-<li><a href="{{.URL}}">{{.Name}}</a></li>
-{{end}}</ul>{{end}}
-{{if .Partners}}<h2>{{.D.OurPartners}}</h2><ul class="plist">{{range .Partners}}
-<li>{{.Name}}{{if .Verticals}} <span style="color:var(--muted)">— {{.Verticals}}</span>{{end}}</li>
-{{end}}</ul>{{end}}
-{{if .FAQs}}<h2>{{.D.CommonQuestions}}</h2><dl>{{range .FAQs}}
-<dt>{{.Q}}</dt><dd>{{.A}}</dd>
-{{end}}</dl>{{end}}
-</main>
-<div class="sticky">
-<a class="btn btn-primary" href="{{.CTA}}">{{.CTALabel}}</a>
-{{if .WhatsApp}}<a class="btn btn-ghost" href="{{.WhatsApp}}">{{.D.ChatWhatsApp}}</a>{{end}}
-</div>
-<footer>
-{{.TenantName}} — {{.D.FooterTagline}}<br>
-<a href="{{.PartnersURL}}">{{.D.OurPartners}}</a>
-</footer>
-</body>
-</html>`))
 
 // siteData loads the tenant + active catalog + service areas for a slug.
 func (h *handlers) siteData(r *http.Request) (*model.Tenant, []model.CatalogService, []model.ServiceArea, error) {
@@ -444,8 +370,69 @@ func (h *handlers) basePage(r *http.Request, t *model.Tenant, locale, ogPath str
 		p.WhatsApp = "https://wa.me/" + strings.TrimPrefix(strings.TrimSpace(n), "+")
 	}
 	p.TrustedPayment = !(t.PaymentConfig.DisableStripe && t.PaymentConfig.DisablePaystack)
+	if !p.TrustedPayment {
+		// Honesty rule (same as the trust chips): no payment-link claims
+		// when no rail is enabled.
+		p.D.Step2Body = p.D.Step2BodyNoPay
+	}
 	p.ThemeCSS = themeCSS(t.SiteConfig.Theme)
+	// Phase 31: the embed widget always lives on the platform origin — the
+	// hostRewrite middleware only maps the /site/ surface, so a custom
+	// domain iframe src would miss /embed.
+	p.EmbedURL = h.svc.PublicBase() + "/embed/" + t.Slug
+	p.Features = featureCards(p.D, p.WhatsApp != "", p.TrustedPayment)
 	return p
+}
+
+// mediaURL builds the public URL for a media asset on the raw (locale-less)
+// site base — media is locale-independent content.
+func mediaURL(rawBase, id string) string {
+	if id == "" {
+		return ""
+	}
+	return rawBase + "/media/" + id
+}
+
+// featureCards assembles the platform-features band (Phase 31). The
+// WhatsApp card describes the concierge-agent channel and is always shown;
+// the payments card is shown only when a payment rail is enabled (the
+// same honesty rule as the trust chips).
+func featureCards(d siteDict, whatsapp, trustedPayment bool) []siteFeature {
+	out := []siteFeature{
+		{Icon: iconCalendar, Title: d.WidgetTitle, Body: d.WidgetBody},
+		{Icon: iconChat, Title: d.ConciergeTitle, Body: d.ConciergeBody},
+		{Icon: iconPin, Title: d.TrackingTitle, Body: d.TrackingBody},
+	}
+	if trustedPayment {
+		out = append(out, siteFeature{Icon: iconCard, Title: d.PaymentsTitle, Body: d.PaymentsBody})
+	}
+	out = append(out, siteFeature{Icon: iconWheel, Title: d.FleetTitle, Body: d.FleetBody})
+	return out
+}
+
+// Static inline SVG icons for the feature band — trusted constants, safe
+// as template.HTML (no tenant data is ever interpolated).
+const (
+	iconCalendar = template.HTML(`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 15 2 2 4-4"/></svg>`)
+	iconChat     = template.HTML(`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`)
+	iconPin      = template.HTML(`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>`)
+	iconCard     = template.HTML(`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`)
+	iconWheel    = template.HTML(`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><line x1="12" y1="3" x2="12" y2="9.5"/><line x1="4.2" y1="16.5" x2="9.8" y2="13.5"/><line x1="19.8" y1="16.5" x2="14.2" y2="13.5"/></svg>`)
+)
+
+// stars renders a 1..5 rating as a star string for the reviews grid.
+func stars(n int) string {
+	if n < 1 {
+		n = 1
+	}
+	if n > 5 {
+		n = 5
+	}
+	out := make([]byte, 0, n*3)
+	for i := 0; i < n; i++ {
+		out = append(out, "★"...)
+	}
+	return string(out)
 }
 
 func priceLabel(s model.CatalogService) string {
@@ -460,9 +447,10 @@ func perUnitLabel(currency string, minor int64) string {
 }
 
 // serviceCards builds the card grid views with localized names, per-locale
-// descriptions (falling back to the localized vertical label), and
-// monogram initials.
-func serviceCards(t *model.Tenant, services []model.CatalogService, base, locale string) []siteServiceView {
+// descriptions (falling back to the localized vertical label), card images
+// (Phase 31 — mediaBase is the raw site base, media is locale-independent)
+// and monogram initials.
+func serviceCards(t *model.Tenant, services []model.CatalogService, base, mediaBase, locale string) []siteServiceView {
 	var out []siteServiceView
 	for _, s := range services {
 		name := localizedServiceName(s, locale)
@@ -476,7 +464,8 @@ func serviceCards(t *model.Tenant, services []model.CatalogService, base, locale
 		}
 		out = append(out, siteServiceView{
 			Name: name, Desc: desc, PriceLabel: priceLabel(s), Initial: initial,
-			URL: fmt.Sprintf("%s/book/%s", base, s.ID),
+			URL:      fmt.Sprintf("%s/book/%s", base, s.ID),
+			ImageURL: mediaURL(mediaBase, s.ImageID),
 		})
 	}
 	return out
@@ -634,7 +623,31 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 		p.ReviewCount = sum.Count
 		p.ReviewAvg = fmt.Sprintf("%.1f", sum.Average)
 	}
-	p.Services = serviceCards(t, services, base, locale)
+	// Phase 31: hero image (tenant media), stats strip and consented review
+	// quotes. A configured hero doubles as the OG card — a real photo beats
+	// the bitmap renderer for link shares.
+	if t.SiteConfig.HeroImageID != "" {
+		p.HeroImageURL = mediaURL(rawBase, t.SiteConfig.HeroImageID)
+		p.OGImage = p.HeroImageURL
+	}
+	if len(services) > 0 {
+		p.Stats = append(p.Stats, siteStat{Value: fmt.Sprintf("%d", len(services)), Label: p.D.ServicesWord})
+	}
+	if len(areas) > 0 {
+		p.Stats = append(p.Stats, siteStat{Value: fmt.Sprintf("%d", len(areas)), Label: p.D.AreasWord})
+	}
+	if p.ReviewCount > 0 {
+		p.Stats = append(p.Stats, siteStat{Value: "★ " + p.ReviewAvg, Label: p.D.ClientReviews})
+	}
+	if reviews, err := h.svc.Store.Reviews().Consented(r.Context(), t.ID); err == nil {
+		for _, rv := range reviews {
+			if rv.Text == "" || len(p.Reviews) >= 3 {
+				continue
+			}
+			p.Reviews = append(p.Reviews, siteReviewView{Stars: stars(rv.Rating), Text: rv.Text})
+		}
+	}
+	p.Services = serviceCards(t, services, base, rawBase, locale)
 	for _, a := range areas {
 		p.Areas = append(p.Areas, siteAreaView{
 			Name: localizedAreaName(a, locale),
@@ -744,7 +757,11 @@ func (h *handlers) siteService(w http.ResponseWriter, r *http.Request) {
 	p.HrefLangs = h.hreflangCluster(t, rawBase, pagePath)
 	p.Heading, p.SubHead = name, name
 	p.CTA, p.CTALabel = h.captureURL(t.ID, "svc-"+svc.ID), p.D.BookPrefix+name
-	p.Services = serviceCards(t, []model.CatalogService{*svc}, base, locale)
+	if svc.ImageID != "" {
+		// Phase 31: the service card image doubles as the page hero.
+		p.HeroImageURL = mediaURL(rawBase, svc.ImageID)
+	}
+	p.Services = serviceCards(t, []model.CatalogService{*svc}, base, rawBase, locale)
 	p.Sections = []string{guideServiceIntro(t, svc, locale, priceLabel(*svc))}
 	if cov := guideCoverage(name, t.Name, areas, locale); cov != "" {
 		p.Sections = append(p.Sections, cov)
@@ -848,7 +865,7 @@ func (h *handlers) siteArea(w http.ResponseWriter, r *http.Request) {
 			guideAreaTrust(areaName, locale),
 		}
 	}
-	p.Services = serviceCards(t, services, base, locale)
+	p.Services = serviceCards(t, services, base, rawBase, locale)
 	p.JSONLD = marshalLDGraph([]map[string]any{
 		{
 			"@type":      "Service",
@@ -1079,7 +1096,7 @@ func (h *handlers) siteLinks(w http.ResponseWriter, r *http.Request) {
 	p.HrefLangs = h.hreflangCluster(t, rawBase, "/links")
 	p.Heading, p.SubHead = t.Name, "book your concierge"
 	p.CTA, p.CTALabel = h.captureChannelURL(t.ID, "social", "bio", "links"), p.D.BookNow
-	p.Services = serviceCards(t, services, base, locale)
+	p.Services = serviceCards(t, services, base, rawBase, locale)
 	p.JSONLD = marshalLD(map[string]any{
 		"@context": "https://schema.org", "@type": "ItemList",
 		"name": t.Name + " — booking links",

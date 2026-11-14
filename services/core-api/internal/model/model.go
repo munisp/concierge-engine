@@ -213,6 +213,10 @@ type SiteConfig struct {
 	// variables; no layout logic depends on it, so a theme can never break
 	// the page structurally.
 	Theme *SiteTheme `json:"theme,omitempty"`
+	// HeroImageID (Phase 31): the landing hero image — a tenant_media id.
+	// Rendered full-bleed behind the hero copy; empty falls back to the
+	// theme gradient. Rides on site_config jsonb (no migration needed).
+	HeroImageID string `json:"hero_image_id,omitempty"`
 }
 
 // SiteTheme (Phase 30): the design tokens the public site template
@@ -337,6 +341,10 @@ type CatalogService struct {
 	// only override presentation on localized site pages.
 	NameI18n map[string]string `json:"name_i18n,omitempty"`
 	DescI18n map[string]string `json:"desc_i18n,omitempty"`
+	// ImageID (Phase 31): the service card image — a tenant_media id,
+	// rendered 16:9 above the card body; empty falls back to the monogram
+	// tile. Settable on create and update.
+	ImageID string `json:"image_id,omitempty"`
 }
 
 // RequestState mirrors booking/v1 RequestState.

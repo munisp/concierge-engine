@@ -4,7 +4,7 @@
 #
 # DDPortugal is a Lisbon luxury tours + chauffeur operator whose site is
 # Portuguese-only with a contact-form funnel. This seed demonstrates the
-# replatform play: bilingual site (pt-PT default + English), per-service
+# replatform play: bilingual site (English default + pt-PT), per-service
 # i18n, instant booking CTAs and a WhatsApp concierge entry point.
 #
 # NOTE: names, durations and prices below are ILLUSTRATIVE demo data shaped
@@ -23,11 +23,11 @@ TENANT=$(curl -sf "$API/v1/platform/tenants" -H 'Content-Type: application/json'
 echo "tenant: $TENANT"
 H=(-H "X-Tenant-ID: $TENANT" -H 'Content-Type: application/json')
 
-echo "== site config: pt-PT default + English, localized brand, WhatsApp entry"
+echo "== site config: English default + pt-PT, localized brand, WhatsApp entry"
 curl -sf -X PUT "$API/v1/tenant" "${H[@]}" -d '{
   "brand":{"whatsapp_number":"+351900000000","tagline":"Luxury transport and private tours across Portugal."},
   "site_config":{
-    "locales":["pt-PT","en"],
+    "locales":["en","pt-PT"],
     "custom_domains":["www.ddportugal.com","ddportugal.com"],
     "brand_i18n":{
       "pt-PT":{"tagline":"Transporte de luxo e tours privados por todo o Portugal."},
@@ -106,7 +106,7 @@ area "Porto" "Porto"
 
 echo
 echo "== done. Public site:"
-echo "   $API/site/ddportugal/        (pt-PT, default)"
+echo "   $API/site/ddportugal/        (English default; /pt-PT/ tree for Portuguese)"
 echo "   $API/site/ddportugal/en/     (English)"
 echo "   $API/site/ddportugal/sitemap.xml"
 echo "   $API/site/ddportugal/links   (link-in-bio)"

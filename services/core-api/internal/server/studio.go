@@ -134,6 +134,36 @@ func (h *handlers) studioExport(w http.ResponseWriter, r *http.Request) {
 		return rec.Body.Bytes()
 	}
 	base := h.svc.PublicBase() + "/site/" + t.Slug
+
+	// Phase 31: collect every media asset the site references (hero +
+	// service cards) so the export bundles the files and rewrites the
+	// URLs — a static host has no /site/{slug}/media route.
+	mediaExt := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+	mediaIDs := map[string]bool{}
+	if t.SiteConfig.HeroImageID != "" {
+		mediaIDs[t.SiteConfig.HeroImageID] = true
+	}
+	for _, s := range services {
+		if s.ImageID != "" {
+			mediaIDs[s.ImageID] = true
+		}
+	}
+	mediaFiles := map[string][]byte{} // zip name -> bytes
+	mediaName := map[string]string{}  // id -> zip name
+	for id := range mediaIDs {
+		md, err := h.svc.Store.Media().Get(r.Context(), t.ID, id)
+		if err != nil {
+			continue // dangling id: the template falls back, export skips
+		}
+		ext, ok := mediaExt[md.ContentType]
+		if !ok {
+			ext = ".jpg"
+		}
+		name := "media-" + md.ID + ext
+		mediaFiles[name] = md.Data
+		mediaName[id] = name
+	}
+
 	relativize := func(html []byte) []byte {
 		s := string(html)
 		// flat layout: /book/<id> → book-<id>.html, /areas/<id> → area-<id>.html
@@ -142,6 +172,9 @@ func (h *handlers) studioExport(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, a := range areas {
 			s = strings.ReplaceAll(s, base+"/areas/"+a.ID, "area-"+a.ID+".html")
+		}
+		for id, name := range mediaName {
+			s = strings.ReplaceAll(s, base+"/media/"+id, name)
 		}
 		s = strings.ReplaceAll(s, base+"/links", "links.html")
 		s = strings.ReplaceAll(s, base+"/partners", "partners.html")
@@ -169,14 +202,18 @@ func (h *handlers) studioExport(w http.ResponseWriter, r *http.Request) {
 	}
 	add("links.html", relativize(render("/site/"+t.Slug+"/links", nil)))
 	add("partners.html", relativize(render("/site/"+t.Slug+"/partners", nil)))
+	for name, data := range mediaFiles {
+		add(name, data)
+	}
 	add("README.txt", []byte(fmt.Sprintf(`%s — static site export (concierge-engine Site Studio)
 
 Deploy: upload these files to any static host (Netlify, S3+CloudFront,
 GitHub Pages, shared hosting). No server-side runtime needed.
 
-What works offline-host: all content, styling, localized pages.
+What works offline-host: all content, styling, imagery, localized pages.
 What stays live-linked to the platform (%s):
   - booking CTAs (capture flow, payments, WhatsApp concierge)
+  - the inline booking widget (iframe — keep the platform reachable)
   - canonical/hreflang tags point at the live site (recommended: keep the
     platform site canonical and treat this export as a mirror/failover)
 

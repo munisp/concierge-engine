@@ -138,6 +138,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase16(mux)
 	h.registerSite(mux)
 	h.registerStudio(mux)
+	h.registerMedia(mux)
 	h.registerPhase17(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).

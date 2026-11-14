@@ -159,6 +159,19 @@ type ReviewStore interface {
 	ListAll(ctx context.Context, tenantID string, limit int) ([]model.Review, error)
 }
 
+// MediaStore (Phase 31): tenant-owned site imagery. Put stores the decoded
+// bytes (already validated for type + size by the upload handler); Get
+// returns the full record including bytes for the public serving path;
+// List returns metadata only (no Data) for the console picker. Delete is
+// idempotent-scoped to the tenant — a dangling catalog image_id falls back
+// to the monogram tile rather than erroring.
+type MediaStore interface {
+	Put(ctx context.Context, m *model.Media) error
+	Get(ctx context.Context, tenantID, id string) (*model.Media, error)
+	List(ctx context.Context, tenantID string) ([]model.Media, error)
+	Delete(ctx context.Context, tenantID, id string) error
+}
+
 type OutboxStore interface {
 	Add(ctx context.Context, e *model.OutboxEvent) error
 	Unpublished(ctx context.Context, limit int) ([]model.OutboxEvent, error)
@@ -358,5 +371,6 @@ type Store interface {
 	Outreach() OutreachStore
 	Templates() TemplateStore
 	Reviews() ReviewStore
+	Media() MediaStore
 	Close()
 }

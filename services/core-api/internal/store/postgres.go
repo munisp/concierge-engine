@@ -361,10 +361,10 @@ func (s pgCatalog) Add(ctx context.Context, svc *model.CatalogService) error {
 	nameI18n, _ := json.Marshal(svc.NameI18n)
 	descI18n, _ := json.Marshal(svc.DescI18n)
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO catalog_services (id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		`INSERT INTO catalog_services (id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n, image_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		svc.ID, svc.TenantID, svc.Vertical, svc.Name, svc.BaseMinor, svc.Currency,
-		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active, nameI18n, descI18n)
+		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active, nameI18n, descI18n, svc.ImageID)
 	if err != nil {
 		return err
 	}
@@ -382,10 +382,10 @@ func (s pgCatalog) Update(ctx context.Context, svc *model.CatalogService) error 
 	res, err := tx.ExecContext(ctx,
 		`UPDATE catalog_services SET vertical=$3, name=$4, base_minor=$5, currency=$6,
 		 per_km_minor=$7, per_hour_minor=$8, auto_quotable=$9, active=$10,
-		 name_i18n=$11, desc_i18n=$12
+		 name_i18n=$11, desc_i18n=$12, image_id=$13
 		 WHERE id=$1 AND tenant_id=$2`,
 		svc.ID, svc.TenantID, svc.Vertical, svc.Name, svc.BaseMinor, svc.Currency,
-		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active, nameI18n, descI18n)
+		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active, nameI18n, descI18n, svc.ImageID)
 	if err != nil {
 		return err
 	}
@@ -402,7 +402,7 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n
+		`SELECT id, tenant_id, vertical, name, base_minor, currency, per_km_minor, per_hour_minor, auto_quotable, active, name_i18n, desc_i18n, coalesce(image_id,'')
 		 FROM catalog_services WHERE active ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -414,7 +414,7 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 		var nameI18n, descI18n []byte
 		if err := rows.Scan(&svc.ID, &svc.TenantID, &svc.Vertical, &svc.Name, &svc.BaseMinor,
 			&svc.Currency, &svc.PerKMMinor, &svc.PerHourMinor, &svc.AutoQuotable, &svc.Active,
-			&nameI18n, &descI18n); err != nil {
+			&nameI18n, &descI18n, &svc.ImageID); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(nameI18n, &svc.NameI18n)

@@ -52,6 +52,15 @@ if ! python3 -m pytest --version >/dev/null 2>&1; then
 fi
 python3 -m pytest --version | head -1
 
+# --- Optional local media engines -------------------------------------------
+# faster-whisper (voice-note transcription) needs network only for pip; the
+# 75MB tiny model itself persists at /mnt/agents/persist/models/ and
+# transcribe.py picks it up automatically — no hub download after a wipe.
+if ! python3 -c "import faster_whisper" 2>/dev/null; then
+    echo "installing faster-whisper (optional local transcription engine)..."
+    pip install -q faster-whisper "av==13.*" || echo "  (skipped — transcription falls back to CE_TRANSCRIBE_URL or none)"
+fi
+
 echo "toolchain ready."
 echo "export PATH=/tmp/go/bin:/tmp/rust/cargo/bin:\$PATH"
 echo "export RUSTUP_HOME=/tmp/rust/rustup CARGO_HOME=/tmp/rust/cargo"

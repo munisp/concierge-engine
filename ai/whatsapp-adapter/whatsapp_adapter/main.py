@@ -54,26 +54,35 @@ def healthz() -> dict:
 async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     tracker.touch(msg.tenant_id, msg.contact)
 
-    # Media -> OCR -> text. Advisory at every step: download or OCR failure
-    # degrades to caption-only (or an explicit placeholder) and never breaks
-    # the message flow. The OCR engine is labeled in the text itself so the
-    # downstream case/audit trail keeps provenance.
+    # Media -> text. Images go through OCR, audio through transcription;
+    # both are provider chains with engine labels. Advisory at every step:
+    # download or extraction failure degrades to caption-only (or an
+    # explicit placeholder) and never breaks the message flow. The engine
+    # is labeled in the text itself so the downstream case/audit trail
+    # keeps provenance.
     media_result: dict[str, Any] = {}
     text = msg.text
     if msg.media_id:
         from .ocr import fetch_meta_media, ocr_image
+        from .transcribe import transcribe_audio
 
         try:
             data, mime = await fetch_meta_media(msg.media_id)
-            ocr = ocr_image(data, mime or msg.media_mime)
-            media_result = {"ocr_engine": ocr["engine"], "ocr_detail": ocr["detail"],
-                            "ocr_chars": len(ocr["text"])}
-            if ocr["text"]:
+            mime = mime or msg.media_mime
+            if mime.startswith("audio/"):
+                extracted = transcribe_audio(data, mime)
+                label = "voice note"
+            else:
+                extracted = ocr_image(data, mime)
+                label = "media OCR"
+            media_result = {"engine": extracted["engine"], "detail": extracted["detail"],
+                            "chars": len(extracted["text"]), "kind": label}
+            if extracted["text"]:
                 media_result["extracted"] = True
                 text = (f"{text}\n" if text else "") + \
-                    f"[media OCR via {ocr['engine']}]: {ocr['text']}"
+                    f"[{label} via {extracted['engine']}]: {extracted['text']}"
         except Exception as exc:
-            media_result = {"ocr_engine": "none",
+            media_result = {"engine": "none",
                             "detail": f"media unavailable: {exc.__class__.__name__}"}
     if not text:
         text = "[media received — no text extracted]"
@@ -244,7 +253,7 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         external_ref=msg.get("id", ""),
                         display_name=contacts.get(contact, "")))
                     processed += 1
-                elif mtype in ("image", "document"):
+                elif mtype in ("image", "document", "audio"):
                     media = msg.get(mtype, {})
                     await inbound(WebhookMessage(
                         tenant_id=tenant_id, contact=contact,
@@ -254,7 +263,7 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
                         media_id=media.get("id", ""),
                         media_mime=media.get("mime_type", "")))
                     processed += 1
-                # other types (audio, interactive replies, ...): next iteration
+                # other types (video, interactive replies, ...): next iteration
     return {"processed": processed}
 
 

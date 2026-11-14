@@ -130,4 +130,13 @@ stdlib fallback including tenant isolation, opt-in parity test via
 (tesseract 0.14–0.74 s on CPU; MiniCPM-OCR activates by config once
 hardware exists).
 
+**Phase 8 — delivered (see `docs/phase8.md`).** WhatsApp voice notes →
+transcription → intake loop (audio messages download + transcribe via
+engine-labeled provider chain: `CE_TRANSCRIBE_URL` whisper.cpp service →
+local faster-whisper tiny → honest none; persisted 75MB model snapshot
+survives sandbox wipes); latency eval `docs/eval-voice-latency.md`
+(11s of speech in 0.6–0.7s CPU, exact on the JFK fixture, ogg/opus
+validated); media block routes audio→transcription, images→OCR, same
+provenance/idempotency/advisory discipline.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

@@ -162,7 +162,7 @@ def test_inbound_media_failure_is_advisory():
     # flow unbroken: placeholder text reaches intake, media detail recorded
     intake_body = [c for c in core.calls if c[0].endswith("/cases/intake")][0][1]
     assert intake_body["text"] == "[media received — no text extracted]"
-    assert out["media"]["ocr_engine"] == "none"
+    assert out["media"]["engine"] == "none"
     assert "media unavailable" in out["media"]["detail"]
     assert out["agent"]["reply"] == "On it."
 

@@ -65,6 +65,9 @@ func (s pgGeo) Areas(ctx context.Context, tenantID string) ([]model.ServiceArea,
 		}
 		a.Polygon = parseWKTPolygon(wkt)
 		_ = json.Unmarshal(nameI18n, &a.NameI18n)
+		if a.NameI18n == nil { // jsonb null → empty map, matching memory store
+			a.NameI18n = map[string]string{}
+		}
 		out = append(out, a)
 	}
 	return out, rows.Err()

@@ -395,6 +395,14 @@ func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogSe
 		}
 		_ = json.Unmarshal(nameI18n, &svc.NameI18n)
 		_ = json.Unmarshal(descI18n, &svc.DescI18n)
+		// jsonb "null" (marshaled from a nil map) reads back as nil —
+		// normalize so callers always see an empty map, matching memory.
+		if svc.NameI18n == nil {
+			svc.NameI18n = map[string]string{}
+		}
+		if svc.DescI18n == nil {
+			svc.DescI18n = map[string]string{}
+		}
 		out = append(out, svc)
 	}
 	if err := rows.Err(); err != nil {

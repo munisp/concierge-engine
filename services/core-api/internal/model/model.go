@@ -208,6 +208,22 @@ type SiteConfig struct {
 	// description} overrides; catalog/area names carry their own i18n.
 	Locales   []string                     `json:"locales,omitempty"`
 	BrandI18n map[string]map[string]string `json:"brand_i18n,omitempty"`
+	// Theme (Phase 30): the design-studio output — a named preset plus
+	// optional token overrides. Rendered by the site template as CSS
+	// variables; no layout logic depends on it, so a theme can never break
+	// the page structurally.
+	Theme *SiteTheme `json:"theme,omitempty"`
+}
+
+// SiteTheme (Phase 30): the design tokens the public site template
+// consumes. Preset selects a curated palette/font bundle; the token fields
+// override individual variables ("custom" preset = tokens only).
+type SiteTheme struct {
+	Preset  string `json:"preset,omitempty"`  // noir-gold | azure-modern | slate-minimal | emerald-classic | terracotta-warm | custom
+	Primary string `json:"primary,omitempty"` // #rrggbb — hero background / ink
+	Accent  string `json:"accent,omitempty"`  // #rrggbb — CTAs, rating chip, links
+	Font    string `json:"font,omitempty"`    // serif | sans
+	Corners string `json:"corners,omitempty"` // rounded | sharp
 }
 
 // Review (Phase 27): a post-trip client review, submitted through the

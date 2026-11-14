@@ -371,6 +371,30 @@ func (s pgCatalog) Add(ctx context.Context, svc *model.CatalogService) error {
 	return tx.Commit()
 }
 
+func (s pgCatalog) Update(ctx context.Context, svc *model.CatalogService) error {
+	tx, err := s.p.tenantTx(ctx, svc.TenantID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	nameI18n, _ := json.Marshal(svc.NameI18n)
+	descI18n, _ := json.Marshal(svc.DescI18n)
+	res, err := tx.ExecContext(ctx,
+		`UPDATE catalog_services SET vertical=$3, name=$4, base_minor=$5, currency=$6,
+		 per_km_minor=$7, per_hour_minor=$8, auto_quotable=$9, active=$10,
+		 name_i18n=$11, desc_i18n=$12
+		 WHERE id=$1 AND tenant_id=$2`,
+		svc.ID, svc.TenantID, svc.Vertical, svc.Name, svc.BaseMinor, svc.Currency,
+		svc.PerKMMinor, svc.PerHourMinor, svc.AutoQuotable, svc.Active, nameI18n, descI18n)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return httpx.ErrNotFound
+	}
+	return tx.Commit()
+}
+
 func (s pgCatalog) List(ctx context.Context, tenantID string) ([]model.CatalogService, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
 	if err != nil {

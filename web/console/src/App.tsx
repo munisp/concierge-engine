@@ -7,6 +7,7 @@ import Console from "./pages/Console";
 import Corporate from "./pages/Corporate";
 import Dispatch from "./pages/Dispatch";
 import Geo from "./pages/Geo";
+import Insights from "./pages/Insights";
 import Integrations from "./pages/Integrations";
 import Partners from "./pages/Partners";
 import Receipts from "./pages/Receipts";
@@ -14,6 +15,7 @@ import Growth from "./pages/Growth";
 import Clients from "./pages/Clients";
 import Referrals from "./pages/Referrals";
 import Settings from "./pages/Settings";
+import Studio from "./pages/Studio";
 import Onboarding from "./pages/Onboarding";
 import Track from "./pages/Track";
 
@@ -30,6 +32,8 @@ export default function App() {
         <Link to="/geo">Geo</Link>
         <Link to="/receipts">Receipts &amp; SLA</Link>
         <Link to="/growth">Growth</Link>
+        <Link to="/insights">Insights</Link>
+        <Link to="/studio">Site Studio</Link>
         <Link to="/clients">Clients</Link>
         <Link to="/referrals">Referrals</Link>
         <Link to="/corporate">Corporate</Link>
@@ -49,6 +53,8 @@ export default function App() {
           <Route path="/geo" element={<Geo />} />
           <Route path="/receipts" element={<Receipts />} />
           <Route path="/growth" element={<Growth />} />
+          <Route path="/insights" element={<Insights />} />
+          <Route path="/studio" element={<Studio />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/referrals" element={<Referrals />} />
           <Route path="/corporate" element={<Corporate />} />

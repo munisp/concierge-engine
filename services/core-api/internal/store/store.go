@@ -47,6 +47,9 @@ type ClientStore interface {
 type CatalogStore interface {
 	Add(ctx context.Context, s *model.CatalogService) error
 	List(ctx context.Context, tenantID string) ([]model.CatalogService, error)
+	// Update (Phase 30): persist mutable catalog fields — currently the
+	// i18n presentation maps the design studio writes. Tenant-scoped.
+	Update(ctx context.Context, s *model.CatalogService) error
 }
 
 type RequestStore interface {

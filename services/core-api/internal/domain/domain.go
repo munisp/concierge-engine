@@ -63,6 +63,8 @@ type Services struct {
 	Outreach      *OutreachService
 	FollowUps     *FollowUpService
 	Acquisition   *AcquisitionService
+	Studio        *StudioService
+	Insights      *InsightsService
 	Supply        *SupplyService
 	Trips         *TripService
 	Audit         *AuditService
@@ -124,6 +126,8 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Receipts = NewReceiptsService(s, deps.WhatsAppURL, deps.OperatorPhone)
 	s.Outreach = NewOutreachService(s, deps.WhatsAppURL)
 	s.FollowUps = &FollowUpService{s: s}
+	s.Studio = NewStudioService(s, NewCaseAssistClient(deps.AgentURL))
+	s.Insights = NewInsightsService(s)
 	s.Acquisition = &AcquisitionService{s: s, waURL: deps.WhatsAppURL, operatorPhone: deps.OperatorPhone}
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {

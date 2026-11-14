@@ -447,4 +447,23 @@ handoff → wamid receipts + SLA evidence). OG cards ascii-fold diacritics.
 Single-dispatcher routing under `/site/{slug}/` resolves locale prefixes
 manually (ServeMux wildcard/literal overlap). 4 server + 1 pg tests.
 
+**Phase 30 — delivered (see `docs/phase30.md`).** Site Studio + tenant
+insights. Open-source builder research (WordPress GPL / Ghost MIT /
+Webstudio-Silex-VvvebJs AGPL — rejected for SaaS embedding / GrapesJS
+BSD-3 / Puck MIT) concluded the studio belongs as a **data layer on the
+existing SSR engine**, not an embedded canvas: five theme presets +
+custom tokens on `site_config.theme` (no migration; CSS custom-property
+override, live on next request), business-case content generation
+(concierge-agent with deterministic template fallback, provenance-labeled,
+draft-only until applied, all-or-nothing service-ID validation), and five
+deployment shapes as copy-paste artifacts — hosted, custom domain, static
+zip export for split-hosting (internal links relativized, booking CTAs
+stay absolute to the platform), CMS iframe embed, and a generated
+WordPress `[concierge_book]` shortcode plugin. Tenant insights:
+`GET /v1/analytics/overview` (bookings, GMV vs collected revenue, service
+mix, channels, fleet utilization, driver ratings, reviews — straight from
+OLTP stores, honesty notes for the 10h/day utilization heuristic) plus
+console `/studio` and `/insights` dashboards. 5 server + 4 domain + 2 pg
+tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

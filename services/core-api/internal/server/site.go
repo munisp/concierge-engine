@@ -36,9 +36,31 @@ import (
 	"net/url"
 	"strings"
 
+	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
 )
+
+// themeCSS renders the studio theme as a :root override block (Phase 30).
+// Tokens are validated at write time (SetTheme), so this can emit raw CSS
+// without re-escaping; an unset theme emits nothing and the template
+// defaults (the noir-gold preset) apply.
+func themeCSS(theme *model.SiteTheme) template.CSS {
+	if theme == nil {
+		return ""
+	}
+	r := domain.ResolveTheme(theme)
+	font := "Georgia,'Times New Roman',serif"
+	if r.Font == "sans" {
+		font = "system-ui,sans-serif"
+	}
+	radius := "8px"
+	if r.Corners == "sharp" {
+		radius = "0"
+	}
+	return template.CSS(fmt.Sprintf(":root{--ink:%s;--accent:%s;--font-main:%s;--radius:%s}",
+		r.Primary, r.Accent, font, radius))
+}
 
 func (h *handlers) registerSite(mux *http.ServeMux) {
 	// One subtree handler for the whole tenant site. Go's ServeMux cannot
@@ -246,6 +268,9 @@ type sitePage struct {
 	TrustedPayment bool   // claim "secure online payment" only when a rail is enabled
 	ReviewCount    int    // Phase 27: consented-only aggregate
 	ReviewAvg      string // e.g. "4.8"
+	// ThemeCSS (Phase 30): :root overrides from the studio theme — pure
+	// design tokens, never structural.
+	ThemeCSS template.CSS
 }
 
 // hreflangCluster builds the alternate set for a page path: every
@@ -278,17 +303,18 @@ var siteTmpl = template.Must(template.New("site").Parse(`<!doctype html>
 <meta name="twitter:image" content="{{.OGImage}}">{{else}}<meta name="twitter:card" content="summary">{{end}}
 <script type="application/ld+json">{{.JSONLD}}</script>
 <style>
-:root{--ink:#0e1626;--gold:#c9a227;--muted:#5b6672;--bg:#faf9f6}
+:root{--ink:#0e1626;--accent:#c9a227;--muted:#5b6672;--bg:#faf9f6;--radius:8px;--font-main:Georgia,'Times New Roman',serif}
+{{.ThemeCSS}}
 *{box-sizing:border-box}
-body{font-family:Georgia,'Times New Roman',serif;margin:0;color:var(--ink);background:var(--bg)}
-header{background:linear-gradient(160deg,#0e1626 0%,#1a2a44 100%);color:#fff;padding:72px 24px 56px;text-align:center}
+body{font-family:var(--font-main);margin:0;color:var(--ink);background:var(--bg)}
+header{background:linear-gradient(160deg,var(--ink) 0%,color-mix(in srgb,var(--ink) 80%,white) 100%);color:#fff;padding:72px 24px 56px;text-align:center}
 header .brand{font-size:2.6rem;letter-spacing:.12em;margin:0 0 10px;font-weight:400}
 header .tag{margin:0;opacity:.82;font-size:1.1rem;font-family:system-ui,sans-serif}
-.rating{display:inline-block;margin-top:16px;padding:6px 16px;border:1px solid var(--gold);border-radius:999px;color:var(--gold);font-family:system-ui,sans-serif;font-size:.9rem}
+.rating{display:inline-block;margin-top:16px;padding:6px 16px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);font-family:system-ui,sans-serif;font-size:.9rem}
 .cta-row{margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.btn{display:inline-block;padding:14px 32px;border-radius:6px;font-weight:600;font-family:system-ui,sans-serif;text-decoration:none;font-size:1rem}
-.btn-primary{background:var(--gold);color:#0e1626}
-.btn-primary:hover{background:#dab43a}
+.btn{display:inline-block;padding:14px 32px;border-radius:var(--radius);font-weight:600;font-family:system-ui,sans-serif;text-decoration:none;font-size:1rem}
+.btn-primary{background:var(--accent);color:var(--ink)}
+.btn-primary:hover{filter:brightness(1.1)}
 .btn-ghost{border:1px solid rgba(255,255,255,.5);color:#fff}
 .btn-ghost:hover{border-color:#fff}
 main{max-width:880px;margin:0 auto;padding:40px 20px 120px}
@@ -296,24 +322,24 @@ main{max-width:880px;margin:0 auto;padding:40px 20px 120px}
 .trust span{background:#fff;border:1px solid #e8e2d2;border-radius:999px;padding:8px 16px;font-family:system-ui,sans-serif;font-size:.82rem;color:var(--muted)}
 h2{font-size:1.15rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #e3ddc9;padding-bottom:8px;font-family:system-ui,sans-serif;color:var(--muted)}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;list-style:none;padding:0}
-.cards li{background:#fff;border:1px solid #ece7d8;border-radius:10px;overflow:hidden;transition:box-shadow .15s}
+.cards li{background:#fff;border:1px solid #ece7d8;border-radius:var(--radius);overflow:hidden;transition:box-shadow .15s}
 .cards li:hover{box-shadow:0 6px 24px rgba(14,22,38,.10)}
-.card-top{background:linear-gradient(135deg,#1a2a44,#0e1626);color:var(--gold);font-size:2rem;display:flex;align-items:center;justify-content:center;height:96px;letter-spacing:.1em}
+.card-top{background:linear-gradient(135deg,color-mix(in srgb,var(--ink) 85%,white),var(--ink));color:var(--accent);font-size:2rem;display:flex;align-items:center;justify-content:center;height:96px;letter-spacing:.1em}
 .card-body{padding:16px}
 .card-body .nm{font-size:1.05rem;margin:0 0 4px}
 .card-body .ds{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted);margin:0 0 12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card-foot{display:flex;justify-content:space-between;align-items:center;font-family:system-ui,sans-serif}
 .card-foot .pr{color:var(--muted);font-size:.9rem}
-.card-foot a{color:#0e1626;font-weight:600;text-decoration:none;border-bottom:2px solid var(--gold)}
+.card-foot a{color:var(--ink);font-weight:600;text-decoration:none;border-bottom:2px solid var(--accent)}
 .areas{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:10px}
 .areas li a{display:block;background:#fff;border:1px solid #e8e2d2;border-radius:999px;padding:10px 20px;color:var(--ink);text-decoration:none;font-family:system-ui,sans-serif;font-size:.9rem}
-.areas li a:hover{border-color:var(--gold)}
+.areas li a:hover{border-color:var(--accent)}
 .guide{line-height:1.7;color:#3a4350;font-size:1.02rem}
 dl dt{font-weight:600;margin-top:16px;font-size:1.02rem}
 dl dd{margin:6px 0 0;color:#4a5560;line-height:1.6;font-family:system-ui,sans-serif;font-size:.92rem}
 ul.plist{list-style:none;padding:0}
 ul.plist li{padding:12px 0;border-bottom:1px solid #eee;font-family:system-ui,sans-serif}
-.sticky{position:fixed;bottom:0;left:0;right:0;background:#0e1626;padding:12px 20px;display:flex;gap:10px;justify-content:center;z-index:50}
+.sticky{position:fixed;bottom:0;left:0;right:0;background:var(--ink);padding:12px 20px;display:flex;gap:10px;justify-content:center;z-index:50}
 .sticky .btn{padding:12px 24px;font-size:.95rem}
 footer{text-align:center;color:#8a8f98;font-size:.85rem;padding:32px 24px 110px;font-family:system-ui,sans-serif}
 footer a{color:#8a8f98}
@@ -418,6 +444,7 @@ func (h *handlers) basePage(r *http.Request, t *model.Tenant, locale, ogPath str
 		p.WhatsApp = "https://wa.me/" + strings.TrimPrefix(strings.TrimSpace(n), "+")
 	}
 	p.TrustedPayment = !(t.PaymentConfig.DisableStripe && t.PaymentConfig.DisablePaystack)
+	p.ThemeCSS = themeCSS(t.SiteConfig.Theme)
 	return p
 }
 

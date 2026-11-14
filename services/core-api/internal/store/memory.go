@@ -331,6 +331,18 @@ func (s *memCatalog) List(_ context.Context, tenantID string) ([]model.CatalogSe
 	return out, nil
 }
 
+func (s *memCatalog) Update(_ context.Context, svc *model.CatalogService) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	key := svc.TenantID + "/" + svc.ID
+	if _, ok := s.m.catalog[key]; !ok {
+		return httpx.ErrNotFound
+	}
+	cp := *svc
+	s.m.catalog[key] = &cp
+	return nil
+}
+
 // ------------------------------------------------------------- requests
 type memRequests struct{ m *memory }
 

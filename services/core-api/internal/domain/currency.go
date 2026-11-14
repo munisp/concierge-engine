@@ -60,6 +60,28 @@ var paystackCurrencies = map[string][]string{
 	"KES": {"card", "mobile_money"},
 }
 
-// stripeChannels is what a Stripe Checkout Session offers out of the box
-// (dashboard-configured local methods appear automatically in live mode).
-var stripeChannels = []string{"card", "wallet", "local_methods"}
+// stripeRails maps currencies to the Stripe Checkout payment_method_types
+// that convert in that market (Phase 16: EU/US-first launch). Local rails
+// matter: a Dutch customer expects iDEAL, a German giropay/Sofort, a US
+// customer ACH — card-only checkout leaves real conversion on the table.
+// Wallets (Apple Pay / Google Pay / Link) attach automatically to card in
+// Checkout, so they are not separate types.
+var stripeRails = map[string][]string{
+	"EUR": {"card", "sepa_debit", "ideal", "bancontact", "giropay", "sofort", "klarna"},
+	"USD": {"card", "us_bank_account", "cashapp", "klarna", "link"},
+	"GBP": {"card", "bacs_debit", "klarna"},
+	"CHF": {"card", "twint", "klarna"},
+	"CAD": {"card", "acss_debit"},
+	"AUD": {"card", "au_becs_debit"},
+	"SEK": {"card", "klarna"}, "NOK": {"card", "klarna"}, "DKK": {"card", "klarna"},
+	"PLN": {"card", "blik", "p24"},
+}
+
+// stripeChannelsFor returns the Checkout payment rails for a currency;
+// unknown currencies get card (universally supported).
+func stripeChannelsFor(currency string) []string {
+	if rails, ok := stripeRails[strings.ToUpper(currency)]; ok {
+		return rails
+	}
+	return []string{"card"}
+}

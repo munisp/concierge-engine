@@ -97,7 +97,8 @@ func TestStripeCheckoutSessionAgainstFakeAPI(t *testing.T) {
 		ID: "pi-1", TenantID: "t-1", QuoteID: "q-1", Mode: "DEPOSIT_BALANCE",
 		AmountMinor: 4500, Currency: "EUR", IdempotencyKey: "idem-1",
 	}
-	hostedURL, sessionID, err := c.CreateCheckoutSession(context.Background(), intent, "fr", "ada@example.com")
+	hostedURL, sessionID, err := c.CreateCheckoutSession(context.Background(), intent, "fr", "ada@example.com",
+		stripeChannelsFor("EUR"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +111,10 @@ func TestStripeCheckoutSessionAgainstFakeAPI(t *testing.T) {
 	if gotAuth != "Bearer sk_test_123" {
 		t.Fatalf("auth header wrong: %q", gotAuth)
 	}
+	if gotForm.Get("payment_method_types[1]") != "sepa_debit" ||
+		gotForm.Get("payment_method_types[2]") != "ideal" {
+		t.Fatalf("EU market rails not forwarded: %v", gotForm)
+	}
 	if gotForm.Get("line_items[0][price_data][unit_amount]") != "4500" ||
 		gotForm.Get("line_items[0][price_data][currency]") != "eur" ||
 		gotForm.Get("metadata[tenant_id]") != "t-1" ||
@@ -119,7 +124,7 @@ func TestStripeCheckoutSessionAgainstFakeAPI(t *testing.T) {
 
 	// Disabled client refuses live calls.
 	off := NewStripeClient("", "", "", time.Now)
-	if _, _, err := off.CreateCheckoutSession(context.Background(), intent, "", ""); err == nil {
+	if _, _, err := off.CreateCheckoutSession(context.Background(), intent, "", "", nil); err == nil {
 		t.Fatal("disabled client attempted a live call")
 	}
 }

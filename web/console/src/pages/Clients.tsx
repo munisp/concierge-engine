@@ -15,6 +15,7 @@ type Client = {
   loyalty_tier?: string;
   kyc_status: string;
   consent: Record<string, unknown>;
+  erased_at?: string;
   created_at: string;
 };
 
@@ -88,6 +89,36 @@ export default function Clients() {
     } catch (e) { setErr(String(e)); }
   };
 
+  // Phase 16 (GDPR/CCPA): data-subject rights — access export downloads one
+  // JSON document; erasure scrubs identity to a pseudonymous tombstone while
+  // financial history is retained for accounting.
+  const exportData = async () => {
+    if (!view) return;
+    setErr("");
+    try {
+      const data = await api.get<unknown>(`/v1/clients/${view.client.id}/export`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `client-export-${view.client.id.slice(0, 8)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const erase = async () => {
+    if (!view) return;
+    if (!window.confirm(
+      "Erase this client? Identity is scrubbed permanently (GDPR Art. 17 / CCPA). " +
+      "Booking and payment history is kept anonymized for accounting. This cannot be undone.")) return;
+    setErr(""); setMsg("");
+    try {
+      await api.post(`/v1/clients/${view.client.id}/erase`, {});
+      setMsg("client erased — identity scrubbed, financial history retained anonymized");
+      open360(view.client.id);
+    } catch (e) { setErr(String(e)); }
+  };
+
   const merge = async () => {
     if (!view || !mergeLoser) return;
     setErr(""); setMsg("");
@@ -145,6 +176,21 @@ export default function Clients() {
                 {view.first_touch.campaign && ` (${view.first_touch.campaign})`}
               </p>
             )}
+
+            {view.client.erased_at && (
+              <p className="error">
+                Erased {new Date(view.client.erased_at).toLocaleDateString()} — GDPR/CCPA
+                tombstone. No further processing or contact permitted.
+              </p>
+            )}
+
+            <h3>Data rights (GDPR / CCPA)</h3>
+            <div className="row">
+              <button onClick={exportData}>Export all data (JSON)</button>
+              {!view.client.erased_at && (
+                <button className="danger" onClick={erase}>Erase client</button>
+              )}
+            </div>
 
             <h3>Profile</h3>
             <div className="row">

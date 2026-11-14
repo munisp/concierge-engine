@@ -21,6 +21,8 @@ var EventCatalog = []EventSpec{
 	{"client.merged", "client", "Duplicate client folded into this one", []string{"merged_client_id"}},
 	{"preference.saved", "client", "Consent-scoped preference recorded", []string{"key", "encrypted"}},
 	{"dsar.preferences_deleted", "client", "Preference memory deleted (DSAR cascade)", nil},
+	{"dsar.exported", "client", "Data-subject access export assembled (GDPR Art. 15 / CCPA)", nil},
+	{"client.erased", "client", "Right to erasure executed — identity scrubbed to pseudonymous tombstone", nil},
 
 	{"conversation.started", "conversation", "Inbound message opened a conversation", []string{"channel", "client_id"}},
 	{"message.appended", "conversation", "Message added to a conversation timeline", []string{"author"}},

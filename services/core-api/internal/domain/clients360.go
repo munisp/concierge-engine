@@ -36,6 +36,9 @@ func (svc *ClientService) UpdateProfile(ctx context.Context, tenantID, id string
 	if err != nil {
 		return nil, err
 	}
+	if err := requireNotErased(c); err != nil {
+		return nil, err
+	}
 	var changed []string
 	set := func(name string, dst *string, v *string) {
 		if v != nil && *v != *dst {
@@ -77,6 +80,9 @@ func (svc *ClientService) SetConsent(ctx context.Context, tenantID, clientID, sc
 	if err != nil {
 		return nil, err
 	}
+	if err := requireNotErased(c); err != nil {
+		return nil, err
+	}
 	if c.Consent == nil {
 		c.Consent = map[string]any{}
 	}
@@ -102,6 +108,13 @@ func (svc *ClientService) Search(ctx context.Context, tenantID, query string, li
 func (svc *ClientService) Merge(ctx context.Context, tenantID, winnerID, loserID string) error {
 	if winnerID == "" || loserID == "" || winnerID == loserID {
 		return httpx.ErrValidation
+	}
+	// Never merge INTO an erased record: the winner must be a live identity,
+	// otherwise the loser's personal data re-attaches to a tombstone.
+	if winner, err := svc.s.Store.Clients().Get(ctx, tenantID, winnerID); err != nil {
+		return err
+	} else if err := requireNotErased(winner); err != nil {
+		return err
 	}
 	if err := svc.s.Store.Clients().Merge(ctx, tenantID, winnerID, loserID); err != nil {
 		return err

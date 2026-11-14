@@ -164,15 +164,15 @@ func (s pgClients) Upsert(ctx context.Context, c *model.Client) error {
 		flags, _ = json.Marshal(c.VIPFlags)
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO clients (id, tenant_id, full_name, email, phone, org_id, vip_flags, loyalty_tier, kyc_status, consent, locale, timezone)
+		`INSERT INTO clients (id, tenant_id, full_name, email, phone, org_id, vip_flags, loyalty_tier, kyc_status, consent, locale, timezone, erased_at)
 		 VALUES ($1,$2,$3,$4,$5,nullif($6,'')::uuid,
 		         coalesce((SELECT array_agg(x) FROM jsonb_array_elements_text($7::jsonb) AS x), '{}'::text[]),
-		         $8,$9,$10,$11,$12)
+		         $8,$9,$10,$11,$12,$13)
 		 ON CONFLICT (id) DO UPDATE SET full_name=$3, email=$4, phone=$5,
 			vip_flags=coalesce((SELECT array_agg(x) FROM jsonb_array_elements_text($7::jsonb) AS x), '{}'::text[]),
-			loyalty_tier=$8, kyc_status=$9, consent=$10, locale=$11, timezone=$12`,
+			loyalty_tier=$8, kyc_status=$9, consent=$10, locale=$11, timezone=$12, erased_at=$13`,
 		c.ID, c.TenantID, c.FullName, c.Email, c.Phone, c.OrgID, string(flags), c.LoyaltyTier, c.KYCStatus, consent,
-		c.Locale, c.Timezone)
+		c.Locale, c.Timezone, nilIfZero(c.ErasedAt))
 	if err != nil {
 		return err
 	}
@@ -183,13 +183,17 @@ func (s pgClients) scanClient(row interface{ Scan(...any) error }) (*model.Clien
 	var c model.Client
 	var consent, flags []byte
 	var org *string
+	var erasedAt sql.NullTime
 	err := row.Scan(&c.ID, &c.TenantID, &c.FullName, &c.Email, &c.Phone, &org,
-		&flags, &c.LoyaltyTier, &c.KYCStatus, &consent, &c.Locale, &c.Timezone, &c.CreatedAt)
+		&flags, &c.LoyaltyTier, &c.KYCStatus, &consent, &c.Locale, &c.Timezone, &erasedAt, &c.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	if org != nil {
 		c.OrgID = *org
+	}
+	if erasedAt.Valid {
+		c.ErasedAt = erasedAt.Time
 	}
 	_ = json.Unmarshal(flags, &c.VIPFlags)
 	_ = json.Unmarshal(consent, &c.Consent)
@@ -197,7 +201,7 @@ func (s pgClients) scanClient(row interface{ Scan(...any) error }) (*model.Clien
 }
 
 const clientCols = `id, tenant_id, coalesce(full_name,''), coalesce(email,''), coalesce(phone,''), org_id::text,
-	coalesce(to_jsonb(vip_flags), '[]'::jsonb), coalesce(loyalty_tier,''), kyc_status, consent, locale, timezone, created_at`
+	coalesce(to_jsonb(vip_flags), '[]'::jsonb), coalesce(loyalty_tier,''), kyc_status, consent, locale, timezone, erased_at, created_at`
 
 func (s pgClients) Get(ctx context.Context, tenantID, id string) (*model.Client, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)

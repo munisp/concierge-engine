@@ -61,6 +61,13 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 		return nil, err
 	}
 	v := &OutreachVerdict{Allowed: true, MarketingCap: OutreachMarketingWeeklyCap}
+	if cl.Erased() {
+		// GDPR/CCPA: an erased data subject must not be contacted on any
+		// purpose — recorded as held so the refusal is auditable.
+		v.Allowed = false
+		v.Reason = "client erased (GDPR/CCPA)"
+		return v, nil
+	}
 	v.MarketingConsent = cl.Consent["marketing"] == true
 	if purpose != model.OutreachMarketing {
 		return v, nil // service: always allowed
@@ -113,9 +120,6 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 	if err != nil {
 		return nil, err
 	}
-	if cl.Phone == "" {
-		return nil, fmt.Errorf("%w: client has no phone on file", httpx.ErrValidation)
-	}
 
 	o := &model.OutreachSend{
 		ID: NewID(), TenantID: tenantID, ClientID: in.ClientID,
@@ -124,13 +128,17 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 		IdempotencyKey: in.IdempotencyKey, CreatedAt: svc.s.Now(),
 	}
 
-	// Gates: consent + frequency cap. A gated send is recorded as "held" —
-	// the decision is auditable, and a replayed key returns the same verdict.
+	// Gates: consent + frequency cap + erasure. A gated send is recorded as
+	// "held" — the decision is auditable, and a replayed key returns the
+	// same verdict.
 	if v, err := svc.Verdict(ctx, tenantID, in.ClientID, in.Purpose); err != nil {
 		return nil, err
 	} else if !v.Allowed {
 		o.Status, o.Detail = "held", v.Reason
 		return svc.record(ctx, o)
+	}
+	if cl.Phone == "" {
+		return nil, fmt.Errorf("%w: client has no phone on file", httpx.ErrValidation)
 	}
 
 	// Deliver through the channel adapter (freeform inside the 24h session,

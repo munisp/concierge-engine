@@ -67,8 +67,10 @@ func (c *StripeClient) WebhookSecret() string {
 // without trusting caller-supplied tenant headers. Idempotent on the intent's
 // idempotency key via Stripe's Idempotency-Key header. Phase 15: locale
 // (BCP-47 from the client profile) localizes the checkout page;
-// customer_email pre-fills and feeds Stripe receipts.
-func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.PaymentIntent, locale, customerEmail string) (hostedURL, sessionID string, err error) {
+// customer_email pre-fills and feeds Stripe receipts. Phase 16: methods
+// selects the market rails (iDEAL/SEPA/ACH/...); empty means card only.
+// SCA/3DS2 for EU cards is enforced by Checkout itself.
+func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.PaymentIntent, locale, customerEmail string, methods []string) (hostedURL, sessionID string, err error) {
 	if !c.Enabled() {
 		return "", "", ErrStripeDisabled
 	}
@@ -83,6 +85,9 @@ func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.
 		"metadata[tenant_id]":                           {intent.TenantID},
 		"metadata[quote_id]":                            {intent.QuoteID},
 		"metadata[intent_id]":                           {intent.ID},
+	}
+	for i, m := range methods {
+		form.Set("payment_method_types["+strconv.Itoa(i)+"]", m)
 	}
 	if locale != "" {
 		form.Set("locale", locale)

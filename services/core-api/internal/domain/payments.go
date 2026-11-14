@@ -32,7 +32,8 @@ type CreatePaymentLinkInput struct {
 
 // choosePSP routes a payment to the rail that converts in the customer's
 // market: explicit request wins; NGN/GHS/KES/ZAR default to Paystack when
-// configured; everything else Stripe; sandbox link when neither is live.
+// configured (Africa wave); everything else — the EU/US-first launch
+// markets — routes to Stripe; sandbox link when neither is live.
 func (svc *PaymentService) choosePSP(currency, requested string) string {
 	if requested != "" {
 		return strings.ToLower(requested)
@@ -64,7 +65,7 @@ func (svc *PaymentService) PaymentMethods(currency string) ([]PaymentMethod, err
 		})
 	}
 	out = append(out, PaymentMethod{
-		PSP: "stripe", Currency: cur, Channels: stripeChannels,
+		PSP: "stripe", Currency: cur, Channels: stripeChannelsFor(cur),
 		Live: svc.s.Stripe.Enabled(),
 	})
 	return out, nil
@@ -121,7 +122,8 @@ func (svc *PaymentService) CreatePaymentLinkV2(ctx context.Context, tenantID str
 	switch psp {
 	case "stripe":
 		if svc.s.Stripe.Enabled() {
-			hostedURL, sessionID, err := svc.s.Stripe.CreateCheckoutSession(ctx, intent, locale, email)
+			hostedURL, sessionID, err := svc.s.Stripe.CreateCheckoutSession(ctx, intent, locale, email,
+				stripeChannelsFor(q.Currency))
 			if err != nil {
 				return nil, err
 			}

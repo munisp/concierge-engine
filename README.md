@@ -223,4 +223,18 @@ catalog endpoint (every kind documented for subscribers), webhook delivery
 replay, secret rotation, synthetic test events. Console gains a Clients 360
 page; Integrations gains rotate/test/replay and the live catalog.
 
+**Phase 16 — delivered (see `docs/phase16.md`).** EU/US-first readiness
+(launch order corrected: Europe/USA before Nigeria). Payments: per-market
+Stripe Checkout rails — EUR (SEPA/iDEAL/Bancontact/giropay/Sofort/Klarna),
+USD (ACH/Cash App/Klarna/Link), GBP (Bacs), CHF (TWINT), Nordics (Klarna),
+PLN (BLIK/P24) — with SCA/3DS2 enforced by the hosted page; Paystack stays
+for the Africa wave. Data rights: GDPR Art. 15 export (one JSON document,
+audit-logged) and Art. 17 / CCPA erasure — identity scrubbed to a
+pseudonymous tombstone, preference memory deleted, consent revoked, financial
+history retained for accounting, every write surface (profile, consent,
+preferences, outreach, merge-into) refuses further processing of erased
+subjects. Regional consent defaults at registration (EU/EEA/UK/CH opt-in,
+US/CA opt-out, unknown conservative) derived from phone calling codes.
+Registration captures browser locale/timezone automatically.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

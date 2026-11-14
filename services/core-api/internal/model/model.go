@@ -53,8 +53,15 @@ type Client struct {
 	Consent     map[string]any `json:"consent"`
 	Locale      string         `json:"locale,omitempty"`   // BCP-47, e.g. "en-NG" — checkout/outreach localization
 	Timezone    string         `json:"timezone,omitempty"` // IANA, e.g. "Africa/Lagos"
-	CreatedAt   time.Time      `json:"created_at"`
+	// Phase 16 (GDPR Art. 17 / CCPA): erasure tombstone. Once set the record
+	// is anonymized (PII fields scrubbed) and kept only as a pseudonymous
+	// anchor for financial/booking records the platform must retain.
+	ErasedAt  time.Time `json:"erased_at,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
+
+// Erased reports whether this client has exercised the right to erasure.
+func (c Client) Erased() bool { return !c.ErasedAt.IsZero() }
 
 func (c Client) VIPFlagged() bool {
 	for _, f := range c.VIPFlags {

@@ -128,6 +128,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase7(mux)
 	h.registerPhase8(mux)
 	h.registerPhase9(mux)
+	h.registerPhase10(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
@@ -212,16 +213,12 @@ func (h *handlers) setAutonomy(w http.ResponseWriter, r *http.Request) {
 
 // ------------------------------------------------------------- clients
 func (h *handlers) resolveClient(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Phone string `json:"phone"`
-		Email string `json:"email"`
-		Name  string `json:"name"`
-	}
+	var body domain.ResolveInput
 	if err := httpx.Decode(r, &body); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	res, err := h.svc.Clients.Resolve(r.Context(), tenantOf(r), body.Phone, body.Email, body.Name)
+	res, err := h.svc.Clients.ResolveV2(r.Context(), tenantOf(r), body)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

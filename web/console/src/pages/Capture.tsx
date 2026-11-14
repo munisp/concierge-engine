@@ -35,8 +35,12 @@ export default function Capture() {
     setBusy(true);
     setError("");
     try {
+      // Phase 16: registration context — browser locale/timezone localize
+      // the Stripe checkout page and outreach scheduling for EU/US clients.
       const resolved = await api.post<{ client: { id: string } }>("/v1/clients/resolve", {
         phone, name,
+        locale: navigator.language,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       const acq = acquisitionParams();
       if (acq.channel || acq.campaign) {

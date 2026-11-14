@@ -58,8 +58,15 @@ func TestPGClientErasureRoundtrip(t *testing.T) {
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatalf("request: %v", err)
 	}
+	q := &model.Quote{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
+		Version: 1, Origin: "INSTANT", TotalMinor: 22000, Currency: "EUR",
+		Lines: []model.QuoteLine{{Description: "base", AmountMinor: 22000}},
+		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now().UTC()}
+	if err := s.Quotes().Create(ctx, q); err != nil {
+		t.Fatalf("quote: %v", err)
+	}
 	bk := &model.Booking{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
-		State: "CONFIRMED", CreatedAt: time.Now().UTC()}
+		QuoteID: q.ID, State: "CONFIRMED", CreatedAt: time.Now().UTC()}
 	if err := s.Bookings().Create(ctx, bk); err != nil {
 		t.Fatalf("booking: %v", err)
 	}

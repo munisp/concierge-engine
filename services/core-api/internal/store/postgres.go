@@ -533,7 +533,7 @@ func (s pgBookings) Create(ctx context.Context, b *model.Booking) error {
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO bookings (id, tenant_id, request_id, quote_id, state) VALUES ($1,$2,$3,nullif($4,'')::uuid,$5)`,
+		`INSERT INTO bookings (id, tenant_id, request_id, quote_id, state) VALUES ($1,$2,$3,$4,$5)`,
 		b.ID, b.TenantID, b.RequestID, b.QuoteID, b.State)
 	if err != nil {
 		return err
@@ -549,7 +549,7 @@ func (s pgBookings) Get(ctx context.Context, tenantID, id string) (*model.Bookin
 	defer tx.Rollback()
 	var b model.Booking
 	err = tx.QueryRowContext(ctx,
-		`SELECT id, tenant_id, request_id, coalesce(quote_id::text,''), state, created_at FROM bookings WHERE id=$1`, id).
+		`SELECT id, tenant_id, request_id, quote_id, state, created_at FROM bookings WHERE id=$1`, id).
 		Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State, &b.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)

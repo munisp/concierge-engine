@@ -415,7 +415,7 @@ func (s pgBookings) List(ctx context.Context, tenantID string) ([]model.Booking,
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, request_id, coalesce(quote_id::text,''), state, created_at FROM bookings ORDER BY created_at`)
+		`SELECT id, tenant_id, request_id, quote_id, state, created_at FROM bookings ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}

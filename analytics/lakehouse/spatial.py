@@ -79,7 +79,18 @@ def zone_ping_counts_sedona(pings: list[dict[str, Any]],
     falls back."""
     from sedona.spark import SedonaContext  # noqa: PLC0415 — optional dep
 
-    spark = SedonaContext.builder().getOrCreate()  # type: ignore[attr-defined]
+    import os
+
+    builder = SedonaContext.builder()  # type: ignore[attr-defined]
+    jar = os.getenv("CE_SEDONA_JAR")  # shaded sedona-spark jar, when not on the classpath
+    if jar:
+        builder = builder.config("spark.jars", jar)
+    master = os.getenv("CE_SPARK_MASTER")
+    if master:
+        builder = builder.master(master)
+    # SedonaContext.create, not bare getOrCreate: registers the Sedona catalog
+    # and ST_* SQL functions — without it ST_Contains is unresolved.
+    spark = SedonaContext.create(builder.getOrCreate())
     try:
         import json as _json
 
@@ -120,9 +131,14 @@ def zone_ping_counts_sedona(pings: list[dict[str, Any]],
 def build_zone_pings(root: Path, areas: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Zone ping counts from bronze. `areas` are service-area exports
     (list of {tenant_id, name, polygon}). Sedona when available, stdlib
-    otherwise; the engine is labeled on the output either way."""
+    otherwise; the engine is labeled on the output either way.
+    CE_SPATIAL_ENGINE=fallback forces the stdlib path (tests, CI)."""
+    import os
+
     pings = _ping_events(_load_bronze(root))
     areas = areas or []
+    if os.getenv("CE_SPATIAL_ENGINE", "auto") == "fallback":
+        return zone_ping_counts_fallback(pings, areas)
     try:
         return zone_ping_counts_sedona(pings, areas)
     except ImportError:

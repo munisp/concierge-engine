@@ -32,6 +32,8 @@ class WebhookMessage(BaseModel):
     text: str
     external_ref: str = ""
     display_name: str = ""
+    media_id: str = ""      # channel media handle (Meta media id) — triggers OCR
+    media_mime: str = ""
 
 
 class OutboundRequest(BaseModel):
@@ -52,6 +54,30 @@ def healthz() -> dict:
 async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     tracker.touch(msg.tenant_id, msg.contact)
 
+    # Media -> OCR -> text. Advisory at every step: download or OCR failure
+    # degrades to caption-only (or an explicit placeholder) and never breaks
+    # the message flow. The OCR engine is labeled in the text itself so the
+    # downstream case/audit trail keeps provenance.
+    media_result: dict[str, Any] = {}
+    text = msg.text
+    if msg.media_id:
+        from .ocr import fetch_meta_media, ocr_image
+
+        try:
+            data, mime = await fetch_meta_media(msg.media_id)
+            ocr = ocr_image(data, mime or msg.media_mime)
+            media_result = {"ocr_engine": ocr["engine"], "ocr_detail": ocr["detail"],
+                            "ocr_chars": len(ocr["text"])}
+            if ocr["text"]:
+                media_result["extracted"] = True
+                text = (f"{text}\n" if text else "") + \
+                    f"[media OCR via {ocr['engine']}]: {ocr['text']}"
+        except Exception as exc:
+            media_result = {"ocr_engine": "none",
+                            "detail": f"media unavailable: {exc.__class__.__name__}"}
+    if not text:
+        text = "[media received — no text extracted]"
+
     # Identity resolution: phone is the anchor (WhatsApp spec 5.1).
     import httpx
 
@@ -69,7 +95,7 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
         conversation = conv.json()
 
         await client.post(f"/v1/conversations/{conversation['id']}/messages",
-                          json={"author": "CLIENT", "body": msg.text})
+                          json={"author": "CLIENT", "body": text})
 
         # Case intake loop: triage policy in core-api decides whether this
         # message warrants an accountable case (incidents, VIP, P1/P2).
@@ -78,10 +104,10 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
         intake_result: dict[str, Any] = {}
         try:
             idem = f"wa:{msg.external_ref}" if msg.external_ref else _stable_idem(
-                msg.tenant_id, msg.contact, msg.text)
+                msg.tenant_id, msg.contact, text)
             intake = await client.post("/v1/cases/intake", json={
                 "client_id": client_id, "conversation_id": conversation["id"],
-                "text": msg.text, "idempotency_key": idem})
+                "text": text, "idempotency_key": idem})
             intake.raise_for_status()
             intake_result = intake.json()
         except Exception:
@@ -92,7 +118,7 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
         turn = await http.post(f"{AGENT_URL}/v1/turns", json={
             "tenant_id": msg.tenant_id,
             "conversation_id": conversation["id"],
-            "text": msg.text,
+            "text": text,
             "client_id": client_id,
             "client_phone": msg.contact,
             "state": conversation.get("state", "CAPTURING"),
@@ -103,7 +129,7 @@ async def inbound(msg: WebhookMessage) -> dict[str, Any]:
     if result.get("reply"):
         await _deliver(msg.tenant_id, msg.contact, result["reply"], None)
     return {"conversation_id": conversation["id"], "client_id": client_id,
-            "agent": result, "intake": intake_result}
+            "agent": result, "intake": intake_result, "media": media_result}
 
 
 def _stable_idem(tenant_id: str, contact: str, text: str) -> str:
@@ -205,17 +231,30 @@ async def meta_inbound(request: Request) -> dict[str, Any]:
             contacts = {c.get("wa_id"): c.get("profile", {}).get("name", "")
                         for c in value.get("contacts", [])}
             for msg in value.get("messages", []):
-                if msg.get("type") != "text":
-                    continue  # media/interactive replies: next iteration
+                mtype = msg.get("type")
                 contact = msg.get("from", "")
-                text = msg.get("text", {}).get("body", "")
-                if not contact or not text:
+                if not contact:
                     continue
-                await inbound(WebhookMessage(
-                    tenant_id=tenant_id, contact=contact, text=text,
-                    external_ref=msg.get("id", ""),
-                    display_name=contacts.get(contact, "")))
-                processed += 1
+                if mtype == "text":
+                    text = msg.get("text", {}).get("body", "")
+                    if not text:
+                        continue
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact, text=text,
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, "")))
+                    processed += 1
+                elif mtype in ("image", "document"):
+                    media = msg.get(mtype, {})
+                    await inbound(WebhookMessage(
+                        tenant_id=tenant_id, contact=contact,
+                        text=media.get("caption", ""),
+                        external_ref=msg.get("id", ""),
+                        display_name=contacts.get(contact, ""),
+                        media_id=media.get("id", ""),
+                        media_mime=media.get("mime_type", "")))
+                    processed += 1
+                # other types (audio, interactive replies, ...): next iteration
     return {"processed": processed}
 
 

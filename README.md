@@ -118,4 +118,16 @@ one-command toolchain persistence across sandbox wipes
 (oxirs/terrio deferred with triggers, MiniCPM-OCR queued as a Phase 7
 candidate — `docs/integration-assessment.md`).
 
+**Phase 7 — delivered (see `docs/phase7.md`).** WhatsApp media → OCR →
+intake loop (Meta image/document messages download + OCR via engine-labeled
+provider chain: `CE_OCR_URL` MiniCPM-OCR service → local tesseract →
+honest none; OCR text feeds conversation/agent/case-intake with full
+provenance, idempotency unchanged, failure advisory); Sedona engine
+validated against the Phase 6 spatial interface — `SedonaContext.create`
+registration fix, real Spark `ST_Contains` join byte-identical to the
+stdlib fallback including tenant isolation, opt-in parity test via
+`CE_SEDONA_JAR`; OCR latency eval in `docs/eval-ocr-latency.md`
+(tesseract 0.14–0.74 s on CPU; MiniCPM-OCR activates by config once
+hardware exists).
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

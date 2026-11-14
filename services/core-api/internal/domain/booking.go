@@ -62,7 +62,9 @@ func (svc *BookingService) CreateRequest(ctx context.Context, r *model.ServiceRe
 	}
 	svc.s.Events.Emit(ctx, r.TenantID, "service_request", r.ID, "request.created",
 		map[string]any{"state": string(r.State), "items": len(r.Items)})
-	svc.s.Events.Track(ctx, &model.AttributionEvent{
+	// Phase 14: inherit first-touch channel/campaign so the funnel attributes
+	// demand to the acquisition source, not just the conversation.
+	svc.s.TrackInherited(ctx, &model.AttributionEvent{
 		TenantID: r.TenantID, Kind: "request_created", ClientID: r.ClientID, RequestID: r.ID,
 	})
 	return r, nil
@@ -201,9 +203,20 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 	}
 	svc.s.Events.Emit(ctx, tenantID, "booking", b.ID, "booking.confirmed",
 		map[string]any{"quote_id": q.ID, "total_minor": q.TotalMinor})
-	svc.s.Events.Track(ctx, &model.AttributionEvent{
-		TenantID: tenantID, Kind: "booking", RequestID: q.RequestID, ValueMinor: q.TotalMinor,
-	})
+	// Phase 14: referral conversion runs BEFORE the booking is tracked so
+	// first-booking detection doesn't count this booking itself; the booking
+	// event then inherits first-touch channel/campaign.
+	if r, rerr := svc.s.Store.Requests().Get(ctx, tenantID, q.RequestID); rerr == nil {
+		svc.s.ReferralConversion(ctx, tenantID, r.ClientID, b, q.TotalMinor)
+		svc.s.TrackInherited(ctx, &model.AttributionEvent{
+			TenantID: tenantID, Kind: "booking", ClientID: r.ClientID,
+			RequestID: q.RequestID, ValueMinor: q.TotalMinor,
+		})
+	} else {
+		svc.s.Events.Track(ctx, &model.AttributionEvent{
+			TenantID: tenantID, Kind: "booking", RequestID: q.RequestID, ValueMinor: q.TotalMinor,
+		})
+	}
 	return b, nil
 }
 

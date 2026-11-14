@@ -65,6 +65,7 @@ func (p *postgres) Conversations() ConversationStore { return pgConversations{p}
 func (p *postgres) Handoffs() HandoffStore           { return pgHandoffs{p} }
 func (p *postgres) Outbox() OutboxStore              { return pgOutbox{p} }
 func (p *postgres) Attribution() AttributionStore    { return pgAttribution{p} }
+func (p *postgres) Outreach() OutreachStore          { return pgOutreach{p} }
 
 // ------------------------------------------------------------- tenants
 type pgTenants struct{ p *postgres }

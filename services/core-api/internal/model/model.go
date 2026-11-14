@@ -1,7 +1,10 @@
 // Package model holds the shared domain model (Blueprint §13 data model).
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Tenant struct {
 	ID              string         `json:"id"`
@@ -58,6 +61,33 @@ func (c Client) VIPFlagged() bool {
 		}
 	}
 	return false
+}
+
+// ClientReferralCode derives a client's shareable referral code from their
+// uuid: "VIP-" + first 8 hex chars, uppercase (Phase 14). Deterministic, so
+// no column is needed — the code is always recomputed from the id.
+func ClientReferralCode(clientID string) string {
+	hex := strings.ToUpper(strings.ReplaceAll(clientID, "-", ""))
+	if len(hex) < 8 {
+		return ""
+	}
+	return "VIP-" + hex[:8]
+}
+
+// ReferralCodePrefix extracts the uuid-hex prefix from a referral code for
+// store lookups; ok=false when the code is malformed.
+func ReferralCodePrefix(code string) (string, bool) {
+	c := strings.ToUpper(strings.TrimSpace(code))
+	if !strings.HasPrefix(c, "VIP-") || len(c) != 12 {
+		return "", false
+	}
+	p := c[4:]
+	for _, r := range p {
+		if !('0' <= r && r <= '9' || 'A' <= r && r <= 'F') {
+			return "", false
+		}
+	}
+	return p, true
 }
 
 type Preference struct {

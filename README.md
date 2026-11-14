@@ -191,4 +191,21 @@ latent pg bugs pre-push: partners never roundtripped `lat`/`lng` (geo
 ranking would have been blind on pg), and referrals `""`→uuid writes /
 NULL scans on `request_id`/`booking_id`.
 
+**Phase 14 — delivered (see `docs/phase14.md`).** Acquisition & outreach
+hardening. Proactive outreach is new: `OutreachService` sends through the
+channel adapter with marketing consent-gated (`client.Consent["marketing"]`),
+frequency-capped (3 per rolling 7 days, service sends exempt), idempotent
+per `(tenant, idempotency key)` (replay never re-sends), and wamid-captured
+so Phase 11 receipts close the delivery loop; gated/failed sends are
+recorded with reasons, never silently dropped. Attribution gains first-touch
+inheritance (requests/bookings carry the client's earliest
+channel/campaign), a funnel endpoint with conversion rates, and
+deterministic client referral codes (`VIP-XXXXXXXX`) with referral
+conversion tracking on the referee's first booking (`referral.converted` +
+value-carrying `referral_converted` attribution; referrer ledger reward is a
+documented deferral). Capture page accepts `ref`/`channel`/`campaign` (and
+utm aliases); console gains a Growth page (funnel, referral codes, outreach
+composer with live consent/cap verdict, send log). Live-pg CI gate covers
+the new outreach store, attribution list/funnel, and referral-code lookup.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

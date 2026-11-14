@@ -67,3 +67,4 @@ tr.clickable:hover { background: #f6f3ec; }
 table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
 th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
 th { font-weight: 600; color: #555; }
+.ok { color: #1f5c1f; font-size: 0.85rem; }

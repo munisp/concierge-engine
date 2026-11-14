@@ -5,6 +5,19 @@ import { money } from "../types";
 
 // Booking capture surface (M1/M3): instant-quote widget flow —
 // capture details -> service request -> instant quote -> payment link.
+//
+// Phase 14: acquisition params — ?ref=VIP-XXXX / ?channel= / ?campaign=
+// (utm_source/utm_campaign accepted as aliases). Tracked as a page_view
+// attribution event once the client resolves, so first-touch inheritance
+// attributes the request and booking to the source.
+function acquisitionParams(): { channel: string; campaign: string } {
+  const q = new URLSearchParams(window.location.search);
+  const ref = q.get("ref") ?? "";
+  const channel = q.get("channel") ?? q.get("utm_source") ?? (ref ? "referral" : "");
+  const campaign = ref ? `ref:${ref}` : (q.get("campaign") ?? q.get("utm_campaign") ?? "");
+  return { channel, campaign };
+}
+
 export default function Capture() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -25,6 +38,14 @@ export default function Capture() {
       const resolved = await api.post<{ client: { id: string } }>("/v1/clients/resolve", {
         phone, name,
       });
+      const acq = acquisitionParams();
+      if (acq.channel || acq.campaign) {
+        // Advisory: attribution never blocks capture.
+        api.post("/v1/attribution", {
+          kind: "page_view", channel: acq.channel, campaign: acq.campaign,
+          client_id: resolved.client.id,
+        }).catch(() => {});
+      }
       const sr = await api.post<ServiceRequest>("/v1/requests", {
         client_id: resolved.client.id,
         idempotency_key: `web-${Date.now()}`,

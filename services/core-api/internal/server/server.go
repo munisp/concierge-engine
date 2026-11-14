@@ -126,6 +126,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase4(mux)
 	h.registerPhase6(mux)
 	h.registerPhase7(mux)
+	h.registerPhase8(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)

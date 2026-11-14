@@ -55,6 +55,7 @@ type memory struct {
 	geoAreas      map[string]*model.ServiceArea    // tenantID|areaID
 	receipts      map[string]*model.MessageReceipt // tenantID|externalRef|status (idempotent)
 	receiptLinks  map[string]string                // tenantID|externalRef -> caseID (first link wins)
+	outreachSends map[string]*model.OutreachSend   // tenantID|idempotencyKey (idempotent)
 	payouts       map[string]*model.Payout
 	payoutIdem    map[string]string
 	audit         []model.AuditEntry
@@ -99,6 +100,7 @@ func NewMemory() Store {
 		geoAreas:      map[string]*model.ServiceArea{},
 		receipts:      map[string]*model.MessageReceipt{},
 		receiptLinks:  map[string]string{},
+		outreachSends: map[string]*model.OutreachSend{},
 	}
 }
 
@@ -127,6 +129,7 @@ func (m *memory) Cases() CaseStore                 { return &memCases{m} }
 func (m *memory) Embeddings() EmbeddingStore       { return &memEmbeddings{m} }
 func (m *memory) Geo() GeoStore                    { return &memGeo{m} }
 func (m *memory) Receipts() ReceiptStore           { return &memReceipts{m} }
+func (m *memory) Outreach() OutreachStore          { return &memOutreach{m} }
 
 // ------------------------------------------------------------- tenants
 type memTenants struct{ m *memory }

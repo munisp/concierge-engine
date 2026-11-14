@@ -22,6 +22,9 @@ type ClientStore interface {
 	Get(ctx context.Context, tenantID, id string) (*model.Client, error)
 	FindByPhone(ctx context.Context, tenantID, phone string) (*model.Client, error)
 	FindByEmail(ctx context.Context, tenantID, email string) (*model.Client, error)
+	// Phase 14: client referral codes. Code is derived from the client uuid
+	// ("VIP-" + first 8 hex chars, uppercase) — see model.ClientReferralCode.
+	FindByReferralCode(ctx context.Context, tenantID, code string) (*model.Client, error)
 	SavePreference(ctx context.Context, p *model.Preference) error
 	Preferences(ctx context.Context, tenantID, clientID string) ([]model.Preference, error)
 	DeletePreferences(ctx context.Context, tenantID, clientID string) error // DSAR cascade
@@ -93,6 +96,33 @@ type OutboxStore interface {
 
 type AttributionStore interface {
 	Track(ctx context.Context, e *model.AttributionEvent) error
+	// Phase 14: acquisition analytics.
+	// List returns a client's attribution events, oldest first (first-touch).
+	List(ctx context.Context, tenantID, clientID string, limit int) ([]model.AttributionEvent, error)
+	// Funnel aggregates events by (kind, channel, campaign).
+	Funnel(ctx context.Context, tenantID string) ([]FunnelRow, error)
+}
+
+// FunnelRow is one acquisition funnel cell: how many events of a kind came
+// through a channel/campaign, and the value they carried.
+type FunnelRow struct {
+	Kind       string `json:"kind"`
+	Channel    string `json:"channel"`
+	Campaign   string `json:"campaign"`
+	Count      int    `json:"count"`
+	ValueMinor int64  `json:"value_minor"`
+}
+
+// ---------------------------------------------------------- Phase 14 outreach
+
+type OutreachStore interface {
+	// AddSend is idempotent per (tenant, idempotency_key): on replay it
+	// returns ErrConflict and the caller reloads the original.
+	AddSend(ctx context.Context, o *model.OutreachSend) error
+	// SendsForClient: recent sends to one client (frequency-cap window).
+	SendsForClient(ctx context.Context, tenantID, clientID string, since time.Time) ([]model.OutreachSend, error)
+	// ListSends: recent sends for the tenant, newest first.
+	ListSends(ctx context.Context, tenantID string, limit int) ([]model.OutreachSend, error)
 }
 
 // ---------------------------------------------------------- Phase 6 geo
@@ -236,5 +266,6 @@ type Store interface {
 	Embeddings() EmbeddingStore
 	Geo() GeoStore
 	Receipts() ReceiptStore
+	Outreach() OutreachStore
 	Close()
 }

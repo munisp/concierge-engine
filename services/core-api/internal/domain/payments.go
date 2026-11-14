@@ -240,6 +240,13 @@ func (svc *PaymentService) HandlePSPWebhook(ctx context.Context, tenantID, inten
 		if err := svc.settle(ctx, intent); err != nil {
 			return err
 		}
+		// Phase 26: pay-for-performance acquisition fee — when this is the
+		// client's first booking AND first-touch attribution puts it on a
+		// platform acquisition channel, FeePct moves TENANT_REVENUE →
+		// PLATFORM_ACQUISITION_FEES (idempotent per intent).
+		if err := svc.assessAcquisitionFee(ctx, intent); err != nil {
+			return err
+		}
 		if intent.RewardAppliedMinor > 0 {
 			clientID := ""
 			if q, err := svc.s.Store.Quotes().Get(ctx, tenantID, intent.QuoteID); err == nil {
@@ -292,6 +299,11 @@ func (svc *PaymentService) HandlePSPWebhook(ctx context.Context, tenantID, inten
 			if err := svc.s.Store.Rewards().RefundRedemption(ctx, intent.TenantID, intentID); err != nil {
 				return err
 			}
+		}
+		// Phase 26: claw the acquisition fee back — the platform earns it
+		// only on money the tenant actually kept.
+		if err := svc.clawbackAcquisitionFee(ctx, intent); err != nil {
+			return err
 		}
 		svc.s.Events.Emit(ctx, tenantID, "payment", intentID, "payment.refunded", nil)
 	}

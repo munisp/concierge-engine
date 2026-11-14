@@ -64,6 +64,7 @@ func main() {
 		OperatorPhone: cfg.OperatorPhone,
 		GeocodeURL:    cfg.GeocodeURL,
 		GeocodeKey:    cfg.GeocodeKey,
+		ConsoleBase:   cfg.ConsoleBase,
 		Now:           time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {
@@ -137,6 +138,9 @@ func main() {
 						log.Printf("lifecycle sweep: tenant %s — %d post-trip, %d win-back sent, %d held",
 							t.Slug, res.PostTripSent, res.WinBackSent, res.WinBackHeld)
 					}
+					// Phase 26: weekly acquisition pacing alert (Mondays
+					// 09:00 UTC inside this hourly sweep — fires once).
+					svc.Acquisition.PacingAlertIfDue(dispatchCtx, t.ID)
 				}
 			}
 		}

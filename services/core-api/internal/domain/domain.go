@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"strconv"
+	"strings"
 	"time"
 
 	"concierge-engine/services/core-api/internal/model"
@@ -34,6 +35,7 @@ type Deps struct {
 	OperatorPhone string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
 	GeocodeURL    string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
 	GeocodeKey    string // CE_GEOCODE_API_KEY when the provider needs one
+	ConsoleBase   string // CE_CONSOLE_BASE: public origin of the console SPA (SEO CTA target); empty = same-origin
 	Now           func() time.Time
 }
 
@@ -60,6 +62,7 @@ type Services struct {
 	Receipts      *ReceiptsService
 	Outreach      *OutreachService
 	FollowUps     *FollowUpService
+	Acquisition   *AcquisitionService
 	Supply        *SupplyService
 	Trips         *TripService
 	Audit         *AuditService
@@ -69,6 +72,8 @@ type Services struct {
 	Paystack      *PaystackClient
 	Events        *EventBus
 	Cipher        *FieldCipher
+	publicBase    string
+	consoleBase   string
 	now           func() time.Time
 }
 
@@ -77,7 +82,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	if now == nil {
 		now = time.Now
 	}
-	s := &Services{Store: st, now: now}
+	s := &Services{Store: st, now: now, publicBase: deps.PublicBase, consoleBase: deps.ConsoleBase}
 	s.Policy = NewPolicyClient(deps.PolicyURL)
 	s.Ledger = NewLedgerClient(deps.LedgerURL)
 	s.Stripe = NewStripeClient(deps.StripeKey, deps.StripeBase, deps.StripeWHSec, now)
@@ -116,6 +121,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Receipts = NewReceiptsService(s, deps.WhatsAppURL, deps.OperatorPhone)
 	s.Outreach = NewOutreachService(s, deps.WhatsAppURL)
 	s.FollowUps = &FollowUpService{s: s}
+	s.Acquisition = &AcquisitionService{s: s, waURL: deps.WhatsAppURL, operatorPhone: deps.OperatorPhone}
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)
@@ -124,6 +130,12 @@ func NewServices(st store.Store, deps Deps) *Services {
 }
 
 func (s *Services) Now() time.Time { return s.now().UTC() }
+
+// PublicBase is the API's own public origin (used for sitemap/canonical
+// URLs); ConsoleBase is the console SPA's public origin (SEO CTAs) —
+// empty means same-origin.
+func (s *Services) PublicBase() string  { return strings.TrimSuffix(s.publicBase, "/") }
+func (s *Services) ConsoleBase() string { return strings.TrimSuffix(s.consoleBase, "/") }
 
 // NewID returns a sortable, URL-safe unique id (UUIDv4 hex).
 func NewID() string {

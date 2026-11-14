@@ -30,6 +30,7 @@ type Config struct {
 	OperatorPhone    string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
 	GeocodeURL       string // CE_GEOCODE_URL: Nominatim-compatible geocoder; empty = built-in gazetteer
 	GeocodeKey       string // CE_GEOCODE_API_KEY
+	ConsoleBase      string // CE_CONSOLE_BASE: console SPA public origin (SEO CTA links); empty = same-origin
 	// CE_WEBHOOK_ROTATION_WINDOW_HOURS: dual-secret signing window after a
 	// webhook secret rotation; default 24 (domain.WebhookRotationWindow).
 	WebhookRotationWindowHours int
@@ -44,30 +45,31 @@ func getenv(k, def string) string {
 
 func Load() Config {
 	return Config{
-		ListenAddr:       getenv("CE_LISTEN_ADDR", ":8000"),
-		StoreKind:        getenv("CE_STORE", "memory"),
-		DatabaseURL:      getenv("DATABASE_URL", "postgres://concierge:concierge@localhost:5432/concierge?sslmode=disable"),
-		PolicyEngineURL:  getenv("CE_POLICY_ENGINE_URL", "http://localhost:8200"),
-		LedgerAdapterURL: getenv("CE_LEDGER_ADAPTER_URL", "http://localhost:8210"),
-		MojaloopURL:      getenv("CE_MOJALOOP_ADAPTER_URL", "http://localhost:8220"),
-		AvinodeURL:       getenv("CE_AVINODE_BASE_URL", ""),
-		AvinodeKey:       getenv("CE_AVINODE_API_KEY", ""),
-		FieldKeyB64:      getenv("CE_FIELD_KEY", ""),
-		TripSecret:       getenv("CE_TRIP_SECRET", ""),
-		PublicBase:       getenv("CE_PUBLIC_BASE_URL", "http://localhost:8000"),
-		StripeKey:        getenv("CE_STRIPE_KEY", ""),
-		StripeBase:       getenv("CE_STRIPE_BASE_URL", ""),
-		StripeWHSec:      getenv("CE_STRIPE_WEBHOOK_SECRET", ""),
-		PaystackKey:      getenv("CE_PAYSTACK_KEY", ""),
-		PaystackBase:     getenv("CE_PAYSTACK_BASE_URL", ""),
-		AmadeusBase:      getenv("CE_AMADEUS_BASE_URL", ""),
-		AmadeusID:        getenv("CE_AMADEUS_CLIENT_ID", ""),
-		AmadeusSecret:    getenv("CE_AMADEUS_CLIENT_SECRET", ""),
-		AgentURL:         getenv("CE_AGENT_URL", "http://localhost:8100"),
-		WhatsAppURL:      getenv("CE_WHATSAPP_ADAPTER_URL", ""),
-		OperatorPhone:    getenv("CE_OPERATOR_PHONE", ""),
-		GeocodeURL:       getenv("CE_GEOCODE_URL", ""),
-		GeocodeKey:       getenv("CE_GEOCODE_API_KEY", ""),
+		ListenAddr:                 getenv("CE_LISTEN_ADDR", ":8000"),
+		StoreKind:                  getenv("CE_STORE", "memory"),
+		DatabaseURL:                getenv("DATABASE_URL", "postgres://concierge:concierge@localhost:5432/concierge?sslmode=disable"),
+		PolicyEngineURL:            getenv("CE_POLICY_ENGINE_URL", "http://localhost:8200"),
+		LedgerAdapterURL:           getenv("CE_LEDGER_ADAPTER_URL", "http://localhost:8210"),
+		MojaloopURL:                getenv("CE_MOJALOOP_ADAPTER_URL", "http://localhost:8220"),
+		AvinodeURL:                 getenv("CE_AVINODE_BASE_URL", ""),
+		AvinodeKey:                 getenv("CE_AVINODE_API_KEY", ""),
+		FieldKeyB64:                getenv("CE_FIELD_KEY", ""),
+		TripSecret:                 getenv("CE_TRIP_SECRET", ""),
+		PublicBase:                 getenv("CE_PUBLIC_BASE_URL", "http://localhost:8000"),
+		StripeKey:                  getenv("CE_STRIPE_KEY", ""),
+		StripeBase:                 getenv("CE_STRIPE_BASE_URL", ""),
+		StripeWHSec:                getenv("CE_STRIPE_WEBHOOK_SECRET", ""),
+		PaystackKey:                getenv("CE_PAYSTACK_KEY", ""),
+		PaystackBase:               getenv("CE_PAYSTACK_BASE_URL", ""),
+		AmadeusBase:                getenv("CE_AMADEUS_BASE_URL", ""),
+		AmadeusID:                  getenv("CE_AMADEUS_CLIENT_ID", ""),
+		AmadeusSecret:              getenv("CE_AMADEUS_CLIENT_SECRET", ""),
+		AgentURL:                   getenv("CE_AGENT_URL", "http://localhost:8100"),
+		WhatsAppURL:                getenv("CE_WHATSAPP_ADAPTER_URL", ""),
+		OperatorPhone:              getenv("CE_OPERATOR_PHONE", ""),
+		GeocodeURL:                 getenv("CE_GEOCODE_URL", ""),
+		GeocodeKey:                 getenv("CE_GEOCODE_API_KEY", ""),
+		ConsoleBase:                getenv("CE_CONSOLE_BASE", ""),
 		WebhookRotationWindowHours: getenvInt("CE_WEBHOOK_ROTATION_WINDOW_HOURS", 24),
 	}
 }

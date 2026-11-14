@@ -37,7 +37,11 @@ type Tenant struct {
 	// LifecycleConfig (Phase 25): always-on engagement — post-trip follow-up
 	// and win-back rules evaluated by the follow-up sweeper.
 	LifecycleConfig LifecycleConfig `json:"lifecycle_config"`
-	CreatedAt       time.Time       `json:"created_at"`
+	// AcquisitionConfig (Phase 26): the monetization posture — acquisition
+	// fee on platform-attributed new-client transactions, and the
+	// new-client cohort goal the platform paces the tenant against.
+	AcquisitionConfig AcquisitionConfig `json:"acquisition_config"`
+	CreatedAt         time.Time         `json:"created_at"`
 }
 
 // DispatchConfig tunes scheduling. TurnaroundMinutes extends every
@@ -59,6 +63,22 @@ type LifecycleConfig struct {
 	Disabled      bool `json:"disabled,omitempty"`
 	PostTripHours int  `json:"post_trip_hours,omitempty"`
 	WinBackDays   int  `json:"win_back_days,omitempty"`
+}
+
+// AcquisitionConfig is the tenant's acquisition-monetization posture
+// (Phase 26). When the platform sourced a client's first booking through
+// one of Channels (first-touch attribution), FeePct of the captured amount
+// is posted from TENANT_REVENUE to PLATFORM_ACQUISITION_FEES — the
+// platform's pay-for-performance take. GoalClients/GoalDays define the
+// cohort the platform paces against (default 100 new clients in 90 days);
+// CohortStartedAt pins day zero (default: tenant creation).
+type AcquisitionConfig struct {
+	Disabled        bool     `json:"disabled,omitempty"`
+	FeePct          float64  `json:"fee_pct,omitempty"`  // default 0.10
+	Channels        []string `json:"channels,omitempty"` // default: seo, referral, outreach, ads, partner
+	GoalClients     int      `json:"goal_clients,omitempty"`
+	GoalDays        int      `json:"goal_days,omitempty"`
+	CohortStartedAt string   `json:"cohort_started_at,omitempty"` // RFC3339
 }
 
 // OperatorConfig is the tenant's operator roster. AlertPhones receive

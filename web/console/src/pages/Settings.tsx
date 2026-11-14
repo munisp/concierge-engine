@@ -80,6 +80,12 @@ export default function Settings() {
   const [lcDisabled, setLcDisabled] = useState(false);
   const [lcPostTrip, setLcPostTrip] = useState(24);
   const [lcWinBack, setLcWinBack] = useState(90);
+  // Phase 26: acquisition monetization
+  const [acqDisabled, setAcqDisabled] = useState(false);
+  const [acqFeePct, setAcqFeePct] = useState(10);
+  const [acqChannels, setAcqChannels] = useState("seo, referral, outreach, ads, partner");
+  const [acqGoal, setAcqGoal] = useState(100);
+  const [acqDays, setAcqDays] = useState(90);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -103,6 +109,12 @@ export default function Settings() {
     setLcDisabled(tenant.lifecycle_config?.disabled ?? false);
     setLcPostTrip(tenant.lifecycle_config?.post_trip_hours ?? 24);
     setLcWinBack(tenant.lifecycle_config?.win_back_days ?? 90);
+    setAcqDisabled(tenant.acquisition_config?.disabled ?? false);
+    setAcqFeePct((tenant.acquisition_config?.fee_pct ?? 0.10) * 100);
+    setAcqChannels((tenant.acquisition_config?.channels ??
+      ["seo", "referral", "outreach", "ads", "partner"]).join(", "));
+    setAcqGoal(tenant.acquisition_config?.goal_clients ?? 100);
+    setAcqDays(tenant.acquisition_config?.goal_days ?? 90);
     setLoaded(true);
   }, [tenant, loaded]);
 
@@ -171,6 +183,37 @@ export default function Settings() {
           lifecycle_config: { disabled: lcDisabled, post_trip_hours: lcPostTrip, win_back_days: lcWinBack },
         })} />{" "}
         <RunFollowUps />
+      </div>
+
+      <div className="card">
+        <h2>Acquisition (pay-for-performance)</h2>
+        <p className="muted">
+          When the platform sources a client's first booking through one of the
+          channels below (first-touch attribution), the fee applies to the
+          captured amount. Refunds claw it back. The cohort goal paces the
+          tenant on the Growth board and via weekly operator alerts.
+        </p>
+        <label>
+          <input type="checkbox" checked={acqDisabled}
+            onChange={(e) => setAcqDisabled(e.target.checked)} /> Disable acquisition fee &amp; pacing
+        </label>
+        <label>Acquisition fee (% of captured amount)</label>
+        <input type="number" step="0.1" value={acqFeePct}
+          onChange={(e) => setAcqFeePct(Number(e.target.value))} />
+        <label>Attributed channels (comma-separated)</label>
+        <input value={acqChannels} onChange={(e) => setAcqChannels(e.target.value)} />
+        <label>Cohort goal (new clients)</label>
+        <input type="number" value={acqGoal} onChange={(e) => setAcqGoal(Number(e.target.value))} />
+        <label>Cohort window (days)</label>
+        <input type="number" value={acqDays} onChange={(e) => setAcqDays(Number(e.target.value))} />
+        <p />
+        <SaveButton onSave={() => save({
+          acquisition_config: {
+            disabled: acqDisabled, fee_pct: acqFeePct / 100,
+            channels: acqChannels.split(",").map((c) => c.trim()).filter(Boolean),
+            goal_clients: acqGoal, goal_days: acqDays,
+          },
+        })} />
       </div>
 
       <div className="card">

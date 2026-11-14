@@ -13,6 +13,8 @@ export interface Tenant {
   operator_config?: { alert_phones?: string[] };
   dispatch_config?: { turnaround_minutes?: number; default_duration_minutes?: number };
   lifecycle_config?: { disabled?: boolean; post_trip_hours?: number; win_back_days?: number };
+  acquisition_config?: { disabled?: boolean; fee_pct?: number; channels?: string[];
+    goal_clients?: number; goal_days?: number; cohort_started_at?: string };
 }
 
 export interface ServiceItem {

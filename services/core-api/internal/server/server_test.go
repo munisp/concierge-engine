@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -367,5 +369,141 @@ func TestFollowUpsRunEndpoint(t *testing.T) {
 	env.do("POST", "/v1/followups/run", env.tenantID, nil, http.StatusOK, &res)
 	if res.PostTripSent != 0 || res.WinBackSent != 0 {
 		t.Fatalf("disabled tenant engaged clients: %+v", res)
+	}
+}
+
+// readAll drains a response body for content assertions (public site pages).
+func readAll(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// ------------------------------------------------------------- Phase 26: acquisition monetization + SEO site
+
+func TestAcquisitionEndpoints(t *testing.T) {
+	env := newEnv(t)
+
+	// Defaults ride through: 100 clients / 90 days / 10% fee channels.
+	var cohort struct {
+		GoalClients int  `json:"goal_clients"`
+		GoalDays    int  `json:"goal_days"`
+		NewClients  int  `json:"new_clients"`
+		OnTrack     bool `json:"on_track"`
+	}
+	env.do("GET", "/v1/acquisition/cohort", env.tenantID, nil, http.StatusOK, &cohort)
+	if cohort.GoalClients != 100 || cohort.GoalDays != 90 || cohort.NewClients != 0 {
+		t.Fatalf("cohort defaults: %+v", cohort)
+	}
+
+	var inv struct {
+		Lines       []any `json:"lines"`
+		NetFeeMinor int64 `json:"net_fee_minor"`
+	}
+	env.do("GET", "/v1/billing/acquisition-fees", env.tenantID, nil, http.StatusOK, &inv)
+	if inv.NetFeeMinor != 0 || len(inv.Lines) != 0 {
+		t.Fatalf("empty tenant invoiced: %+v", inv)
+	}
+
+	// acquisition_config rides the selective patch and survives unrelated edits.
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"acquisition_config": map[string]any{"fee_pct": 0.12, "goal_clients": 50, "channels": []string{"seo"}},
+	}, http.StatusOK, nil)
+	env.do("PUT", "/v1/tenant", env.tenantID, map[string]any{
+		"operator_config": map[string]any{"alert_phones": []string{"+971500000097"}},
+	}, http.StatusOK, nil)
+	var got model.Tenant
+	env.do("GET", "/v1/tenant", env.tenantID, nil, http.StatusOK, &got)
+	if got.AcquisitionConfig.FeePct != 0.12 || got.AcquisitionConfig.GoalClients != 50 ||
+		len(got.AcquisitionConfig.Channels) != 1 || got.AcquisitionConfig.Channels[0] != "seo" {
+		t.Fatalf("acquisition config not persisted: %+v", got.AcquisitionConfig)
+	}
+	if len(got.OperatorConfig.AlertPhones) != 1 {
+		t.Fatalf("unrelated patch not applied: %+v", got.OperatorConfig)
+	}
+}
+
+func TestSitePages(t *testing.T) {
+	env := newEnv(t) // slug "taylor"
+
+	var svc model.CatalogService
+	env.do("POST", "/v1/catalog", env.tenantID, model.CatalogService{
+		Vertical: "CHAUFFEUR_POINT_TO_POINT", Name: "Airport Transfer",
+		BaseMinor: 12000, Currency: "EUR", AutoQuotable: true, Active: true,
+	}, http.StatusCreated, &svc)
+	env.do("POST", "/v1/geo/areas", env.tenantID, map[string]any{
+		"name":    "Amsterdam Centrum",
+		"polygon": [][]float64{{52.36, 4.88}, {52.38, 4.88}, {52.38, 4.91}, {52.36, 4.91}},
+	}, http.StatusCreated, nil)
+
+	// Landing page: SSR HTML with the tenant name, service link, JSON-LD.
+	resp, err := http.Get(env.server.URL + "/site/taylor/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	for _, want := range []string{
+		"Taylor Travel Management", "Airport Transfer", "application/ld+json",
+		"LocalBusiness", `rel="canonical"`, "channel=seo", "Amsterdam Centrum",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("landing missing %q", want)
+		}
+	}
+
+	// Service page carries an Offer with price; the CTA attributes to seo.
+	resp, err = http.Get(env.server.URL + "/site/taylor/book/" + svc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	for _, want := range []string{"Airport Transfer", `"@type":"Offer"`, "120.00", "svc-"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("service page missing %q", want)
+		}
+	}
+
+	// Area page renders the programmatic service × location content.
+	areaID := ""
+	{
+		var areas []model.ServiceArea
+		env.do("GET", "/v1/geo/areas", env.tenantID, nil, http.StatusOK, &areas)
+		if len(areas) != 1 {
+			t.Fatalf("areas: %d", len(areas))
+		}
+		areaID = areas[0].ID
+	}
+	resp, err = http.Get(env.server.URL + "/site/taylor/areas/" + areaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	if !strings.Contains(body, "Amsterdam Centrum") || !strings.Contains(body, "areaServed") {
+		t.Fatal("area page incomplete")
+	}
+
+	// Sitemap + robots.
+	resp, _ = http.Get(env.server.URL + "/site/taylor/sitemap.xml")
+	body = readAll(t, resp)
+	if !strings.Contains(body, "/book/"+svc.ID) || !strings.Contains(body, "/areas/"+areaID) {
+		t.Fatal("sitemap incomplete")
+	}
+	resp, _ = http.Get(env.server.URL + "/site/taylor/robots.txt")
+	if !strings.Contains(readAll(t, resp), "Sitemap:") {
+		t.Fatal("robots.txt missing sitemap")
+	}
+
+	// Unknown slug / unknown service are clean 404s, never 500s.
+	resp, _ = http.Get(env.server.URL + "/site/nope/")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown slug: %d", resp.StatusCode)
+	}
+	resp, _ = http.Get(env.server.URL + "/site/taylor/book/nope")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown service: %d", resp.StatusCode)
 	}
 }

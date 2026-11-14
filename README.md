@@ -359,4 +359,25 @@ sweeper (and `POST /v1/followups/run`, plus the Settings lifecycle card
 with kill-switch and cadences) never double-fires. 5 domain + 2 server +
 3 pg tests.
 
+**Phase 26 — delivered (see `docs/phase26.md`).** New-client acquisition
+monetization: the 10%-of-transactions model made honest and automatic.
+Acquisition fee billing assesses `fee_pct` (default 10%) at payment
+settlement, only on a client's **first** completed booking and only when
+the first-touch channel is one of the tenant's acquisition channels
+(default seo/referral/outreach/ads/partner; `ref:` campaigns classify as
+referral) — posting `TENANT_REVENUE → PLATFORM_ACQUISITION_FEES`
+idempotently, with refunds clawing back the exact original posting (never
+recomputed). `GET /v1/billing/acquisition-fees` produces an evidence-grade
+invoice: attributed GMV per line, gross/clawback/net. The public SEO site
+(`/site/{slug}/` + per-service and per-area pages, SSR html/template,
+JSON-LD LocalBusiness/Offer, sitemap.xml + robots.txt) gives every tenant
+a crawlable acquisition surface whose CTAs feed the Phase 14 attribution
+spine (`?tenant=` capture handoff stamped `channel=seo`). The 90-day
+cohort tracker (`GET /v1/acquisition/cohort`) counts honestly-scoped new
+clients against the goal with pacing, projection, per-channel split and a
+Monday 09:00 UTC WhatsApp pacing alert to the operator roster; console
+`/growth` shows the cohort card + fee invoice, `/settings` edits the
+acquisition config (kill-switch, fee %, channels, goal). Migration 0019.
+4 domain + 2 server + 1 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api } from "../api";
+import { useEffect, useState } from "react";
+import { api, setTenantId } from "../api";
 import type { Quote, ServiceRequest } from "../types";
 import { money } from "../types";
 
@@ -19,6 +19,13 @@ function acquisitionParams(): { channel: string; campaign: string } {
 }
 
 export default function Capture() {
+  // Phase 26: public arrival from the SEO site — ?tenant=<uuid> pins the
+  // tenant for this browser (the api helper reads it on every call).
+  useEffect(() => {
+    const tid = new URLSearchParams(window.location.search).get("tenant");
+    if (tid) setTenantId(tid);
+  }, []);
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [pickup, setPickup] = useState("");

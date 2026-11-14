@@ -49,6 +49,42 @@ type Promo = {
   created_at: string;
 };
 
+// Phase 26: acquisition cohort scoreboard + pay-for-performance invoice.
+type Cohort = {
+  goal_clients: number;
+  goal_days: number;
+  started_at: string;
+  days_elapsed: number;
+  new_clients: number;
+  pacing_expected: number;
+  projection: number;
+  on_track: boolean;
+  by_channel: Record<string, number>;
+};
+
+type FeeLine = {
+  booking_id: string;
+  client_id?: string;
+  channel?: string;
+  campaign?: string;
+  amount_minor: number;
+  fee_minor: number;
+  refunded_minor?: number;
+  currency: string;
+  created_at: string;
+};
+
+type FeeInvoice = {
+  from: string;
+  to: string;
+  lines: FeeLine[];
+  attributed_gmv_minor: number;
+  gross_fee_minor: number;
+  clawback_minor: number;
+  net_fee_minor: number;
+  currency: string;
+};
+
 type Send = {
   id: string;
   client_id: string;
@@ -99,6 +135,9 @@ export default function Growth() {
 
   const [promos, setPromos] = useState<Promo[]>([]);
   const [pCode, setPCode] = useState("");
+  // Phase 26
+  const [cohort, setCohort] = useState<Cohort | null>(null);
+  const [invoice, setInvoice] = useState<FeeInvoice | null>(null);
   const [pCredit, setPCredit] = useState("");
   const [pCurrency, setPCurrency] = useState("EUR");
   const [pMax, setPMax] = useState("");
@@ -109,6 +148,8 @@ export default function Growth() {
     api.get<Send[]>("/v1/outreach/sends?limit=20").then(setSends).catch((e) => setErr(String(e)));
     api.get<Promo[]>("/v1/promos").then(setPromos).catch((e) => setErr(String(e)));
     api.get<MsgTemplate[]>("/v1/outreach/templates").then(setTemplates).catch((e) => setErr(String(e)));
+    api.get<Cohort>("/v1/acquisition/cohort").then(setCohort).catch(() => setCohort(null));
+    api.get<FeeInvoice>("/v1/billing/acquisition-fees").then(setInvoice).catch(() => setInvoice(null));
   };
 
   const saveTemplate = async () => {
@@ -196,6 +237,56 @@ export default function Growth() {
     <div>
       <h1>Growth</h1>
       {err && <p className="error">{err}</p>}
+
+      {cohort && (
+        <div className="card">
+          <h2>New-client cohort — {cohort.new_clients} / {cohort.goal_clients} in {cohort.goal_days} days</h2>
+          <p>
+            Day {cohort.days_elapsed} of {cohort.goal_days} · pacing expects{" "}
+            {cohort.pacing_expected} · projection <strong>{cohort.projection}</strong>{" "}
+            {cohort.on_track
+              ? <span className="badge">ON TRACK</span>
+              : <span className="badge" style={{ background: "#c0392b" }}>BEHIND</span>}
+          </p>
+          <div style={{ background: "#e5e5e5", borderRadius: 6, height: 14, overflow: "hidden" }}>
+            <div style={{
+              background: cohort.on_track ? "#27ae60" : "#c0392b", height: "100%",
+              width: `${Math.min(100, (cohort.new_clients / Math.max(1, cohort.goal_clients)) * 100)}%`,
+            }} />
+          </div>
+          {Object.keys(cohort.by_channel).length > 0 && (
+            <p className="muted">
+              {Object.entries(cohort.by_channel).map(([ch, n]) => `${ch}: ${n}`).join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
+
+      {invoice && (
+        <div className="card">
+          <h2>Acquisition fee (this month)</h2>
+          <p>
+            Attributed GMV <strong>{(invoice.attributed_gmv_minor / 100).toFixed(2)}</strong>{" "}
+            {invoice.currency} · gross fee <strong>{(invoice.gross_fee_minor / 100).toFixed(2)}</strong>
+            {invoice.clawback_minor > 0 && <> · refunded −{(invoice.clawback_minor / 100).toFixed(2)}</>}
+            {" "}· net due <strong>{(invoice.net_fee_minor / 100).toFixed(2)}</strong>
+          </p>
+          {invoice.lines.length > 0 && (
+            <table>
+              <thead><tr><th>Booking</th><th>Channel</th><th>Campaign</th><th>Fee</th></tr></thead>
+              <tbody>
+                {invoice.lines.slice(0, 10).map((l) => (
+                  <tr key={l.booking_id}>
+                    <td>{l.booking_id.slice(0, 8)}</td>
+                    <td>{l.channel || "—"}</td><td>{l.campaign || "—"}</td>
+                    <td>{(l.fee_minor / 100).toFixed(2)} {l.currency}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <h2>Acquisition funnel (first-touch attributed)</h2>

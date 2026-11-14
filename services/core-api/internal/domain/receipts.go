@@ -143,10 +143,20 @@ func (svc *ReceiptsService) alertPhones(ctx context.Context, tenantID string) []
 }
 
 func (svc *ReceiptsService) pushAlert(ctx context.Context, tenantID, phone, body string) {
+	pushWhatsAppAlert(ctx, svc.waURL, tenantID, phone, body)
+}
+
+// pushWhatsAppAlert is the shared operator-alert transport (Phase 26: also
+// used by acquisition pacing alerts). Fire-and-forget: delivery failures
+// are advisory by contract.
+func pushWhatsAppAlert(ctx context.Context, waURL, tenantID, phone, body string) {
+	if waURL == "" {
+		return
+	}
 	payload, _ := json.Marshal(map[string]string{
 		"tenant_id": tenantID, "contact": phone, "body": body})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimSuffix(svc.waURL, "/")+"/v1/send", strings.NewReader(string(payload)))
+		strings.TrimSuffix(waURL, "/")+"/v1/send", strings.NewReader(string(payload)))
 	if err != nil {
 		return
 	}

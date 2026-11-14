@@ -165,4 +165,17 @@ geo verdicts no longer degrade against real core responses (areas are
 strings, not dicts), and the `pg` build tag compiles for the first time
 (pgx module, `platformTx` receiver, missing `Geo()` accessor).
 
+**Phase 12 — delivered (see `docs/phase12.md`).** Receipts now alert:
+`SendReply` links each provider `wamid` to its case (idempotent
+receipt_links, migration 0008); a `failed` receipt on a linked reply pulls
+the case out of waiting-on-client, escalates, and notes the evidence — a
+`read` receipt annotates the case with proof-of-delivery. Console
+`/receipts` board: status counts, failure table correlated to cases,
+message lifecycle + per-case evidence lookups. New CI job `pg` runs the
+store against real Postgres+PostGIS as a non-superuser role (RLS actually
+applies) — which caught and fixed four latent pg bugs: 0007's TEXT→uuid
+FK mismatch (migration never applicable), missing `::uuid` casts in the
+0007/0008 RLS policies, `""`→uuid casts in `pgCases` writes, and NULL
+columns scanned into plain strings.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

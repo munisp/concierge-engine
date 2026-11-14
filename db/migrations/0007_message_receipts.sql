@@ -2,8 +2,8 @@
 -- Idempotent per (tenant, external_ref, status) — channel redelivery is free.
 
 CREATE TABLE IF NOT EXISTS message_receipts (
-    id           TEXT PRIMARY KEY,
-    tenant_id    TEXT NOT NULL REFERENCES tenants(id),
+    id           uuid PRIMARY KEY,
+    tenant_id    uuid NOT NULL REFERENCES tenants(id),
     channel      TEXT NOT NULL,
     external_ref TEXT NOT NULL,
     status       TEXT NOT NULL CHECK (status IN ('sent','delivered','read','failed')),
@@ -18,4 +18,4 @@ CREATE INDEX IF NOT EXISTS idx_message_receipts_ref
 ALTER TABLE message_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE message_receipts FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON message_receipts
-    USING (tenant_id = current_setting('app.tenant_id', true));
+    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);

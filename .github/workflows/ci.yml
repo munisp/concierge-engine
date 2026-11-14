@@ -13,6 +13,44 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: "1.23" }
       - run: cd services/core-api && go vet ./... && go test ./...
+      # The pg build tag broke silently once — never again.
+      - run: cd services/core-api && go build -tags pg ./...
+
+  # Phase 12: pg-backed integration tests against a real Postgres+PostGIS.
+  # Migrations run as the superuser; tests run as a non-superuser role so
+  # FORCE RLS actually applies (superusers bypass RLS entirely).
+  pg:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: concierge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.23" }
+      - name: Apply migrations (superuser)
+        run: |
+          for f in db/migrations/*.sql; do
+            PGPASSWORD=postgres psql -h localhost -U postgres -d concierge -v ON_ERROR_STOP=1 -f "$f"
+          done
+      - name: Create app role
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d concierge -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE app LOGIN PASSWORD 'app';
+          GRANT USAGE ON SCHEMA public TO app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app;
+          SQL
+      - name: pg integration tests (RLS-active role)
+        env:
+          CE_PG_TEST_DSN: postgres://app:app@localhost:5432/concierge?sslmode=disable
+        run: cd services/core-api && go test -tags pg ./internal/store/ -run TestPG -v
 
   rust:
     runs-on: ubuntu-latest

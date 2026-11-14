@@ -110,6 +110,17 @@ type ReceiptStore interface {
 	AddReceipt(ctx context.Context, rc *model.MessageReceipt) error
 	Receipts(ctx context.Context, tenantID, externalRef string) ([]model.MessageReceipt, error)
 	ReceiptCounts(ctx context.Context, tenantID string) (map[string]int, error)
+	// Phase 12: external_ref -> case correlation (set by SendReply when the
+	// channel returns a message id) so receipts can alert on the right case.
+	// LinkReceipt is idempotent per (tenant, external_ref) — first link wins.
+	LinkReceipt(ctx context.Context, tenantID, externalRef, caseID string) error
+	// LinkedCase returns the case a channel message id belongs to, or ""
+	// (no error) when the ref was never linked (e.g. template sends).
+	LinkedCase(ctx context.Context, tenantID, externalRef string) (string, error)
+	// ReceiptsByStatus lists recent receipts of one status (failures board).
+	ReceiptsByStatus(ctx context.Context, tenantID, status string, limit int) ([]model.MessageReceipt, error)
+	// RefsForCase lists channel message ids linked to a case.
+	RefsForCase(ctx context.Context, tenantID, caseID string) ([]string, error)
 }
 
 // ---------------------------------------------------------- Phase 2 stores

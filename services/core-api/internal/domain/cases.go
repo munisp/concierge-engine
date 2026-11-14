@@ -624,6 +624,10 @@ func (svc *CaseService) SendReply(ctx context.Context, tenantID, id, body, opera
 				if err := json.NewDecoder(resp.Body).Decode(&sendBody); err == nil &&
 					len(sendBody.Body.Messages) > 0 {
 					res.ExternalRef = sendBody.Body.Messages[0].ID
+					// Link ref -> case so delivery/read/failed receipts
+					// (Phase 12) alert on this case. Advisory: a link
+					// failure never blocks the send.
+					_ = svc.s.Receipts.Link(ctx, tenantID, res.ExternalRef, id)
 				}
 				resp.Body.Close()
 				if !res.Sent {
@@ -641,9 +645,9 @@ func (svc *CaseService) SendReply(ctx context.Context, tenantID, id, body, opera
 	author := "operator:" + operator
 	_, _ = svc.AddNote(ctx, tenantID, id, author, "reply approved & sent: "+body)
 	svc.s.Audit.Log(ctx, tenantID, author, "case.reply_sent", "case", id,
-		map[string]any{"sent": res.Sent, "engine": engine})
+		map[string]any{"sent": res.Sent, "engine": engine, "external_ref": res.ExternalRef})
 	svc.s.Events.Emit(ctx, tenantID, "case", id, "case.reply_sent",
-		map[string]any{"sent": res.Sent, "engine": engine})
+		map[string]any{"sent": res.Sent, "engine": engine, "external_ref": res.ExternalRef})
 	return res, nil
 }
 

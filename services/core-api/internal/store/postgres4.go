@@ -8,6 +8,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strconv"
 	"time"
@@ -28,13 +29,25 @@ const caseCols = `id, tenant_id, client_id, title, kind, priority, state, owner_
 func scanCase(row interface{ Scan(...any) error }) (*model.Case, error) {
 	var c model.Case
 	var tags []byte
-	err := row.Scan(&c.ID, &c.TenantID, &c.ClientID, &c.Title, &c.Kind, &c.Priority,
-		&c.State, &c.OwnerID, &c.Summary, &c.TriageEngine, &c.RequestID, &c.BookingID,
-		&c.ConversationID, &tags, &c.SLADueAt, &c.Escalated,
-		&c.CreatedAt, &c.UpdatedAt, &c.ResolvedAt, &c.ClosedAt)
+	// client/request/booking/conversation ids and the resolution timestamps
+	// are nullable columns — scan them nullable or any case without a client
+	// is unreadable.
+	var clientID, requestID, bookingID, conversationID sql.NullString
+	var slaDueAt, resolvedAt, closedAt sql.NullTime
+	err := row.Scan(&c.ID, &c.TenantID, &clientID, &c.Title, &c.Kind, &c.Priority,
+		&c.State, &c.OwnerID, &c.Summary, &c.TriageEngine, &requestID, &bookingID,
+		&conversationID, &tags, &slaDueAt, &c.Escalated,
+		&c.CreatedAt, &c.UpdatedAt, &resolvedAt, &closedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
+	c.ClientID = clientID.String
+	c.RequestID = requestID.String
+	c.BookingID = bookingID.String
+	c.ConversationID = conversationID.String
+	c.SLADueAt = slaDueAt.Time
+	c.ResolvedAt = resolvedAt.Time
+	c.ClosedAt = closedAt.Time
 	_ = json.Unmarshal(tags, &c.Tags)
 	return &c, nil
 }
@@ -51,9 +64,10 @@ func (s pgCases) Create(ctx context.Context, c *model.Case) error {
 			summary, triage_engine, request_id, booking_id, conversation_id, tags,
 			sla_due_at, escalated, idempotency_key)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-		c.ID, c.TenantID, c.ClientID, c.Title, c.Kind, c.Priority, c.State, c.OwnerID,
-		c.Summary, c.TriageEngine, c.RequestID, c.BookingID, c.ConversationID, tags,
-		c.SLADueAt, c.Escalated, nilIfEmpty(c.IdempotencyKey))
+		c.ID, c.TenantID, nilIfEmpty(c.ClientID), c.Title, c.Kind, c.Priority, c.State, c.OwnerID,
+		c.Summary, c.TriageEngine, nilIfEmpty(c.RequestID), nilIfEmpty(c.BookingID),
+		nilIfEmpty(c.ConversationID), tags,
+		nilIfZero(c.SLADueAt), c.Escalated, nilIfEmpty(c.IdempotencyKey))
 	if err != nil {
 		return err
 	}
@@ -65,6 +79,15 @@ func nilIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// nilIfZero maps a zero time to NULL — sla_due_at / resolved_at / closed_at
+// are nullable, and '0001-01-01' is out of range for timestamptz.
+func nilIfZero(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t
 }
 
 func (s pgCases) Get(ctx context.Context, tenantID, id string) (*model.Case, error) {
@@ -93,9 +116,10 @@ func (s pgCases) Update(ctx context.Context, c *model.Case) error {
 			summary=$8, triage_engine=$9, request_id=$10, booking_id=$11, conversation_id=$12,
 			tags=$13, sla_due_at=$14, escalated=$15, updated_at=$16, resolved_at=$17, closed_at=$18
 		 WHERE id=$1`,
-		c.ID, c.ClientID, c.Title, c.Kind, c.Priority, c.State, c.OwnerID,
-		c.Summary, c.TriageEngine, c.RequestID, c.BookingID, c.ConversationID,
-		tags, c.SLADueAt, c.Escalated, c.UpdatedAt, c.ResolvedAt, c.ClosedAt)
+		c.ID, nilIfEmpty(c.ClientID), c.Title, c.Kind, c.Priority, c.State, c.OwnerID,
+		c.Summary, c.TriageEngine, nilIfEmpty(c.RequestID), nilIfEmpty(c.BookingID),
+		nilIfEmpty(c.ConversationID),
+		tags, nilIfZero(c.SLADueAt), c.Escalated, c.UpdatedAt, nilIfZero(c.ResolvedAt), nilIfZero(c.ClosedAt))
 	if err != nil {
 		return err
 	}

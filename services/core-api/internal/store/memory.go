@@ -54,6 +54,7 @@ type memory struct {
 	embeddings    map[string]map[string][]float32  // tenantID -> caseID -> vector
 	geoAreas      map[string]*model.ServiceArea    // tenantID|areaID
 	receipts      map[string]*model.MessageReceipt // tenantID|externalRef|status (idempotent)
+	receiptLinks  map[string]string                // tenantID|externalRef -> caseID (first link wins)
 	payouts       map[string]*model.Payout
 	payoutIdem    map[string]string
 	audit         []model.AuditEntry
@@ -97,6 +98,7 @@ func NewMemory() Store {
 		embeddings:    map[string]map[string][]float32{},
 		geoAreas:      map[string]*model.ServiceArea{},
 		receipts:      map[string]*model.MessageReceipt{},
+		receiptLinks:  map[string]string{},
 	}
 }
 

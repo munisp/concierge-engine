@@ -38,6 +38,17 @@ type RewardSummary = {
   rewards: RewardRow[];
 };
 
+type Promo = {
+  id: string;
+  code: string;
+  credit_minor: number;
+  currency: string;
+  max_redemptions?: number;
+  expires_at?: string;
+  active: boolean;
+  created_at: string;
+};
+
 type Send = {
   id: string;
   client_id: string;
@@ -70,9 +81,32 @@ export default function Growth() {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [sentMsg, setSentMsg] = useState("");
 
+  const [promos, setPromos] = useState<Promo[]>([]);
+  const [pCode, setPCode] = useState("");
+  const [pCredit, setPCredit] = useState("");
+  const [pCurrency, setPCurrency] = useState("EUR");
+  const [pMax, setPMax] = useState("");
+  const [pDays, setPDays] = useState("");
+
   const load = () => {
     api.get<FunnelRow[]>("/v1/attribution/funnel").then(setFunnel).catch((e) => setErr(String(e)));
     api.get<Send[]>("/v1/outreach/sends?limit=20").then(setSends).catch((e) => setErr(String(e)));
+    api.get<Promo[]>("/v1/promos").then(setPromos).catch((e) => setErr(String(e)));
+  };
+
+  const createPromo = async () => {
+    setErr("");
+    try {
+      await api.post<Promo>("/v1/promos", {
+        code: pCode,
+        credit_minor: Math.round(parseFloat(pCredit) * 100),
+        currency: pCurrency,
+        max_redemptions: pMax ? parseInt(pMax, 10) : undefined,
+        expiry_days: pDays ? parseInt(pDays, 10) : undefined,
+      });
+      setPCode(""); setPCredit(""); setPMax(""); setPDays("");
+      load();
+    } catch (e) { setErr(String(e)); }
   };
   useEffect(() => { load(); }, []);
 
@@ -196,6 +230,41 @@ export default function Growth() {
               </table>
             )}
           </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Promo campaigns</h2>
+        <p className="muted">
+          Fixed-credit codes clients redeem once each — the credit lands in their reward
+          balance and comes off their next payment link automatically.
+        </p>
+        <div className="row">
+          <input placeholder="code (e.g. SUMMER25)" value={pCode} onChange={(e) => setPCode(e.target.value)} />
+          <input placeholder="credit (25.00)" value={pCredit} onChange={(e) => setPCredit(e.target.value)} />
+          <select value={pCurrency} onChange={(e) => setPCurrency(e.target.value)}>
+            <option value="EUR">EUR</option><option value="USD">USD</option>
+            <option value="GBP">GBP</option><option value="NGN">NGN</option>
+          </select>
+          <input placeholder="max redemptions" value={pMax} onChange={(e) => setPMax(e.target.value)} />
+          <input placeholder="valid days" value={pDays} onChange={(e) => setPDays(e.target.value)} />
+          <button onClick={createPromo} disabled={!pCode || !pCredit}>Create</button>
+        </div>
+        {promos.length === 0 ? <p>No campaigns yet.</p> : (
+          <table>
+            <thead><tr><th>Code</th><th>Credit</th><th>Cap</th><th>Expires</th><th>Status</th></tr></thead>
+            <tbody>
+              {promos.map((pr) => (
+                <tr key={pr.id}>
+                  <td><strong>{pr.code}</strong></td>
+                  <td>{(pr.credit_minor / 100).toFixed(2)} {pr.currency}</td>
+                  <td>{pr.max_redemptions || "∞"}</td>
+                  <td>{pr.expires_at ? new Date(pr.expires_at).toLocaleDateString() : "never"}</td>
+                  <td>{pr.active ? "active" : "inactive"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 

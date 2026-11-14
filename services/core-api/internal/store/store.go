@@ -120,6 +120,17 @@ type RewardStore interface {
 	List(ctx context.Context, tenantID, clientID string) ([]model.ClientReward, error)
 }
 
+// PromoStore is fixed-credit promo campaigns (Phase 20): codes clients
+// redeem for reward credit. Redemption idempotency lives on the reward row
+// (partial UNIQUE on promo_code).
+type PromoStore interface {
+	Create(ctx context.Context, c *model.PromoCampaign) error // idempotent on (tenant, code)
+	GetByCode(ctx context.Context, tenantID, code string) (*model.PromoCampaign, error)
+	List(ctx context.Context, tenantID string) ([]model.PromoCampaign, error)
+	// Redemptions counts rewards accrued under a code (cap enforcement).
+	Redemptions(ctx context.Context, tenantID, code string) (int, error)
+}
+
 type OutboxStore interface {
 	Add(ctx context.Context, e *model.OutboxEvent) error
 	Unpublished(ctx context.Context, limit int) ([]model.OutboxEvent, error)
@@ -298,6 +309,7 @@ type Store interface {
 	ApiKeys() ApiKeyStore
 	Webhooks() WebhookStore
 	Rewards() RewardStore
+	Promos() PromoStore
 	Referrals() ReferralStore
 	Cases() CaseStore
 	Embeddings() EmbeddingStore

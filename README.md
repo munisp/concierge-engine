@@ -273,4 +273,18 @@ lookup (balance + history table). Redemption, compensation posting and
 refund safety unchanged from Phase 18. Migration 0014. 5 domain + 2 pg
 tests.
 
+**Phase 20 — delivered (see `docs/phase20.md`).** Promo campaigns + growth
+config + reward visibility. Tenants mint fixed-credit promo codes
+(`POST /v1/promos`, console growth board); clients redeem once each
+(`POST /v1/promos/redeem`, case-insensitive, structural idempotency via
+partial UNIQUE on promo_code); credit lands in the same `client_rewards`
+ledger as referral rewards (kind `promo_credit`, NULL source booking) and
+redeems against payment links with the Phase 18 mechanics. Campaigns carry
+redemption caps and validity windows (credit expires with the campaign).
+Per-tenant `outreach_config.marketing_cap_7d` overrides the platform
+frequency cap. Capture page: promo input + "reward credit applied — you pay
+X" from the intent's actual `reward_applied_minor`; WhatsApp agent payment
+links carry reward fields so replies state the applied credit honestly.
+Migration 0015. 5 domain + 2 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

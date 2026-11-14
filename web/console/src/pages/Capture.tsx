@@ -30,6 +30,11 @@ export default function Capture() {
   const [paymentUrl, setPaymentUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Phase 20: promo redemption + reward credit visibility.
+  const [clientId, setClientId] = useState("");
+  const [promo, setPromo] = useState("");
+  const [promoMsg, setPromoMsg] = useState("");
+  const [rewardApplied, setRewardApplied] = useState(0);
 
   async function submit() {
     setBusy(true);
@@ -42,6 +47,7 @@ export default function Capture() {
         locale: navigator.language,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
+      setClientId(resolved.client.id);
       const acq = acquisitionParams();
       if (acq.channel || acq.campaign) {
         // Advisory: attribution never blocks capture.
@@ -79,11 +85,25 @@ export default function Capture() {
     }
   }
 
+  async function applyPromo() {
+    if (!promo || !clientId) return;
+    setPromoMsg("");
+    try {
+      const r = await api.post<{ amount_minor: number; currency: string }>("/v1/promos/redeem", {
+        code: promo, client_id: clientId,
+      });
+      setPromoMsg(`${money(r.amount_minor, r.currency)} credit applied — it comes off your payment.`);
+    } catch (e) {
+      setPromoMsg(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function pay() {
     if (!quote) return;
-    const intent = await api.post<{ hosted_url: string }>("/v1/payments/links", {
-      quote_id: quote.id, mode: "FULL", idempotency_key: `pay-${quote.id}`,
-    });
+    const intent = await api.post<{ hosted_url: string; reward_applied_minor?: number }>(
+      "/v1/payments/links",
+      { quote_id: quote.id, mode: "FULL", idempotency_key: `pay-${quote.id}` });
+    setRewardApplied(intent.reward_applied_minor ?? 0);
     setPaymentUrl(intent.hosted_url);
   }
 
@@ -133,9 +153,26 @@ export default function Capture() {
             </p>
           ) : null}
           <p className="muted">Valid until {new Date(quote.expires_at).toLocaleString()}</p>
+          {!paymentUrl && (
+            <div className="row">
+              <input placeholder="Promo code" value={promo} onChange={(e) => setPromo(e.target.value)} />
+              <button onClick={applyPromo} disabled={!promo}>Apply</button>
+            </div>
+          )}
+          {promoMsg && <p className="muted">{promoMsg}</p>}
           {!paymentUrl
             ? <button onClick={pay}>Confirm & pay</button>
-            : <p>Complete payment securely: <a href={paymentUrl}>{paymentUrl}</a></p>}
+            : (
+              <>
+                {rewardApplied > 0 && (
+                  <p className="ok">
+                    {money(rewardApplied, quote.currency)} reward credit applied — you pay{" "}
+                    {money(quote.total_minor - rewardApplied, quote.currency)}.
+                  </p>
+                )}
+                <p>Complete payment securely: <a href={paymentUrl}>{paymentUrl}</a></p>
+              </>
+            )}
         </div>
       )}
     </div>

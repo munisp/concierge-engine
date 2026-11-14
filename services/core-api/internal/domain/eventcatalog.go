@@ -25,6 +25,8 @@ var EventCatalog = []EventSpec{
 	{"client.erased", "client", "Right to erasure executed — identity scrubbed to pseudonymous tombstone", nil},
 	{"referral.reward_accrued", "client", "Reward credit accrued on a referral conversion — referrer reward or referee welcome credit (Phase 18/19)", []string{"amount_minor", "kind", "source_booking_id"}},
 	{"referral.reward_redeemed", "client", "Referral credit applied to a captured payment", []string{"intent_id", "amount_minor"}},
+	{"promo.created", "promo", "Promo campaign created (Phase 20)", []string{"code", "credit_minor", "currency"}},
+	{"promo.redeemed", "client", "Client redeemed a promo code for reward credit", []string{"code", "amount_minor", "currency"}},
 
 	{"conversation.started", "conversation", "Inbound message opened a conversation", []string{"channel", "client_id"}},
 	{"message.appended", "conversation", "Message added to a conversation timeline", []string{"author"}},

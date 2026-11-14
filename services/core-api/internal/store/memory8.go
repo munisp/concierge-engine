@@ -18,11 +18,13 @@ type memRewards struct{ m *memory }
 func (s *memRewards) Accrue(_ context.Context, r *model.ClientReward) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	// Idempotent per (tenant, client, source booking): a replayed conversion
-	// never double-credits the referrer.
+	// Idempotent per (tenant, client, source booking) — a replayed
+	// conversion never double-credits — and per (tenant, client, promo
+	// code): one redemption per client per promo (Phase 20).
 	for _, e := range s.m.rewards {
 		if e.TenantID == r.TenantID && e.ClientID == r.ClientID &&
-			e.SourceBookingID == r.SourceBookingID {
+			(e.SourceBookingID != "" && e.SourceBookingID == r.SourceBookingID ||
+				r.PromoCode != "" && e.PromoCode == r.PromoCode) {
 			return httpx.ErrConflict
 		}
 	}

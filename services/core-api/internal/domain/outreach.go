@@ -24,8 +24,18 @@ import (
 
 // OutreachMarketingWeeklyCap bounds marketing sends per client per rolling
 // 7-day window. Service-purpose sends (booking updates, safety) are never
-// capped and never consent-gated.
+// capped and never consent-gated. Phase 20: tenants override the cap via
+// OutreachConfig.MarketingCap7d (0 = this platform default).
 const OutreachMarketingWeeklyCap = 3
+
+// marketingCap resolves the tenant's effective weekly marketing cap.
+func (svc *OutreachService) marketingCap(ctx context.Context, tenantID string) int {
+	if t, err := svc.s.Store.Tenants().Get(ctx, tenantID); err == nil &&
+		t.OutreachConfig.MarketingCap7d > 0 {
+		return t.OutreachConfig.MarketingCap7d
+	}
+	return OutreachMarketingWeeklyCap
+}
 
 type OutreachService struct {
 	s     *Services
@@ -60,7 +70,8 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 	if err != nil {
 		return nil, err
 	}
-	v := &OutreachVerdict{Allowed: true, MarketingCap: OutreachMarketingWeeklyCap}
+	maxSends := svc.marketingCap(ctx, tenantID)
+	v := &OutreachVerdict{Allowed: true, MarketingCap: maxSends}
 	if cl.Erased() {
 		// GDPR/CCPA: an erased data subject must not be contacted on any
 		// purpose — recorded as held so the refusal is auditable.
@@ -85,9 +96,9 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 	if !v.MarketingConsent {
 		v.Allowed = false
 		v.Reason = "marketing consent not granted"
-	} else if v.MarketingSent7d >= OutreachMarketingWeeklyCap {
+	} else if v.MarketingSent7d >= maxSends {
 		v.Allowed = false
-		v.Reason = fmt.Sprintf("frequency cap: %d marketing sends per 7 days", OutreachMarketingWeeklyCap)
+		v.Reason = fmt.Sprintf("frequency cap: %d marketing sends per 7 days", maxSends)
 	}
 	return v, nil
 }

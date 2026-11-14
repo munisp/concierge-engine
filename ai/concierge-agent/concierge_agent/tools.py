@@ -173,7 +173,14 @@ class ToolExecutor:
                         "idempotency_key": idem})
                     r.raise_for_status()
                     d = r.json()
-                    return ToolResult(ok=True, data={"payment_url": d["hosted_url"]})
+                    # Reward credit (Phase 20): surface what was applied so the
+                    # reply can tell the client honestly; factuality pipeline
+                    # admits these values.
+                    return ToolResult(ok=True, data={
+                        "payment_url": d["hosted_url"],
+                        "amount_minor": d.get("amount_minor", 0),
+                        "reward_applied_minor": d.get("reward_applied_minor", 0),
+                        "currency": d.get("currency", "")})
                 if tool == "send_message":
                     # The only outbound path; the reply pipeline runs before this.
                     r = await client.post(f"/v1/conversations/{conversation_id}/messages",

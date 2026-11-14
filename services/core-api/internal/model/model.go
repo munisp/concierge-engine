@@ -27,7 +27,9 @@ type Tenant struct {
 	PaymentConfig PaymentConfig `json:"payment_config"`
 	// Phase 19: two-sided reward sharing program.
 	RewardProgram RewardProgram `json:"reward_program"`
-	CreatedAt     time.Time     `json:"created_at"`
+	// Phase 20: per-tenant outreach configuration.
+	OutreachConfig OutreachConfig `json:"outreach_config"`
+	CreatedAt      time.Time      `json:"created_at"`
 }
 
 // TaxConfig is the tenant's tax posture. Engine picks the calculator:
@@ -73,6 +75,29 @@ type RewardProgram struct {
 	RefereePct     float64 `json:"referee_pct,omitempty"`
 	MaxRewardMinor int64   `json:"max_reward_minor,omitempty"`
 	ExpiryDays     int     `json:"expiry_days,omitempty"`
+}
+
+// OutreachConfig holds per-tenant proactive-outreach settings (Phase 20).
+// MarketingCap7d overrides the platform default of 3 marketing sends per
+// client per rolling 7 days; 0 = platform default.
+type OutreachConfig struct {
+	MarketingCap7d int `json:"marketing_cap_7d,omitempty"`
+}
+
+// PromoCampaign is a fixed-credit promo code (Phase 20): a client redeeming
+// the code accrues credit_minor of reward credit, once per client. The
+// credit expires with the campaign (expires_at); max_redemptions 0 =
+// unlimited.
+type PromoCampaign struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenant_id"`
+	Code           string    `json:"code"`
+	CreditMinor    int64     `json:"credit_minor"`
+	Currency       string    `json:"currency"`
+	MaxRedemptions int       `json:"max_redemptions,omitempty"`
+	ExpiresAt      time.Time `json:"expires_at,omitempty"`
+	Active         bool      `json:"active"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type SLAConfig struct {
@@ -320,9 +345,10 @@ type PaymentIntent struct {
 type ClientReward struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`
-	ClientID         string    `json:"client_id"`         // who holds the credit (referrer or referee)
-	SourceBookingID  string    `json:"source_booking_id"` // referee's first booking
-	Kind             string    `json:"kind"`              // referral_reward | referee_welcome
+	ClientID         string    `json:"client_id"`         // who holds the credit (referrer, referee, promo redeemer)
+	SourceBookingID  string    `json:"source_booking_id"` // referee's first booking; empty for promo credit
+	Kind             string    `json:"kind"`              // referral_reward | referee_welcome | promo_credit
+	PromoCode        string    `json:"promo_code,omitempty"` // set for promo_credit (Phase 20)
 	AmountMinor      int64     `json:"amount_minor"`
 	Currency         string    `json:"currency"`
 	State            string    `json:"state"` // ACCRUED | REDEEMED | EXPIRED

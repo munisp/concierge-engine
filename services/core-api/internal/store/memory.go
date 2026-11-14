@@ -37,6 +37,7 @@ type memory struct {
 	messages      map[string][]model.Message
 	handoffs      map[string]*model.HandoffItem
 	rewards       map[string]*model.ClientReward
+	promos        map[string]*model.PromoCampaign
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
 	partners      map[string]*model.Partner
@@ -83,6 +84,7 @@ func NewMemory() Store {
 		messages:      map[string][]model.Message{},
 		handoffs:      map[string]*model.HandoffItem{},
 		rewards:       map[string]*model.ClientReward{},
+		promos:        map[string]*model.PromoCampaign{},
 		partners:      map[string]*model.Partner{},
 		corporate:     map[string]*model.CorporateAccount{},
 		invoices:      map[string]*model.CorporateInvoice{},

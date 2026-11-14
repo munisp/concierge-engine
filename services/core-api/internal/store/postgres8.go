@@ -33,14 +33,17 @@ func (s pgRewards) Accrue(ctx context.Context, r *model.ClientReward) error {
 	}
 	defer tx.Rollback()
 	var id string
+	// Bare ON CONFLICT: covers BOTH the source-booking UNIQUE (referral
+	// idempotency) and the partial promo-code UNIQUE (one redemption per
+	// client per code, Phase 20).
 	err = tx.QueryRowContext(ctx,
-		`INSERT INTO client_rewards (id, tenant_id, client_id, source_booking_id, kind, amount_minor, currency, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		 ON CONFLICT (tenant_id, client_id, source_booking_id) DO NOTHING RETURNING id`,
+		`INSERT INTO client_rewards (id, tenant_id, client_id, source_booking_id, kind, amount_minor, currency, expires_at, promo_code)
+		 VALUES ($1,$2,nullif($3,'')::uuid,$4,$5,$6,$7,$8,$9)
+		 ON CONFLICT DO NOTHING RETURNING id`,
 		r.ID, r.TenantID, r.ClientID, r.SourceBookingID, r.Kind, r.AmountMinor, r.Currency,
-		nilIfZero(r.ExpiresAt)).Scan(&id)
+		nilIfZero(r.ExpiresAt), r.PromoCode).Scan(&id)
 	if err == sql.ErrNoRows {
-		return httpx.ErrConflict // replayed conversion — never double-credit
+		return httpx.ErrConflict // replayed conversion or promo re-redemption
 	}
 	if err != nil {
 		return err
@@ -134,8 +137,8 @@ func (s pgRewards) List(ctx context.Context, tenantID, clientID string) ([]model
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, client_id, source_booking_id, kind, amount_minor, currency, state,
-		        coalesce(redeemed_intent_id,''), created_at, redeemed_at, expires_at
+		`SELECT id, tenant_id, client_id, coalesce(source_booking_id::text,''), kind, amount_minor, currency, state,
+		        coalesce(redeemed_intent_id,''), created_at, redeemed_at, expires_at, promo_code
 		 FROM client_rewards WHERE client_id=$1 ORDER BY created_at DESC LIMIT 100`, clientID)
 	if err != nil {
 		return nil, err
@@ -147,7 +150,7 @@ func (s pgRewards) List(ctx context.Context, tenantID, clientID string) ([]model
 		var redeemedAt, expiresAt sql.NullTime
 		if err := rows.Scan(&r.ID, &r.TenantID, &r.ClientID, &r.SourceBookingID, &r.Kind,
 			&r.AmountMinor, &r.Currency, &r.State, &r.RedeemedIntentID,
-			&r.CreatedAt, &redeemedAt, &expiresAt); err != nil {
+			&r.CreatedAt, &redeemedAt, &expiresAt, &r.PromoCode); err != nil {
 			return nil, err
 		}
 		if redeemedAt.Valid {

@@ -11,9 +11,20 @@ import (
 
 type ConversationService struct{ s *Services }
 
+// Open is get-or-create (Phase 22): for an identified client on a channel,
+// the active (non-CLOSED) thread is returned instead of fragmenting every
+// inbound message into its own conversation. conversation.started and the
+// attribution event fire only for genuinely new threads — the funnel counts
+// conversations, not messages. Client-less opens (system threads) always
+// create fresh.
 func (svc *ConversationService) Open(ctx context.Context, tenantID, clientID, channel, externalRef string) (*model.Conversation, error) {
 	if channel == "" {
 		return nil, httpx.ErrValidation
+	}
+	if clientID != "" {
+		if active, err := svc.s.Store.Conversations().FindActive(ctx, tenantID, clientID, channel); err == nil {
+			return active, nil
+		}
 	}
 	c := &model.Conversation{
 		ID: NewID(), TenantID: tenantID, ClientID: clientID, Channel: channel,
@@ -54,4 +65,17 @@ func (svc *ConversationService) Timeline(ctx context.Context, tenantID, conversa
 
 func (svc *ConversationService) SetState(ctx context.Context, tenantID, id, state string) error {
 	return svc.s.Store.Conversations().SetState(ctx, tenantID, id, state)
+}
+
+// Threads (Phase 22): a client's conversations across every channel,
+// newest first — the unified correspondence view behind client 360 and
+// the console.
+func (svc *ConversationService) Threads(ctx context.Context, tenantID, clientID string, limit int) ([]model.Conversation, error) {
+	if clientID == "" {
+		return nil, httpx.ErrValidation
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return svc.s.Store.Conversations().ForClient(ctx, tenantID, clientID, limit)
 }

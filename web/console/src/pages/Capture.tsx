@@ -35,6 +35,12 @@ export default function Capture() {
   const [promo, setPromo] = useState("");
   const [promoMsg, setPromoMsg] = useState("");
   const [rewardApplied, setRewardApplied] = useState(0);
+  // Phase 22: web correspondence — a concierge line on the capture page,
+  // threaded into the same conversation spine as WhatsApp.
+  const [chatBody, setChatBody] = useState("");
+  const [chatSent, setChatSent] = useState<string[]>([]);
+  const [chatConv, setChatConv] = useState("");
+  const [chatErr, setChatErr] = useState("");
 
   async function submit() {
     setBusy(true);
@@ -82,6 +88,35 @@ export default function Capture() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function sendChat() {
+    if (!clientId || !chatBody.trim()) return;
+    setChatErr("");
+    try {
+      // Get-or-create server-side: one WEB thread per client — the same
+      // conversation spine the operator console and case intake read.
+      let convId = chatConv;
+      if (!convId) {
+        const conv = await api.post<{ id: string }>("/v1/conversations", {
+          client_id: clientId, channel: "WEB",
+        });
+        convId = conv.id;
+        setChatConv(convId);
+      }
+      await api.post(`/v1/conversations/${convId}/messages`, {
+        author: "CLIENT", body: chatBody.trim(),
+      });
+      // Advisory: intake triage (same policy as WhatsApp) — never blocks.
+      api.post("/v1/cases/intake", {
+        client_id: clientId, conversation_id: convId,
+        text: chatBody.trim(), idempotency_key: `web-${Date.now()}`,
+      }).catch(() => {});
+      setChatSent((prev) => [...prev, chatBody.trim()]);
+      setChatBody("");
+    } catch (e) {
+      setChatErr(e instanceof Error ? e.message : "send failed");
     }
   }
 
@@ -173,6 +208,23 @@ export default function Capture() {
                 <p>Complete payment securely: <a href={paymentUrl}>{paymentUrl}</a></p>
               </>
             )}
+        </div>
+      )}
+      {clientId && (
+        <div className="card">
+          <h3>Message your concierge</h3>
+          <p className="muted">
+            One thread across web and WhatsApp — replies arrive on your WhatsApp number.
+          </p>
+          {chatSent.map((m, i) => (
+            <p key={i} className="muted">You: {m}</p>
+          ))}
+          <div className="row">
+            <input placeholder="Anything else we should know?" value={chatBody}
+              onChange={(e) => setChatBody(e.target.value)} />
+            <button onClick={sendChat} disabled={!chatBody.trim()}>Send</button>
+          </div>
+          {chatErr && <p className="error">{chatErr}</p>}
         </div>
       )}
     </div>

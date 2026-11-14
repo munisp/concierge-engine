@@ -603,6 +603,25 @@ func (s *memConversations) GetConversation(_ context.Context, tenantID, id strin
 	return &cp, nil
 }
 
+// FindActive returns the newest non-CLOSED conversation for
+// (tenant, client, channel); ErrNotFound when none exists.
+func (s *memConversations) FindActive(_ context.Context, tenantID, clientID, channel string) (*model.Conversation, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var best *model.Conversation
+	for _, c := range s.m.conversations {
+		if c.TenantID == tenantID && c.ClientID == clientID && c.Channel == channel &&
+			c.State != "CLOSED" && (best == nil || c.CreatedAt.After(best.CreatedAt)) {
+			best = c
+		}
+	}
+	if best == nil {
+		return nil, httpx.ErrNotFound
+	}
+	cp := *best
+	return &cp, nil
+}
+
 func (s *memConversations) SetState(_ context.Context, tenantID, id, state string) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()

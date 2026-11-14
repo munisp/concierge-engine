@@ -132,6 +132,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase11(mux)
 	h.registerPhase12(mux)
 	h.registerPhase13(mux)
+	h.registerPhase14(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
@@ -195,6 +196,7 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 	t.RewardProgram = patch.RewardProgram
 	t.OutreachConfig = patch.OutreachConfig
 	t.OperatorConfig = patch.OperatorConfig
+	t.DispatchConfig = patch.DispatchConfig
 	updated, err := h.svc.Tenants.UpdateConfig(r.Context(), t)
 	if err != nil {
 		httpx.WriteError(w, err)

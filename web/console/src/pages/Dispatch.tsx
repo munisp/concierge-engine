@@ -4,10 +4,32 @@ import type { Assignment } from "../types";
 
 // Dispatch board v1 (M4): assignment list + live SSE feed
 // (assignment / trip_status / geostamp events).
+type Availability = {
+  fleet_resource_id: string;
+  label: string;
+  free: boolean;
+  busy: { assignment_id: string; booking_id: string; start_at: string; end_at: string }[];
+};
+
 export default function Dispatch() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [events, setEvents] = useState<string[]>([]);
   const [error, setError] = useState("");
+  // Phase 22: scheduling — availability query across the fleet.
+  const [availFrom, setAvailFrom] = useState("");
+  const [availTo, setAvailTo] = useState("");
+  const [avail, setAvail] = useState<Availability[] | null>(null);
+
+  async function checkAvailability() {
+    setError("");
+    try {
+      setAvail(await api.get<Availability[]>(
+        `/v1/dispatch/availability?from=${encodeURIComponent(new Date(availFrom).toISOString())}` +
+        `&to=${encodeURIComponent(new Date(availTo).toISOString())}`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function refresh() {
     try {
@@ -48,6 +70,32 @@ export default function Dispatch() {
     <div>
       <h1>Dispatch board</h1>
       {error && <p className="error">{error}</p>}
+      <div className="card">
+        <h2>Fleet availability</h2>
+        <div className="row">
+          <input type="datetime-local" value={availFrom} onChange={(e) => setAvailFrom(e.target.value)} />
+          <input type="datetime-local" value={availTo} onChange={(e) => setAvailTo(e.target.value)} />
+          <button onClick={checkAvailability} disabled={!availFrom || !availTo}>Check</button>
+        </div>
+        {avail && (
+          avail.length === 0 ? <p className="muted">No active fleet resources.</p> : (
+            <table>
+              <thead><tr><th>Resource</th><th>Status</th><th>Busy windows (turnaround-padded)</th></tr></thead>
+              <tbody>
+                {avail.map((r) => (
+                  <tr key={r.fleet_resource_id}>
+                    <td>{r.label || r.fleet_resource_id.slice(0, 8)}</td>
+                    <td>{r.free ? "free" : "busy"}</td>
+                    <td>{r.busy.map((b) =>
+                      `${new Date(b.start_at).toLocaleString()} – ${new Date(b.end_at).toLocaleTimeString()}`
+                    ).join("; ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        )}
+      </div>
       <div className="row">
         <div style={{ flex: 2 }}>
           {assignments.length === 0 && <p className="muted">No active assignments.</p>}
@@ -57,6 +105,11 @@ export default function Dispatch() {
               <strong>Booking {a.booking_id.slice(0, 8)}</strong>
               <p className="muted">
                 Resource {a.fleet_resource_id?.slice(0, 8) ?? "—"} · Crew {a.crew_member_id?.slice(0, 8) ?? "—"}
+                {a.start_at && a.end_at && (
+                  <>
+                    {" · "}{new Date(a.start_at).toLocaleString()} – {new Date(a.end_at).toLocaleTimeString()}
+                  </>
+                )}
               </p>
               {next[a.status] && (
                 <button onClick={() => advance(a, next[a.status])}>

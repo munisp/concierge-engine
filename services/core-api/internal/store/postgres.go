@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -79,18 +78,19 @@ func (s pgTenants) Create(ctx context.Context, t *model.Tenant) error {
 	rewardCfg, _ := json.Marshal(t.RewardProgram)
 	outreachCfg, _ := json.Marshal(t.OutreachConfig)
 	operatorCfg, _ := json.Marshal(t.OperatorConfig)
+	dispatchCfg, _ := json.Marshal(t.DispatchConfig)
 	_, err := s.p.db.ExecContext(ctx,
-		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg)
+		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg)
 	return err
 }
 
 func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	var t model.Tenant
-	var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg []byte
+	var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg []byte
 	err := row.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &t.CreatedAt)
+		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &dispatchCfg, &t.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -102,18 +102,19 @@ func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	_ = json.Unmarshal(rewardCfg, &t.RewardProgram)
 	_ = json.Unmarshal(outreachCfg, &t.OutreachConfig)
 	_ = json.Unmarshal(operatorCfg, &t.OperatorConfig)
+	_ = json.Unmarshal(dispatchCfg, &t.DispatchConfig)
 	return &t, nil
 }
 
 func (s pgTenants) Get(ctx context.Context, tenantID string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, created_at
 		 FROM tenants WHERE id = $1`, tenantID))
 }
 
 func (s pgTenants) GetBySlug(ctx context.Context, slug string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, created_at
 		 FROM tenants WHERE slug = $1`, slug))
 }
 
@@ -126,9 +127,10 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 	rewardCfg, _ := json.Marshal(t.RewardProgram)
 	outreachCfg, _ := json.Marshal(t.OutreachConfig)
 	operatorCfg, _ := json.Marshal(t.OperatorConfig)
+	dispatchCfg, _ := json.Marshal(t.DispatchConfig)
 	res, err := s.p.db.ExecContext(ctx,
-		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9, reward_program=$10, outreach_config=$11, operator_config=$12
-		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg)
+		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9, reward_program=$10, outreach_config=$11, operator_config=$12, dispatch_config=$13
+		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg)
 	if err != nil {
 		return err
 	}
@@ -140,7 +142,7 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 
 func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	rows, err := s.p.db.QueryContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, created_at
 		 FROM tenants ORDER BY slug`)
 	if err != nil {
 		return nil, err
@@ -149,9 +151,9 @@ func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	out := []model.Tenant{}
 	for rows.Next() {
 		var t model.Tenant
-		var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg []byte
+		var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg []byte
 		if err := rows.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-			&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &t.CreatedAt); err != nil {
+			&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &dispatchCfg, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(brand, &t.Brand)
@@ -162,6 +164,7 @@ func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 		_ = json.Unmarshal(rewardCfg, &t.RewardProgram)
 		_ = json.Unmarshal(outreachCfg, &t.OutreachConfig)
 		_ = json.Unmarshal(operatorCfg, &t.OperatorConfig)
+		_ = json.Unmarshal(dispatchCfg, &t.DispatchConfig)
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -694,9 +697,10 @@ func (s pgDispatch) CreateAssignment(ctx context.Context, a *model.Assignment) e
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO assignments (id, tenant_id, booking_id, fleet_resource_id, crew_member_id, partner_id, status, sla_deadline)
-		 VALUES ($1,$2,$3,nullif($4,'')::uuid,nullif($5,'')::uuid,nullif($6,'')::uuid,$7,$8)`,
-		a.ID, a.TenantID, a.BookingID, a.FleetResourceID, a.CrewMemberID, a.PartnerID, a.Status, a.SLADeadline)
+		`INSERT INTO assignments (id, tenant_id, booking_id, fleet_resource_id, crew_member_id, partner_id, status, sla_deadline, start_at, end_at)
+		 VALUES ($1,$2,$3,nullif($4,'')::uuid,nullif($5,'')::uuid,nullif($6,'')::uuid,$7,$8,$9,$10)`,
+		a.ID, a.TenantID, a.BookingID, a.FleetResourceID, a.CrewMemberID, a.PartnerID, a.Status,
+		nilIfZero(a.SLADeadline), nilIfZero(a.StartAt), nilIfZero(a.EndAt))
 	if err != nil {
 		return err
 	}
@@ -727,7 +731,8 @@ func (s pgDispatch) ListAssignments(ctx context.Context, tenantID string) ([]mod
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, tenant_id, booking_id, coalesce(fleet_resource_id::text,''), coalesce(crew_member_id::text,''),
-		        coalesce(partner_id::text,''), status, sla_deadline, created_at FROM assignments ORDER BY created_at`)
+		        coalesce(partner_id::text,''), status, sla_deadline, start_at, end_at, created_at
+		 FROM assignments ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -735,14 +740,14 @@ func (s pgDispatch) ListAssignments(ctx context.Context, tenantID string) ([]mod
 	out := []model.Assignment{}
 	for rows.Next() {
 		var a model.Assignment
-		var sla *time.Time
+		var sla, startAt, endAt sql.NullTime
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.BookingID, &a.FleetResourceID, &a.CrewMemberID,
-			&a.PartnerID, &a.Status, &sla, &a.CreatedAt); err != nil {
+			&a.PartnerID, &a.Status, &sla, &startAt, &endAt, &a.CreatedAt); err != nil {
 			return nil, err
 		}
-		if sla != nil {
-			a.SLADeadline = *sla
-		}
+		a.SLADeadline = sla.Time
+		a.StartAt = startAt.Time
+		a.EndAt = endAt.Time
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
@@ -916,6 +921,25 @@ func (s pgConversations) GetConversation(ctx context.Context, tenantID, id strin
 	err = tx.QueryRowContext(ctx,
 		`SELECT id, tenant_id, coalesce(client_id::text,''), channel, state, coalesce(external_ref,''), created_at
 		 FROM conversations WHERE id=$1`, id).
+		Scan(&c.ID, &c.TenantID, &c.ClientID, &c.Channel, &c.State, &c.ExternalRef, &c.CreatedAt)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	return &c, tx.Commit()
+}
+
+func (s pgConversations) FindActive(ctx context.Context, tenantID, clientID, channel string) (*model.Conversation, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var c model.Conversation
+	err = tx.QueryRowContext(ctx,
+		`SELECT id, tenant_id, coalesce(client_id::text,''), channel, state, coalesce(external_ref,''), created_at
+		 FROM conversations
+		 WHERE client_id=$1 AND channel=$2 AND state<>'CLOSED'
+		 ORDER BY created_at DESC LIMIT 1`, clientID, channel).
 		Scan(&c.ID, &c.TenantID, &c.ClientID, &c.Channel, &c.State, &c.ExternalRef, &c.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)

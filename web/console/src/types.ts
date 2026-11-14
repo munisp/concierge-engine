@@ -60,6 +60,8 @@ export interface Assignment {
   fleet_resource_id?: string;
   crew_member_id?: string;
   status: string;
+  start_at?: string; // Phase 22 service window
+  end_at?: string;
   created_at: string;
 }
 

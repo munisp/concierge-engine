@@ -92,6 +92,10 @@ type ConversationStore interface {
 	Timeline(ctx context.Context, tenantID, conversationID string) ([]model.Message, error)
 	// ForClient: a client's conversations, newest first (Phase 15 CRM-360).
 	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.Conversation, error)
+	// FindActive (Phase 22): the client's newest non-CLOSED conversation on
+	// a channel — the get-or-create anchor that keeps one thread per client
+	// per channel instead of one conversation per message.
+	FindActive(ctx context.Context, tenantID, clientID, channel string) (*model.Conversation, error)
 }
 
 type HandoffStore interface {

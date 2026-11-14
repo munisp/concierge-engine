@@ -19,9 +19,9 @@ type Tenant struct {
 	// Phase 3: data residency (§13 regional residency — EU primary, UAE
 	// option) and cross-tenant referral opt-in (network effects require
 	// explicit consent per tenant).
-	Region           string    `json:"region"` // EU (default) | UAE
-	AcceptsReferrals bool      `json:"accepts_referrals"`
-	ReferralFeePct   float64   `json:"referral_fee_pct,omitempty"` // default 0.10
+	Region           string  `json:"region"` // EU (default) | UAE
+	AcceptsReferrals bool    `json:"accepts_referrals"`
+	ReferralFeePct   float64 `json:"referral_fee_pct,omitempty"` // default 0.10
 	// Phase 17: tax + payment configuration (EU/US launch readiness).
 	TaxConfig     TaxConfig     `json:"tax_config"`
 	PaymentConfig PaymentConfig `json:"payment_config"`
@@ -32,7 +32,18 @@ type Tenant struct {
 	// Phase 21: per-tenant operator roster — SLA/failure alert recipients.
 	// Empty roster = platform fallback (CE_OPERATOR_PHONE).
 	OperatorConfig OperatorConfig `json:"operator_config"`
+	// Phase 22: dispatch tuning.
+	DispatchConfig DispatchConfig `json:"dispatch_config"`
 	CreatedAt      time.Time      `json:"created_at"`
+}
+
+// DispatchConfig tunes scheduling. TurnaroundMinutes extends every
+// assignment's busy window on both sides for conflict purposes (vehicle
+// repositioning / cleanup); DefaultDurationMinutes sizes the window when a
+// request item carries no hours. Zeros = platform defaults (30 / 120).
+type DispatchConfig struct {
+	TurnaroundMinutes      int `json:"turnaround_minutes,omitempty"`
+	DefaultDurationMinutes int `json:"default_duration_minutes,omitempty"`
 }
 
 // OperatorConfig is the tenant's operator roster. AlertPhones receive
@@ -47,10 +58,10 @@ type OperatorConfig struct {
 // "flat" = tenant-configured rate (VAT/GST/sales tax) applied to the service
 // subtotal; "stripe-tax" = live Stripe Tax calculation per quote.
 type TaxConfig struct {
-	Engine            string `json:"engine,omitempty"`   // flat | stripe-tax | "" (none)
-	Country           string `json:"country,omitempty"`  // ISO 3166-1 alpha-2 of the tax registration
-	VATRateBP         int    `json:"vat_rate_bp,omitempty"` // basis points, e.g. 1900 = 19%
-	PricesIncludeTax  bool   `json:"prices_include_tax,omitempty"` // EU B2C convention
+	Engine           string `json:"engine,omitempty"`             // flat | stripe-tax | "" (none)
+	Country          string `json:"country,omitempty"`            // ISO 3166-1 alpha-2 of the tax registration
+	VATRateBP        int    `json:"vat_rate_bp,omitempty"`        // basis points, e.g. 1900 = 19%
+	PricesIncludeTax bool   `json:"prices_include_tax,omitempty"` // EU B2C convention
 }
 
 // PaymentConfig lets a tenant disable PSPs it has no account/entity for
@@ -262,11 +273,11 @@ type Quote struct {
 	TenantID        string      `json:"tenant_id"`
 	RequestID       string      `json:"request_id"`
 	Version         int         `json:"version"`
-	Origin          string      `json:"origin"` // INSTANT | HUMAN
-	TotalMinor      int64       `json:"total_minor"`  // grand total, tax included
+	Origin          string      `json:"origin"`      // INSTANT | HUMAN
+	TotalMinor      int64       `json:"total_minor"` // grand total, tax included
 	DepositMinor    int64       `json:"deposit_minor"`
 	Currency        string      `json:"currency"`
-	TaxMinor        int64       `json:"tax_minor"`           // Phase 17: tax component of TotalMinor
+	TaxMinor        int64       `json:"tax_minor"`            // Phase 17: tax component of TotalMinor
 	TaxEngine       string      `json:"tax_engine,omitempty"` // flat | stripe-tax | "" (none) — provenance
 	Lines           []QuoteLine `json:"lines"`
 	ExpiresAt       time.Time   `json:"expires_at"`
@@ -311,7 +322,13 @@ type Assignment struct {
 	PartnerID       string    `json:"partner_id,omitempty"`
 	Status          string    `json:"status"`
 	SLADeadline     time.Time `json:"sla_deadline"`
-	CreatedAt       time.Time `json:"created_at"`
+	// Phase 22: the service window. Resolved from the booking's request item
+	// (pickup_at + hours, else tenant default duration) or set explicitly.
+	// Zero window = schedule unknown; conflict gating only applies to
+	// windowed assignments.
+	StartAt   time.Time `json:"start_at,omitempty"`
+	EndAt     time.Time `json:"end_at,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type GeoStamp struct {
@@ -326,17 +343,17 @@ type GeoStamp struct {
 }
 
 type PaymentIntent struct {
-	ID             string    `json:"id"`
-	TenantID       string    `json:"tenant_id"`
-	BookingID      string    `json:"booking_id,omitempty"`
-	QuoteID        string    `json:"quote_id,omitempty"`
-	Mode           string    `json:"mode"` // FULL | DEPOSIT_BALANCE | PREAUTH_CAPTURE | MILESTONE | INVOICE
-	AmountMinor    int64     `json:"amount_minor"`
-	Currency       string    `json:"currency"`
-	PSP            string    `json:"psp"`
-	PSPRef         string    `json:"psp_ref,omitempty"`
-	HostedURL      string    `json:"hosted_url,omitempty"`
-	State          string    `json:"state"`
+	ID          string `json:"id"`
+	TenantID    string `json:"tenant_id"`
+	BookingID   string `json:"booking_id,omitempty"`
+	QuoteID     string `json:"quote_id,omitempty"`
+	Mode        string `json:"mode"` // FULL | DEPOSIT_BALANCE | PREAUTH_CAPTURE | MILESTONE | INVOICE
+	AmountMinor int64  `json:"amount_minor"`
+	Currency    string `json:"currency"`
+	PSP         string `json:"psp"`
+	PSPRef      string `json:"psp_ref,omitempty"`
+	HostedURL   string `json:"hosted_url,omitempty"`
+	State       string `json:"state"`
 	// RewardAppliedMinor is the portion of AmountMinor covered by the
 	// client's accrued referral rewards instead of the PSP charge
 	// (Phase 18). PSP charge = AmountMinor - RewardAppliedMinor; the
@@ -355,9 +372,9 @@ type PaymentIntent struct {
 type ClientReward struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`
-	ClientID         string    `json:"client_id"`         // who holds the credit (referrer, referee, promo redeemer)
-	SourceBookingID  string    `json:"source_booking_id"` // referee's first booking; empty for promo credit
-	Kind             string    `json:"kind"`              // referral_reward | referee_welcome | promo_credit
+	ClientID         string    `json:"client_id"`            // who holds the credit (referrer, referee, promo redeemer)
+	SourceBookingID  string    `json:"source_booking_id"`    // referee's first booking; empty for promo credit
+	Kind             string    `json:"kind"`                 // referral_reward | referee_welcome | promo_credit
 	PromoCode        string    `json:"promo_code,omitempty"` // set for promo_credit (Phase 20)
 	AmountMinor      int64     `json:"amount_minor"`
 	Currency         string    `json:"currency"`

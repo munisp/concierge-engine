@@ -300,4 +300,17 @@ window, latent pg secret-persistence bug fixed); event schema versioning
 (envelope `schema_version` + versioned catalog). Migration 0016. 5 domain +
 4 pg + 5 adapter tests.
 
+**Phase 22 — delivered (see `docs/phase22.md`).** Scheduling v1:
+assignments carry service windows resolved from the booking
+(`pickup_at` + `hours`, tenant `dispatch_config` fallback), with conflict
+gating (409 naming the conflicting assignment), end-padded turnaround
+buffers (default 30m), terminal statuses freeing resources, and
+`GET /v1/dispatch/availability` for busy/free windows per fleet resource.
+Correspondence threading fixed: `Open` is get-or-create on the newest
+non-CLOSED thread per (client, channel), so WhatsApp history no longer
+fragments into one conversation per message and the funnel counts threads,
+not messages. Cross-channel: `GET /v1/clients/{id}/conversations` plus a
+web "Message your concierge" box on the capture page sharing the same
+threaded model as WhatsApp. Migration 0017. 5 domain + 3 pg tests.
+
 Deferred components and un-defer triggers: `docs/deferred-register.md`.

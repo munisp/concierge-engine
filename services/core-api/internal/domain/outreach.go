@@ -401,12 +401,13 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 			// RECORDED body includes it — provenance shows exactly what
 			// was sent, and no template or operator can omit it.
 			unsubURL = svc.s.PublicBase() + "/v1/unsub/" + svc.s.Trips.UnsubTokenFor(tenantID, cl.ID)
+			consentURL := svc.s.PublicBase() + "/v1/consent/" + svc.s.Trips.ConsentTokenFor(tenantID, cl.ID)
 			t, terr := svc.s.Store.Tenants().Get(ctx, tenantID)
 			tenantName := ""
 			if terr == nil {
 				tenantName = t.Name
 			}
-			in.Body = withUnsubFooter(in.Body, tenantName, unsubURL)
+			in.Body = withUnsubFooter(in.Body, tenantName, unsubURL, consentURL)
 			o.Body = in.Body
 			if v.IntroLane {
 				o.Detail = fmt.Sprintf("b2b introduction touch %d of %d (no marketing consent yet)", v.IntroTouches+1, EmailIntroMaxTouches)
@@ -572,12 +573,16 @@ func postToAdapter(ctx context.Context, baseURL string, payload []byte) (status,
 }
 
 // withUnsubFooter appends the mandated marketing footer. Plain text — the
-// adapter wraps it into the MIME structure.
-func withUnsubFooter(body, tenantName, unsubURL string) string {
+// adapter wraps it into the MIME structure. Phase 45: the consent-center
+// link rides next to unsubscribe — withdrawing must be as easy as giving
+// (GDPR Art. 7(3)), and one-tap "manage everything" is the easy path.
+func withUnsubFooter(body, tenantName, unsubURL, consentURL string) string {
 	if tenantName == "" {
 		tenantName = "Your concierge"
 	}
-	return strings.TrimRight(body, "\n") + "\n\n—\n" + tenantName + "\nUnsubscribe from these messages: " + unsubURL + "\n"
+	return strings.TrimRight(body, "\n") + "\n\n—\n" + tenantName +
+		"\nUnsubscribe from these messages: " + unsubURL +
+		"\nManage your preferences: " + consentURL + "\n"
 }
 
 // Sends lists recent outreach sends (console growth board).

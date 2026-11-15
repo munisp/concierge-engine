@@ -709,3 +709,18 @@ scope so the starting state is provable for the jurisdiction, and
 `consent_history` field put the trail on the record. Erasure writes
 pseudonymous revocation rows that survive deletion. The console 360 view
 renders the timeline. See docs/phase44.md.
+
+## Phase 45 — client self-service consent center (GDPR Art. 7(3))
+
+Phase 44 proves consent to a regulator; Phase 45 hands the same ledger to
+the client. A `consent/` HMAC token (same discipline as `unsub/`/`reopt/`,
+cross-family tokens rejected) opens a public page showing every scope with
+its current state and evidence timeline — one-tap toggles, no JavaScript,
+works from any email footer. Every flip lands in the ledger with source
+`self_service`. The `service` scope is shown locked (booking updates are
+the contract, not a preference); unknown scopes are refused; erased
+clients get a read-only tombstone view over their surviving evidence.
+A downloadable JSON consent receipt (controller, pseudonymous subject,
+scopes, full trail) rides on the page, marketing email footers now carry
+"Manage your preferences" next to unsubscribe, and the console can mint
+the link per client. No migration. See docs/phase45.md.

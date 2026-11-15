@@ -30,6 +30,7 @@ const (
 	ConsentSourceLeadRepeatTouch     = "lead_repeat_touch"    // consent earned on a repeat touch
 	ConsentSourceESPComplaint        = "esp_complaint"        // provider complaint webhook
 	ConsentSourceDSARErasure         = "dsar_erasure"         // revoked by the erasure cascade
+	ConsentSourceSelfService         = "self_service"         // client flipped it on the consent/ center page
 )
 
 // ConsentSourceValid reports whether s is a known evidence source. The
@@ -39,7 +40,8 @@ func ConsentSourceValid(s string) bool {
 	case ConsentSourceRegistrationDefault, ConsentSourceConsole,
 		ConsentSourceKeyword, ConsentSourceUnsub, ConsentSourceReopt,
 		ConsentSourceLeadCapture, ConsentSourceLeadRepeatTouch,
-		ConsentSourceESPComplaint, ConsentSourceDSARErasure:
+		ConsentSourceESPComplaint, ConsentSourceDSARErasure,
+		ConsentSourceSelfService:
 		return true
 	}
 	return false

@@ -106,6 +106,19 @@ export default function Clients() {
     } catch (e) { setErr(String(e)); }
   };
 
+  // Phase 45: copy the client's self-service consent-center link (also
+  // rides in every marketing email footer — this is for pasting into a
+  // direct conversation).
+  const copyConsentLink = async () => {
+    if (!view) return;
+    setErr(""); setMsg("");
+    try {
+      const r = await api.get<{ url: string }>(`/v1/clients/${view.client.id}/consent-link`);
+      await navigator.clipboard.writeText(r.url);
+      setMsg("consent link copied");
+    } catch (e) { setErr(String(e)); }
+  };
+
   // Phase 16 (GDPR/CCPA): data-subject rights — access export downloads one
   // JSON document; erasure scrubs identity to a pseudonymous tombstone while
   // financial history is retained for accounting.
@@ -231,6 +244,7 @@ export default function Clients() {
                   </button>
                 );
               })}
+              <button className="muted" onClick={copyConsentLink}>Copy client self-service link</button>
             </div>
             {consentHistory.length > 0 && (
               <table><tbody>

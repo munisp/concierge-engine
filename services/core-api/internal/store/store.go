@@ -339,6 +339,17 @@ type EmailSuppressionStore interface {
 	Delete(ctx context.Context, tenantID, email string) error
 }
 
+// ConsentEventStore (Phase 44): the append-only consent evidence ledger.
+// Record inserts one evidence row; there is deliberately no update or
+// delete — evidence is immutable. ListForClient returns a client's
+// history newest-first. The domain records only ACTUAL changes (a
+// replayed consent PUT with the same value adds no row), so idempotency
+// lives in the domain, not the store.
+type ConsentEventStore interface {
+	Record(ctx context.Context, e *model.ConsentEvent) error
+	ListForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.ConsentEvent, error)
+}
+
 // ------------------------------------------------------------- Phase 3 stores
 
 type ApiKeyStore interface {
@@ -432,5 +443,6 @@ type Store interface {
 	Leads() LeadStore
 	CampaignSpend() CampaignSpendStore
 	EmailSuppressions() EmailSuppressionStore
+	ConsentEvents() ConsentEventStore
 	Close()
 }

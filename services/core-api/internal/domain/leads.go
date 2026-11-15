@@ -163,7 +163,7 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 			// human outreach, a booth conversation) must reach the
 			// messaging identity — grant-only, never a revocation. This
 			// is the moment a bought B2B list legally becomes marketable.
-			if _, err := svc.s.Clients.SetConsent(ctx, tenantID, existing.ClientID, "marketing", true); err != nil {
+			if _, err := svc.s.Clients.SetConsentSourced(ctx, tenantID, existing.ClientID, "marketing", true, model.ConsentSourceLeadRepeatTouch, "repeat touch on "+string(existing.Kind)+" lead "+existing.ID); err != nil {
 				return nil, err
 			}
 			existing.ConsentMarketing = true
@@ -198,7 +198,7 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 	}
 	if in.ConsentMarketing {
 		// Grant-only: capture never revokes an existing grant.
-		if _, err := svc.s.Clients.SetConsent(ctx, tenantID, res.Client.ID, "marketing", true); err != nil {
+		if _, err := svc.s.Clients.SetConsentSourced(ctx, tenantID, res.Client.ID, "marketing", true, model.ConsentSourceLeadCapture, "lead capture ("+in.Kind+")"); err != nil {
 			return nil, err
 		}
 	}

@@ -34,6 +34,16 @@ type View360 = {
 
 const CONSENT_SCOPES = ["marketing", "service", "data_processing"];
 
+// Phase 44: one row of the consent evidence ledger (GDPR Art. 7 proof).
+type ConsentEvent = {
+  id: string;
+  scope: string;
+  granted: boolean;
+  source: string;
+  detail?: string;
+  created_at: string;
+};
+
 export default function Clients() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Client[]>([]);
@@ -50,6 +60,9 @@ export default function Clients() {
   // merge tool
   const [mergeLoser, setMergeLoser] = useState("");
 
+  // Phase 44: consent evidence timeline
+  const [consentHistory, setConsentHistory] = useState<ConsentEvent[]>([]);
+
   const search = async () => {
     setErr(""); setResults([]); setView(null);
     try {
@@ -64,6 +77,10 @@ export default function Clients() {
       setView(v);
       setFName(v.client.full_name ?? ""); setFEmail(v.client.email ?? "");
       setFLocale(v.client.locale ?? ""); setFTz(v.client.timezone ?? "");
+      // Phase 44: evidence timeline is best-effort — never blocks the 360.
+      api.get<ConsentEvent[]>(`/v1/clients/${id}/consent-history`)
+        .then(setConsentHistory)
+        .catch(() => setConsentHistory([]));
     } catch (e) { setErr(String(e)); }
   };
 
@@ -215,6 +232,18 @@ export default function Clients() {
                 );
               })}
             </div>
+            {consentHistory.length > 0 && (
+              <table><tbody>
+                {consentHistory.map((e) => (
+                  <tr key={e.id}>
+                    <td>{new Date(e.created_at).toLocaleString()}</td>
+                    <td>{e.scope}</td>
+                    <td>{e.granted ? "granted" : "revoked"}</td>
+                    <td className="muted">{e.source}{e.detail ? ` — ${e.detail}` : ""}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+            )}
 
             <h3>Merge duplicate</h3>
             <div className="row">

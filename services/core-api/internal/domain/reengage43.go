@@ -102,7 +102,7 @@ func (svc *OutreachService) ReoptInByToken(ctx context.Context, token string) (*
 		res.Already = true
 		return res, nil
 	}
-	if _, err := svc.s.Clients.SetConsent(ctx, tenantID, clientID, "marketing", true); err != nil {
+	if _, err := svc.s.Clients.SetConsentSourced(ctx, tenantID, clientID, "marketing", true, model.ConsentSourceReopt, "reopt/ link"); err != nil {
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "client", clientID, "client.reopted",

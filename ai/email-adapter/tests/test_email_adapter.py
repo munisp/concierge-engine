@@ -220,8 +220,12 @@ def test_complaint_suppresses_consent(monkeypatch):
         "type": "complained", "recipient": "vp@acme.example",
         "message_ref": "<m1@test>", "tenant_id": "t1"})
     assert r.json()["consent"] == "marketing=false"
+    # Phase 44: the flip is tagged esp_complaint so the consent evidence
+    # ledger attributes the revocation to the provider complaint.
     assert ("PUT", "/v1/clients/c9/consent",
-            {"scope": "marketing", "granted": False}) in FakeAsyncClient.calls
+            {"scope": "marketing", "granted": False,
+             "source": "esp_complaint",
+             "detail": "ESP complaint (vp@acme.example)"}) in FakeAsyncClient.calls
     # Phase 40: complaints also weigh on the deliverability guard.
     assert r.json()["attribution"] == "email_complained"
     assert ("POST", "/v1/attribution",

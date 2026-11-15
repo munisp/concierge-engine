@@ -51,6 +51,14 @@ func (svc *CaseService) maybeConsentKeyword(ctx context.Context, tenantID, clien
 	if err := svc.s.Store.Clients().Upsert(ctx, c); err != nil {
 		return false, err
 	}
+	// Phase 44: the keyword is the evidence — record it verbatim so the
+	// ledger can show "client texted 'stop'" rather than a bare flip.
+	_ = svc.s.Store.ConsentEvents().Record(ctx, &model.ConsentEvent{
+		ID: NewID(), TenantID: tenantID, ClientID: clientID,
+		Scope: "marketing", Granted: want,
+		Source: model.ConsentSourceKeyword, Detail: "client texted '" + norm + "'",
+		CreatedAt: svc.s.Now(),
+	})
 	event := "client.opted_out"
 	body := "You've been unsubscribed from marketing messages. Booking and trip updates are unaffected. Reply START any time to re-subscribe."
 	if want {

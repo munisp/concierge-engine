@@ -46,6 +46,7 @@ type memory struct {
 	spend         map[string]*model.CampaignSpend    // tenantID/id (Phase 40)
 	spendIdem     map[string]string                  // tenant/key → spend id
 	suppressions  map[string]*model.EmailSuppression // tenantID/email (Phase 41)
+	consentEvents []*model.ConsentEvent              // append-only evidence ledger (Phase 44)
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
 	partners      map[string]*model.Partner

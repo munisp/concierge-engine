@@ -17,7 +17,7 @@ func (h *handlers) registerPhase10(mux *http.ServeMux) {
 // exportClient answers a data-subject access request with one JSON document
 // containing everything the platform holds on the client.
 func (h *handlers) exportClient(w http.ResponseWriter, r *http.Request) {
-	exp, err := h.svc.Clients.Export(r.Context(), tenantOf(r), r.PathValue("id"))
+	exp, err := h.svc.Clients.ExportWithEvidence(r.Context(), tenantOf(r), r.PathValue("id"))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -30,7 +30,7 @@ func (h *handlers) exportClient(w http.ResponseWriter, r *http.Request) {
 // pseudonymous tombstone, preference memory deleted, financial history
 // retained. Idempotent.
 func (h *handlers) eraseClient(w http.ResponseWriter, r *http.Request) {
-	c, err := h.svc.Clients.Erase(r.Context(), tenantOf(r), r.PathValue("id"))
+	c, err := h.svc.Clients.EraseWithEvidence(r.Context(), tenantOf(r), r.PathValue("id"))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

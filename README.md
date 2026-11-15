@@ -693,3 +693,19 @@ re-subscribe links, embedded as a passive footer in service-lane emails
 only — the marketing lane stays closed until the client opens it. The flip
 emits `client.reopted` and tracks `reengagement_optin` for funnel proof.
 Console verdict line flags win-back touches. See docs/phase43.md.
+
+## Phase 44 — consent evidence ledger (GDPR Art. 7 demonstrability)
+
+Every consent flip across the platform — registration defaults, console,
+STOP/START keywords, unsub/ links, reopt/ links, lead capture, repeat
+touches, ESP complaints, DSAR erasure — now writes an append-only
+`consent_events` row (scope, granted, source, detail, when) into a new
+RLS-forced table. GDPR Art. 7 says the controller shall be able to
+*demonstrate* consent; the `consent` map alone only shows the current
+state. The ledger is change-only (replays add no rows, so retries stay
+clean without a uniqueness key), registration writes one genesis row per
+scope so the starting state is provable for the jurisdiction, and
+`GET /v1/clients/{id}/consent-history` + the export's new
+`consent_history` field put the trail on the record. Erasure writes
+pseudonymous revocation rows that survive deletion. The console 360 view
+renders the timeline. See docs/phase44.md.

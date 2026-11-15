@@ -61,12 +61,18 @@ func (h *handlers) setClientConsent(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Scope   string `json:"scope"`
 		Granted bool   `json:"granted"`
+		// Phase 44: evidence provenance. The email adapter's complaint
+		// webhook passes esp_complaint; the console passes nothing and
+		// defaults to console. Unknown sources are rejected so the ledger
+		// stays queryable.
+		Source string `json:"source,omitempty"`
+		Detail string `json:"detail,omitempty"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	c, err := h.svc.Clients.SetConsent(r.Context(), tenantOf(r), r.PathValue("id"), body.Scope, body.Granted)
+	c, err := h.svc.Clients.SetConsentSourced(r.Context(), tenantOf(r), r.PathValue("id"), body.Scope, body.Granted, body.Source, body.Detail)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

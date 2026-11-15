@@ -63,6 +63,7 @@ func (svc *ClientService) ResolveV2(ctx context.Context, tenantID string, in Res
 	if err := svc.s.Store.Clients().Upsert(ctx, c); err != nil {
 		return nil, err
 	}
+	svc.recordRegistrationDefaults(ctx, tenantID, c.ID, c.Consent) // Phase 44 evidence genesis
 	svc.s.Events.Emit(ctx, tenantID, "client", c.ID, "client.created", map[string]any{"source": "resolve"})
 	return &ResolveResult{Client: c, Confidence: 0.5, IsNew: true}, nil
 }

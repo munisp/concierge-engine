@@ -195,7 +195,9 @@ async def esp_events(ev: ESPEvent, request: Request) -> dict[str, Any]:
                 rr.raise_for_status()
                 client_id = rr.json()["client"]["id"]
                 await c.put(f"/v1/clients/{client_id}/consent",
-                            json={"scope": "marketing", "granted": False})
+                            json={"scope": "marketing", "granted": False,
+                                  "source": "esp_complaint",
+                                  "detail": f"ESP complaint ({ev.recipient})"})
                 out["consent"] = "marketing=false"
             except Exception:
                 out["consent"] = "unavailable"

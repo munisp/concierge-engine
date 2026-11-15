@@ -70,7 +70,7 @@ func (svc *OutreachService) UnsubscribeByToken(ctx context.Context, token string
 		res.Already = true
 		return res, nil
 	}
-	if _, err := svc.s.Clients.SetConsent(ctx, tenantID, clientID, "marketing", false); err != nil {
+	if _, err := svc.s.Clients.SetConsentSourced(ctx, tenantID, clientID, "marketing", false, model.ConsentSourceUnsub, "unsub/ link"); err != nil {
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "client", clientID, "email.unsubscribed",

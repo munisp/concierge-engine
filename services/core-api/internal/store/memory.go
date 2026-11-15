@@ -41,6 +41,8 @@ type memory struct {
 	templates     map[string]*model.MessageTemplate
 	reviews       map[string]*model.Review
 	media         map[string]*model.Media // tenantID/id (Phase 31)
+	leads         map[string]*model.Lead  // tenantID/id (Phase 36)
+	leadIdem      map[string]string       // tenant/key → lead id
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
 	partners      map[string]*model.Partner
@@ -90,6 +92,8 @@ func NewMemory() Store {
 		promos:        map[string]*model.PromoCampaign{},
 		templates:     map[string]*model.MessageTemplate{},
 		reviews:       map[string]*model.Review{},
+		leads:         map[string]*model.Lead{},
+		leadIdem:      map[string]string{},
 		media:         map[string]*model.Media{},
 		partners:      map[string]*model.Partner{},
 		corporate:     map[string]*model.CorporateAccount{},

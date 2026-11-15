@@ -70,8 +70,25 @@ func (svc *SequenceService) Run(ctx context.Context, tenantID string) (*Sequence
 		if purpose == "" {
 			purpose = model.OutreachMarketing
 		}
+		// Segment gating (Phase 36): a sequence may declare a declarative
+		// audience (e.g. only clients linked to an open corporate lead).
+		// Nil keeps the Phase 35 behavior — every client is enrolled.
+		var allowed map[string]bool
+		if seq.Segment != nil {
+			matched, err := svc.s.SegmentClients(ctx, tenantID, *seq.Segment)
+			if err != nil {
+				return res, err
+			}
+			allowed = make(map[string]bool, len(matched))
+			for _, mc := range matched {
+				allowed[mc.ID] = true
+			}
+		}
 		for _, c := range clients {
 			if c.Erased() {
+				continue
+			}
+			if allowed != nil && !allowed[c.ID] {
 				continue
 			}
 			fireAt := c.CreatedAt

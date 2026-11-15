@@ -63,6 +63,7 @@ type Services struct {
 	Outreach      *OutreachService
 	FollowUps     *FollowUpService
 	Sequences     *SequenceService
+	Leads         *LeadService
 	Campaigns     *CampaignService
 	Acquisition   *AcquisitionService
 	Studio        *StudioService
@@ -129,6 +130,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Outreach = NewOutreachService(s, deps.WhatsAppURL)
 	s.FollowUps = &FollowUpService{s: s}
 	s.Sequences = &SequenceService{s: s}
+	s.Leads = &LeadService{s: s}
 	s.Campaigns = &CampaignService{s: s}
 	s.Studio = NewStudioService(s, NewCaseAssistClient(deps.AgentURL))
 	s.Insights = NewInsightsService(s)

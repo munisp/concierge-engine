@@ -148,6 +148,11 @@ func main() {
 					if res, err := svc.Sequences.Run(dispatchCtx, t.ID); err == nil && res.Sent+res.Held > 0 {
 						log.Printf("sequence sweep: tenant %s — %d sent, %d held", t.Slug, res.Sent, res.Held)
 					}
+					// Phase 36: speed-to-lead SLA — page the operator roster
+					// for NEW leads past the response window (once per lead).
+					if n, err := svc.Leads.SweepSLA(dispatchCtx, t.ID); err == nil && n > 0 {
+						log.Printf("lead SLA sweep: tenant %s — %d alerted", t.Slug, n)
+					}
 					// Phase 26: weekly acquisition pacing alert (Mondays
 					// 09:00 UTC inside this hourly sweep — fires once).
 					svc.Acquisition.PacingAlertIfDue(dispatchCtx, t.ID)

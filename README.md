@@ -559,3 +559,21 @@ every trip transition, monthly corporate summaries, and a per-campaign
 funnel. Console Growth page gains four cards (links, leaderboard,
 broadcast, funnel) and the composer schedules sends. 17 domain + 11
 server + 1 pg tests, all suites green.
+
+**Phase 36 — delivered (see `docs/phase36.md`).** Lead generation engine:
+first-class prospects in four kinds (person, corporate, partner, event)
+with a pipeline (NEW → CONTACTED → QUALIFIED → CONVERTED / LOST),
+deterministic 0–100 scoring with human-readable reasons, and conversion
+into the platform's real records (client link, CorporateAccount + OrgID
+mirror, PENDING partner). A lead is not a shadow client — capture
+resolves the messaging-identity client through ResolveV2, so all nurture
+(consent gates, caps, quiet hours, sequences, STOP/START) flows through
+the outreach engine unchanged. Repeat inquiries dedup onto open leads
+(backfill + re-score); keyed replays conflict to a quiet 200. Public
+capture at `/site/{slug}/leads` carries utm/referer attribution and a
+honeypot. Speed-to-lead SLA pages the operator roster on breached NEW
+leads, once per lead. Segments gain `lead_kind`; sequences gain declarative
+segment audiences. Console Leads page: pipeline board, filters, capture
+form, convert/transition actions. 13 domain + 7 server + 3 pg tests
+(pg verified against a local Postgres+PostGIS with RLS-active role), all
+suites green.

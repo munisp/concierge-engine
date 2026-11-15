@@ -31,10 +31,29 @@ func (svc *Services) SegmentClients(ctx context.Context, tenantID string, r mode
 	if err != nil {
 		return nil, err
 	}
+	// LeadKind (Phase 36): restrict to clients linked to an OPEN lead of
+	// the requested kind — "drip every unconverted corporate lead" becomes
+	// one declarative rule instead of a hand-maintained list.
+	var leadClients map[string]bool
+	if r.LeadKind != "" {
+		leads, err := svc.Store.Leads().List(ctx, tenantID, 5000)
+		if err != nil {
+			return nil, err
+		}
+		leadClients = map[string]bool{}
+		for _, l := range leads {
+			if l.Open() && l.Kind == r.LeadKind && l.ClientID != "" {
+				leadClients[l.ClientID] = true
+			}
+		}
+	}
 	now := svc.Now()
 	var out []model.Client
 	for _, c := range clients {
 		if c.Erased() {
+			continue
+		}
+		if leadClients != nil && !leadClients[c.ID] {
 			continue
 		}
 		if matchSegment(c, stats[c.ID], r, now) {

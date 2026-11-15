@@ -77,6 +77,11 @@ type LifecycleConfig struct {
 	// many hours triggers ONE service-lane nudge containing the quote's
 	// share link. 0 = default 24; negative = disabled.
 	QuoteNudgeHours int `json:"quote_nudge_hours,omitempty"`
+	// LeadSLAMinutes (Phase 36): a NEW lead untouched this many minutes
+	// after capture pages the operator roster once (speed-to-lead — the
+	// single biggest conversion lever in high-ticket concierge). 0 =
+	// default 60; negative = disabled.
+	LeadSLAMinutes int `json:"lead_sla_minutes,omitempty"`
 }
 
 // AcquisitionConfig is the tenant's acquisition-monetization posture

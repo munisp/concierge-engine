@@ -47,6 +47,10 @@ type Sequence struct {
 	Name    string         `json:"name"`
 	Purpose string         `json:"purpose,omitempty"` // default marketing
 	Steps   []SequenceStep `json:"steps"`
+	// Segment (Phase 36): when set, only clients matching the ruleset
+	// enroll — e.g. {lead_kind: "event"} for an event-inquiry drip.
+	// Nil = all clients (Phase 35 behavior).
+	Segment *SegmentRules `json:"segment,omitempty"`
 }
 
 type SequenceStep struct {
@@ -68,6 +72,9 @@ type SegmentRules struct {
 	MinBookings        int    `json:"min_bookings,omitempty"`
 	NoBookingSinceDays int    `json:"no_booking_since_days,omitempty"` // dormant: last booking older than this (never-booked counts)
 	CreatedBeforeDays  int    `json:"created_before_days,omitempty"`   // client created at least N days ago
+	// LeadKind (Phase 36): only clients linked to an OPEN lead of this kind
+	// match. Wires the lead engine into broadcasts and drip sequences.
+	LeadKind string `json:"lead_kind,omitempty"`
 }
 
 // QuoteShare (A4): a shareable public link for a quote. The token is an

@@ -295,6 +295,17 @@ type AuditStore interface {
 	List(ctx context.Context, tenantID string, limit int) ([]model.AuditEntry, error)
 }
 
+// LeadStore (Phase 36): pre-client prospects. Create is idempotent on
+// (tenant, idempotency_key) when the key is set — replay surfaces
+// ErrConflict and the caller reloads. Unkeyed creates always insert (a
+// repeat inquiry is signal; dedup is a domain decision).
+type LeadStore interface {
+	Create(ctx context.Context, l *model.Lead) error
+	Get(ctx context.Context, tenantID, id string) (*model.Lead, error)
+	Update(ctx context.Context, l *model.Lead) error
+	List(ctx context.Context, tenantID string, limit int) ([]model.Lead, error)
+}
+
 // ------------------------------------------------------------- Phase 3 stores
 
 type ApiKeyStore interface {
@@ -385,5 +396,6 @@ type Store interface {
 	Templates() TemplateStore
 	Reviews() ReviewStore
 	Media() MediaStore
+	Leads() LeadStore
 	Close()
 }

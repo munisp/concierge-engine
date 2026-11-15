@@ -18,7 +18,10 @@ func TestLeadImportMixed(t *testing.T) {
 	tenantID := seedTenant(t, s)
 
 	res, err := s.Leads.Import(ctx, tenantID, []CaptureLeadInput{
-		{Kind: "person", Name: "Ada", Phone: "+971 50 111 0001", ConsentMarketing: true, Channel: "crm"},
+		// Phase 38: imported rows keep a consent grant only with a declared
+		// self_reported/partner_consent basis — this CRM export is the
+		// tenant's own past customers, so self_reported is honest.
+		{Kind: "person", Name: "Ada", Phone: "+971 50 111 0001", ConsentMarketing: true, Channel: "crm", ContactBasis: model.ContactBasisSelfReported},
 		{Kind: "corporate", Name: "Rui", Company: "Limo Co", Email: "rui@limo.example", Channel: "crm"},
 		{Kind: "person", Name: "Ada Again", Phone: "+971501110001"}, // dup of row 0
 		{Kind: "person", Name: "Nobody"},                          // no contact anchor

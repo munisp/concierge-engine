@@ -31,20 +31,28 @@ func (svc *Services) SegmentClients(ctx context.Context, tenantID string, r mode
 	if err != nil {
 		return nil, err
 	}
-	// LeadKind (Phase 36): restrict to clients linked to an OPEN lead of
-	// the requested kind — "drip every unconverted corporate lead" becomes
-	// one declarative rule instead of a hand-maintained list.
+	// LeadKind (Phase 36) / ContactBasis (Phase 38): restrict to clients
+	// linked to an OPEN lead of the requested kind and/or basis — "drip
+	// every unconverted corporate lead" or "call list of B2B-sourced
+	// leads" become declarative rules instead of hand-maintained lists.
 	var leadClients map[string]bool
-	if r.LeadKind != "" {
+	if r.LeadKind != "" || r.ContactBasis != "" {
 		leads, err := svc.Store.Leads().List(ctx, tenantID, 5000)
 		if err != nil {
 			return nil, err
 		}
 		leadClients = map[string]bool{}
 		for _, l := range leads {
-			if l.Open() && l.Kind == r.LeadKind && l.ClientID != "" {
-				leadClients[l.ClientID] = true
+			if !l.Open() || l.ClientID == "" {
+				continue
 			}
+			if r.LeadKind != "" && l.Kind != r.LeadKind {
+				continue
+			}
+			if r.ContactBasis != "" && l.ContactBasis != r.ContactBasis {
+				continue
+			}
+			leadClients[l.ClientID] = true
 		}
 	}
 	now := svc.Now()

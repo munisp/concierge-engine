@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
@@ -38,10 +39,21 @@ type LeadImportResult struct {
 	Rejected int              `json:"rejected"`
 	LeadIDs  []string         `json:"lead_ids"`
 	Errors   []ImportRowError `json:"errors,omitempty"`
+	// Notices (Phase 38): rows that imported with a correction — e.g.
+	// marketing consent stripped because the row's contact basis does not
+	// support it. Not rejections: the lead exists.
+	Notices []ImportRowError `json:"notices,omitempty"`
 }
 
 // Import captures a batch of leads. Rows with no Source default to "import"
 // so the funnel separates bootstrapped demand from live traffic.
+//
+// Phase 38 provenance: an imported row with no contact_basis defaults to
+// b2b_legitimate_interest — a bought list must declare a better basis, not
+// silently look organic. Marketing consent survives import only on
+// self_reported / partner_consent rows; on any other basis it is stripped
+// and reported as a notice (the row still imports — it is worked by human
+// outreach until the prospect opts in on a repeat touch).
 func (svc *LeadService) Import(ctx context.Context, tenantID string, rows []CaptureLeadInput) (*LeadImportResult, error) {
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("%w: no leads in batch", httpx.ErrValidation)
@@ -53,6 +65,18 @@ func (svc *LeadService) Import(ctx context.Context, tenantID string, rows []Capt
 	for i, in := range rows {
 		if in.Source == "" {
 			in.Source = "import"
+		}
+		basis := strings.ToLower(strings.TrimSpace(in.ContactBasis))
+		if basis == "" {
+			basis = model.ContactBasisB2B
+		}
+		in.ContactBasis = basis
+		if in.ConsentMarketing && basis == model.ContactBasisB2B {
+			in.ConsentMarketing = false
+			res.Notices = append(res.Notices, ImportRowError{
+				Index: i, Name: in.Name,
+				Reason: "marketing consent requires a self_reported or partner_consent contact basis — imported without consent",
+			})
 		}
 		r, err := svc.Capture(ctx, tenantID, in)
 		switch {
@@ -78,6 +102,7 @@ func (svc *LeadService) Import(ctx context.Context, tenantID string, rows []Capt
 	})
 	svc.s.Events.Emit(ctx, tenantID, "lead", "", "lead.imported", map[string]any{
 		"created": res.Created, "deduped": res.Deduped, "rejected": res.Rejected,
+		"consent_downgrades": len(res.Notices),
 	})
 	return res, nil
 }

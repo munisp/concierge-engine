@@ -23,7 +23,7 @@ type pgLeads struct{ p *postgres }
 
 const leadCols = `id, tenant_id, kind, name, phone, email, company,
 	event_type, event_date, headcount, venue, verticals, notes,
-	source, channel, campaign, referral_code,
+	source, channel, campaign, referral_code, list_source, contact_basis,
 	status, score, score_reasons, lost_reason, consent_marketing,
 	client_id, converted_client_id, converted_partner_id, converted_account_id,
 	sla_alerted_at, idempotency_key, created_at, updated_at`
@@ -49,12 +49,12 @@ func (s pgLeads) Create(ctx context.Context, l *model.Lead) error {
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO leads (`+leadCols+`)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-		         $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+		         $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
 		 ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key <> ''
 		 DO NOTHING RETURNING id`,
 		l.ID, l.TenantID, l.Kind, l.Name, l.Phone, l.Email, l.Company,
 		l.EventType, l.EventDate, l.Headcount, l.Venue, verticals, l.Notes,
-		l.Source, l.Channel, l.Campaign, l.ReferralCode,
+		l.Source, l.Channel, l.Campaign, l.ReferralCode, l.ListSource, l.ContactBasis,
 		l.Status, l.Score, reasons, l.LostReason, l.ConsentMarketing,
 		nilIfEmpty(l.ClientID), nilIfEmpty(l.ConvertedClientID),
 		nilIfEmpty(l.ConvertedPartnerID), nilIfEmpty(l.ConvertedAccountID),
@@ -101,14 +101,16 @@ func (s pgLeads) Update(ctx context.Context, l *model.Lead) error {
 		`UPDATE leads SET kind=$3, name=$4, phone=$5, email=$6, company=$7,
 		 event_type=$8, event_date=$9, headcount=$10, venue=$11, verticals=$12,
 		 notes=$13, source=$14, channel=$15, campaign=$16, referral_code=$17,
-		 status=$18, score=$19, score_reasons=$20, lost_reason=$21,
-		 consent_marketing=$22, client_id=$23, converted_client_id=$24,
-		 converted_partner_id=$25, converted_account_id=$26,
-		 sla_alerted_at=$27, updated_at=$28
+		 list_source=$18, contact_basis=$19,
+		 status=$20, score=$21, score_reasons=$22, lost_reason=$23,
+		 consent_marketing=$24, client_id=$25, converted_client_id=$26,
+		 converted_partner_id=$27, converted_account_id=$28,
+		 sla_alerted_at=$29, updated_at=$30
 		 WHERE tenant_id=$1 AND id=$2`,
 		l.TenantID, l.ID, l.Kind, l.Name, l.Phone, l.Email, l.Company,
 		l.EventType, l.EventDate, l.Headcount, l.Venue, verticals,
 		l.Notes, l.Source, l.Channel, l.Campaign, l.ReferralCode,
+		l.ListSource, l.ContactBasis,
 		l.Status, l.Score, reasons, l.LostReason,
 		l.ConsentMarketing, nilIfEmpty(l.ClientID), nilIfEmpty(l.ConvertedClientID),
 		nilIfEmpty(l.ConvertedPartnerID), nilIfEmpty(l.ConvertedAccountID),
@@ -159,7 +161,7 @@ func scanLead(row leadRow) (*model.Lead, error) {
 	var clientID, convClient, convPartner, convAccount sql.NullString
 	err := row.Scan(&l.ID, &l.TenantID, &l.Kind, &l.Name, &l.Phone, &l.Email, &l.Company,
 		&l.EventType, &eventDate, &l.Headcount, &l.Venue, &verticals, &l.Notes,
-		&l.Source, &l.Channel, &l.Campaign, &l.ReferralCode,
+		&l.Source, &l.Channel, &l.Campaign, &l.ReferralCode, &l.ListSource, &l.ContactBasis,
 		&l.Status, &l.Score, &reasons, &l.LostReason, &l.ConsentMarketing,
 		&clientID, &convClient, &convPartner, &convAccount,
 		&slaAlerted, &l.IdempotencyKey, &l.CreatedAt, &l.UpdatedAt)

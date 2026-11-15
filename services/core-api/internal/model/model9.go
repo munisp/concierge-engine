@@ -27,6 +27,25 @@ const (
 	LeadStatusLost      = "LOST"
 )
 
+// Phase 38: contact-basis provenance for acquired/ imported lists.
+// GDPR-honest lead sourcing: the basis states WHY the tenant may contact
+// this prospect, and it gates marketing consent — a purchased B2B list is
+// worked by humans under legitimate interest, never marketing-blasted.
+const (
+	// The prospect handed over their own details (site form, QR scan,
+	// WhatsApp inbound, business card given in person). Marketing consent
+	// may be granted at capture.
+	ContactBasisSelfReported = "self_reported"
+	// A partner (hotel, hospitality reseller, DMC) mailed THEIR list with
+	// the tenant's offer and the prospect opted in — consent travels with
+	// the introduction. Marketing consent may be granted at capture.
+	ContactBasisPartnerConsent = "partner_consent"
+	// A bought/sourced B2B list (Cognism/Apollo/intent feed). Human
+	// outreach under legitimate interest only: marketing consent is
+	// refused at capture regardless of what the row claims.
+	ContactBasisB2B = "b2b_legitimate_interest"
+)
+
 // Lead: one prospect. Kind-specific fields are only meaningful for their
 // kind (event_* / headcount / venue for events, verticals for partners,
 // company for corporate) — capture validates the pairing.
@@ -51,6 +70,11 @@ type Lead struct {
 	Channel      string `json:"channel,omitempty"`
 	Campaign     string `json:"campaign,omitempty"`
 	ReferralCode string `json:"referral_code,omitempty"`
+	// Provenance (Phase 38): where the row came from (vendor/partner, e.g.
+	// "cognism-q1-2027", "apex-hotels-csv") and the lawful basis for
+	// contact. Basis gates marketing consent at capture.
+	ListSource   string `json:"list_source,omitempty"`
+	ContactBasis string `json:"contact_basis,omitempty"`
 	// Pipeline.
 	Status       string   `json:"status"`
 	Score        int      `json:"score"`

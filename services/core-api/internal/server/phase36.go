@@ -22,6 +22,7 @@ import (
 
 	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/httpx"
+	"concierge-engine/services/core-api/internal/model"
 )
 
 func (h *handlers) registerPhase36(mux *http.ServeMux) {
@@ -140,6 +141,9 @@ func (h *handlers) siteCaptureLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Source = "site"
+	// Phase 38: the public form is the prospect speaking for themselves —
+	// the basis is asserted by the surface, never by the caller's payload.
+	in.ContactBasis = model.ContactBasisSelfReported
 	q := r.URL.Query()
 	in.Channel = firstNonEmpty(in.Channel, q.Get("utm_medium"))
 	in.Campaign = firstNonEmpty(in.Campaign, q.Get("utm_campaign"))

@@ -592,3 +592,21 @@ outreach sends render as a phone-style bubble feed (sent/held/scheduled/
 failed chips) with the dense table one toggle away. Capture validation
 messages are now descriptive (sentinel-preserving). 4 domain + 2 server
 tests, all suites green.
+
+## Phase 38 — Lead provenance: lawful contact basis for acquired lists
+
+Bought and partner-sourced data enters the pipeline without pretending to
+be organic: leads carry `list_source` (vendor/partner) and
+`contact_basis` (self_reported | partner_consent | b2b_legitimate_interest,
+migration 0026). Capture validates the basis and refuses marketing consent
+on a B2B basis (422); imports default undeclared rows to
+b2b_legitimate_interest and strip claimed consent into receipt `notices`
+(the row still imports — human-outreach-only until the prospect opts in).
+Consent earned on a repeat touch dedups into the existing lead, grants the
+messaging identity (grant-only) and re-scores upward while provenance is
+preserved. The public site surface asserts self_reported itself.
+`SegmentRules.contact_basis` joins through open leads (broadcast preview +
+composer selector); the Leads board/table show basis and list source. The
+loop stays: acquire early → prioritize by score → nurture automatically →
+convert to durable accounts → attribute everything → fund the next event
+from evidence. 4 domain + 3 server + 1 pg tests, all suites green.

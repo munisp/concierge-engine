@@ -75,6 +75,10 @@ type SegmentRules struct {
 	// LeadKind (Phase 36): only clients linked to an OPEN lead of this kind
 	// match. Wires the lead engine into broadcasts and drip sequences.
 	LeadKind string `json:"lead_kind,omitempty"`
+	// ContactBasis (Phase 38): only clients linked to an OPEN lead with
+	// this contact basis match — e.g. "every B2B-sourced lead" for a
+	// human-outreach call list, or excluding bought data from a blast.
+	ContactBasis string `json:"contact_basis,omitempty"`
 }
 
 // QuoteShare (A4): a shareable public link for a quote. The token is an

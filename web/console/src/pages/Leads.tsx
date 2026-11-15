@@ -21,6 +21,8 @@ type Lead = {
   source: string;
   channel?: string;
   campaign?: string;
+  list_source?: string;
+  contact_basis?: string;
   status: string;
   score: number;
   score_reasons?: string[];
@@ -45,6 +47,7 @@ type ImportReceipt = {
   deduped: number;
   rejected: number;
   errors?: { index: number; name?: string; reason: string }[];
+  notices?: { index: number; name?: string; reason: string }[];
 };
 
 const KINDS = ["person", "corporate", "partner", "event"];
@@ -55,9 +58,20 @@ const NEXT: Record<string, string[]> = {
   QUALIFIED: ["LOST"],
 };
 
+// Phase 38: short labels for the contact-basis badge on cards/rows.
+const BASIS_LABEL: Record<string, string> = {
+  self_reported: "self-reported",
+  partner_consent: "partner-consented",
+  b2b_legitimate_interest: "b2b sourced",
+};
+
 // CSV columns for the import panel (header row required):
 // kind,name,phone,email,company,event_type,event_date,headcount,venue,
-// verticals(; separated),channel,campaign,source,consent_marketing,referral_code
+// verticals(; separated),channel,campaign,source,consent_marketing,
+// referral_code,list_source,contact_basis
+// Phase 38: contact_basis = self_reported | partner_consent |
+// b2b_legitimate_interest (default for imports). consent_marketing survives
+// only on self_reported / partner_consent rows.
 function parseImport(text: string): Record<string, unknown>[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
@@ -264,9 +278,13 @@ export default function Leads() {
       <div className="card">
         <h3>Bulk import <span className="muted">— bootstrap from a spreadsheet or CRM export</span></h3>
         <p className="muted" style={{ marginTop: 0 }}>
-          Paste CSV (header row: kind,name,phone,email,company,event_type,event_date,headcount,venue,verticals;…,channel,campaign,consent_marketing)
+          Paste CSV (header row: kind,name,phone,email,company,event_type,event_date,headcount,venue,verticals;…,channel,campaign,consent_marketing,list_source,contact_basis)
           or a JSON array. Rows run through the same dedup, scoring and consent gates as live capture;
           bad rows are reported, not fatal. Re-importing a keyed export is replay-safe.
+          Provenance: name the list (<code>list_source</code>) and declare the basis —{" "}
+          <code>self_reported</code> or <code>partner_consent</code> rows keep marketing consent;
+          anything else (the default for imports) is <code>b2b_legitimate_interest</code> — worked
+          by human outreach until the prospect opts in on a reply.
         </p>
         <textarea
           rows={5}
@@ -283,6 +301,13 @@ export default function Leads() {
           <p className="notice" style={{ marginTop: 8 }}>
             Imported {importReceipt.created} new · {importReceipt.deduped} merged/duplicate · {importReceipt.rejected} rejected
             of {importReceipt.total}.
+            {(importReceipt.notices ?? []).length > 0 && (
+              <ul style={{ margin: "0.4rem 0 0" }}>
+                {(importReceipt.notices ?? []).slice(0, 10).map((e) => (
+                  <li key={`n${e.index}`}>row {e.index + 1}{e.name ? ` (${e.name})` : ""}: {e.reason}</li>
+                ))}
+              </ul>
+            )}
             {(importReceipt.errors ?? []).length > 0 && (
               <ul style={{ margin: "0.4rem 0 0" }}>
                 {(importReceipt.errors ?? []).slice(0, 10).map((e) => (
@@ -328,6 +353,13 @@ export default function Leads() {
                       {l.event_type ? ` · ${l.event_type}${l.headcount ? ` (${l.headcount})` : ""}` : ""}
                     </div>
                     <div className="muted">{l.source}{l.channel ? `/${l.channel}` : ""} · {new Date(l.created_at).toLocaleDateString()}</div>
+                    {(l.contact_basis || l.list_source) && (
+                      <div className="muted">
+                        {l.contact_basis ? (BASIS_LABEL[l.contact_basis] ?? l.contact_basis) : ""}
+                        {l.list_source ? ` · from ${l.list_source}` : ""}
+                        {l.contact_basis === "b2b_legitimate_interest" && !l.consent_marketing ? " · human outreach only" : ""}
+                      </div>
+                    )}
                     {l.lost_reason && <div className="error">LOST — {l.lost_reason}</div>}
                     {(l.converted_account_id || l.converted_partner_id || l.converted_client_id) && (
                       <div className="muted">converted ✓</div>
@@ -358,7 +390,11 @@ export default function Leads() {
                 <td>{l.kind}</td>
                 <td title={(l.score_reasons ?? []).join("\n")}>{l.score}</td>
                 <td>{l.status}{l.lost_reason ? ` — ${l.lost_reason}` : ""}</td>
-                <td>{l.source}{l.channel ? `/${l.channel}` : ""}</td>
+                <td>
+                  {l.source}{l.channel ? `/${l.channel}` : ""}
+                  {l.contact_basis ? ` · ${BASIS_LABEL[l.contact_basis] ?? l.contact_basis}` : ""}
+                  {l.list_source ? ` (${l.list_source})` : ""}
+                </td>
                 <td>{l.phone || l.email}</td>
                 <td>{new Date(l.created_at).toLocaleDateString()}</td>
                 <td className="lead-actions">{leadActions(l)}</td>

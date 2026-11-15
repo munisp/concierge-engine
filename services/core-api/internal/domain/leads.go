@@ -51,6 +51,15 @@ var leadStatuses = map[string]bool{
 	model.LeadStatusLost:      true,
 }
 
+// contactBases (Phase 38) are the lawful bases a lead may carry. The basis
+// gates marketing consent: self_reported and partner_consent can hold a
+// grant; b2b_legitimate_interest is human-outreach-only.
+var contactBases = map[string]bool{
+	model.ContactBasisSelfReported:   true,
+	model.ContactBasisPartnerConsent: true,
+	model.ContactBasisB2B:            true,
+}
+
 // leadTransitions is the legal pipeline graph. CONVERTED is reachable only
 // through Convert (it mints real records), so it is absent here; terminal
 // states are locked.
@@ -80,6 +89,14 @@ type CaptureLeadInput struct {
 	Channel      string `json:"channel,omitempty"`
 	Campaign     string `json:"campaign,omitempty"`
 	ReferralCode string `json:"referral_code,omitempty"`
+
+	// Phase 38 provenance. ListSource names the vendor/partner the row
+	// came from; ContactBasis states the lawful basis for contact.
+	// Empty basis defaults to self_reported (organic inbound); Import
+	// defaults it to b2b_legitimate_interest instead (a bought list must
+	// say so, or be treated as one).
+	ListSource   string `json:"list_source,omitempty"`
+	ContactBasis string `json:"contact_basis,omitempty"`
 
 	ConsentMarketing bool   `json:"consent_marketing"`
 	IdempotencyKey   string `json:"idempotency_key,omitempty"`
@@ -111,6 +128,22 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 	if in.Source == "" {
 		in.Source = "api"
 	}
+	// Phase 38 provenance: the basis must be one of the known values, and
+	// organic inbound defaults to self_reported. Marketing consent is
+	// refused on a b2b_legitimate_interest basis regardless of what the
+	// caller claims — a bought list earns consent at first reply, never
+	// at import time.
+	in.ContactBasis = strings.ToLower(strings.TrimSpace(in.ContactBasis))
+	if in.ContactBasis == "" {
+		in.ContactBasis = model.ContactBasisSelfReported
+	}
+	if !contactBases[in.ContactBasis] {
+		return nil, fmt.Errorf("%w: contact basis must be self_reported, partner_consent or b2b_legitimate_interest", httpx.ErrValidation)
+	}
+	in.ListSource = strings.TrimSpace(in.ListSource)
+	if in.ContactBasis == model.ContactBasisB2B && in.ConsentMarketing {
+		return nil, fmt.Errorf("%w: marketing consent requires a self_reported or partner_consent contact basis", httpx.ErrValidation)
+	}
 
 	// Dedup: an open lead with the same phone or email absorbs the repeat
 	// inquiry (backfill + re-score). A repeat inquiry is buying signal,
@@ -125,6 +158,17 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 		backfillLead(existing, in)
 		svc.score(ctx, tenantID, existing)
 		existing.UpdatedAt = svc.s.Now()
+		if in.ConsentMarketing && !existing.ConsentMarketing && existing.ClientID != "" {
+			// Phase 38: consent earned on a repeat touch (the reply to
+			// human outreach, a booth conversation) must reach the
+			// messaging identity — grant-only, never a revocation. This
+			// is the moment a bought B2B list legally becomes marketable.
+			if _, err := svc.s.Clients.SetConsent(ctx, tenantID, existing.ClientID, "marketing", true); err != nil {
+				return nil, err
+			}
+			existing.ConsentMarketing = true
+			svc.score(ctx, tenantID, existing) // re-score with the grant
+		}
 		if err := svc.s.Store.Leads().Update(ctx, existing); err != nil {
 			return nil, err
 		}
@@ -166,6 +210,7 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 		EventType: in.EventType, EventDate: in.EventDate, Headcount: in.Headcount, Venue: strings.TrimSpace(in.Venue),
 		Verticals: in.Verticals, Notes: strings.TrimSpace(in.Notes),
 		Source: in.Source, Channel: in.Channel, Campaign: in.Campaign, ReferralCode: in.ReferralCode,
+		ListSource: in.ListSource, ContactBasis: in.ContactBasis,
 		Status: model.LeadStatusNew, ConsentMarketing: in.ConsentMarketing,
 		ClientID:       res.Client.ID,
 		IdempotencyKey: strings.TrimSpace(in.IdempotencyKey),
@@ -181,6 +226,7 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 	})
 	svc.s.Events.Emit(ctx, tenantID, "lead", lead.ID, "lead.captured", map[string]any{
 		"kind": lead.Kind, "source": lead.Source, "score": lead.Score,
+		"contact_basis": lead.ContactBasis,
 	})
 	return &CaptureResult{Lead: lead}, nil
 }
@@ -245,6 +291,14 @@ func backfillLead(l *model.Lead, in CaptureLeadInput) {
 	}
 	if l.ReferralCode == "" {
 		l.ReferralCode = in.ReferralCode
+	}
+	if l.ListSource == "" {
+		l.ListSource = in.ListSource
+	}
+	// A repeat inquiry never upgrades the contact basis: provenance is set
+	// at first capture and only fills in when previously unknown.
+	if l.ContactBasis == "" {
+		l.ContactBasis = in.ContactBasis
 	}
 	if l.Campaign == "" {
 		l.Campaign = in.Campaign

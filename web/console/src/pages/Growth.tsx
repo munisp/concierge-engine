@@ -126,6 +126,7 @@ type SegmentRules = {
   no_booking_since_days?: number;
   has_bookings?: boolean;
   marketing_consent?: boolean;
+  contact_basis?: string;
 };
 
 type BroadcastResult = {
@@ -206,6 +207,7 @@ export default function Growth() {
   const [bMinBookings, setBMinBookings] = useState("");
   const [bDormantDays, setBDormantDays] = useState("");
   const [bConsentOnly, setBConsentOnly] = useState(true);
+  const [bBasis, setBBasis] = useState(""); // Phase 38: contact-basis segment rule
   const [segCount, setSegCount] = useState<number | null>(null);
   const [bResult, setBResult] = useState<BroadcastResult | null>(null);
   const [fName, setFName] = useState("");
@@ -217,6 +219,7 @@ export default function Growth() {
     if (bMinBookings) r.min_bookings = parseInt(bMinBookings, 10);
     if (bDormantDays) r.no_booking_since_days = parseInt(bDormantDays, 10);
     if (bConsentOnly) r.marketing_consent = true;
+    if (bBasis) r.contact_basis = bBasis;
     return r;
   };
 
@@ -503,6 +506,12 @@ export default function Growth() {
           </select>
           <input placeholder="min bookings" value={bMinBookings} onChange={(e) => setBMinBookings(e.target.value)} style={{ width: 110 }} />
           <input placeholder="dormant ≥ days" value={bDormantDays} onChange={(e) => setBDormantDays(e.target.value)} style={{ width: 130 }} />
+          <select value={bBasis} onChange={(e) => setBBasis(e.target.value)} title="Lead contact basis (Phase 38)">
+            <option value="">any basis</option>
+            <option value="self_reported">self-reported</option>
+            <option value="partner_consent">partner-consented</option>
+            <option value="b2b_legitimate_interest">b2b sourced</option>
+          </select>
           <label><input type="checkbox" checked={bConsentOnly} onChange={(e) => setBConsentOnly(e.target.checked)} /> consented only</label>
           <button onClick={previewSegment}>Preview audience</button>
           <button onClick={broadcast} disabled={!bCampaign || (!bBody && !bTemplateId)}>Send broadcast</button>

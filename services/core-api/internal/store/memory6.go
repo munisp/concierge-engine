@@ -58,6 +58,23 @@ func (s *memOutreach) ListSends(_ context.Context, tenantID string, limit int) (
 	return out, nil
 }
 
+// UpdateSendResult (Phase 35): flip a "scheduled" send to its terminal
+// outcome. The scheduled-status guard mirrors the pg WHERE clause.
+func (s *memOutreach) UpdateSendResult(_ context.Context, tenantID, sendID, status, detail, externalRef string) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	for _, o := range s.m.outreachSends {
+		if o.TenantID == tenantID && o.ID == sendID {
+			if o.Status != "scheduled" {
+				return httpx.ErrNotFound
+			}
+			o.Status, o.Detail, o.ExternalRef = status, detail, externalRef
+			return nil
+		}
+	}
+	return httpx.ErrNotFound
+}
+
 // ------------------------------------------------------------- attribution
 
 func (s *memAttribution) List(_ context.Context, tenantID, clientID string, limit int) ([]model.AttributionEvent, error) {

@@ -138,6 +138,16 @@ func main() {
 						log.Printf("lifecycle sweep: tenant %s — %d post-trip, %d win-back sent, %d held",
 							t.Slug, res.PostTripSent, res.WinBackSent, res.WinBackHeld)
 					}
+					// Phase 35: deliver due scheduled sends (quiet-hours
+					// deferrals, send-time optimization, drip steps).
+					if n, err := svc.Outreach.RunDue(dispatchCtx, t.ID); err == nil && n > 0 {
+						log.Printf("scheduled-send sweep: tenant %s — %d due", t.Slug, n)
+					}
+					// Phase 35 (O3): advance drip sequences — per-client
+					// progress derived from the sends ledger.
+					if res, err := svc.Sequences.Run(dispatchCtx, t.ID); err == nil && res.Sent+res.Held > 0 {
+						log.Printf("sequence sweep: tenant %s — %d sent, %d held", t.Slug, res.Sent, res.Held)
+					}
 					// Phase 26: weekly acquisition pacing alert (Mondays
 					// 09:00 UTC inside this hourly sweep — fires once).
 					svc.Acquisition.PacingAlertIfDue(dispatchCtx, t.ID)

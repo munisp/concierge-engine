@@ -32,12 +32,13 @@ func (s pgOutreach) AddSend(ctx context.Context, o *model.OutreachSend) error {
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO outreach_sends
 		 (id, tenant_id, client_id, channel, purpose, body, template, params,
-		  external_ref, status, detail, idempotency_key, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		  external_ref, status, detail, idempotency_key, created_at, scheduled_for)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
 		 RETURNING id`,
 		o.ID, o.TenantID, o.ClientID, o.Channel, o.Purpose, o.Body, o.Template,
-		params, o.ExternalRef, o.Status, o.Detail, o.IdempotencyKey, o.CreatedAt).Scan(&id)
+		params, o.ExternalRef, o.Status, o.Detail, o.IdempotencyKey, o.CreatedAt,
+		o.ScheduledFor).Scan(&id)
 	if err == sql.ErrNoRows {
 		return httpx.ErrConflict
 	}
@@ -49,18 +50,45 @@ func (s pgOutreach) AddSend(ctx context.Context, o *model.OutreachSend) error {
 
 const outreachCols = `id, tenant_id, client_id, channel, purpose, body, template,
 	coalesce(to_jsonb(params), '[]'::jsonb), external_ref, status, detail,
-	idempotency_key, created_at`
+	idempotency_key, created_at, scheduled_for`
 
 func (s pgOutreach) scan(rows *sql.Rows) (*model.OutreachSend, error) {
 	var o model.OutreachSend
 	var params []byte
+	var scheduledFor sql.NullTime
 	if err := rows.Scan(&o.ID, &o.TenantID, &o.ClientID, &o.Channel, &o.Purpose,
 		&o.Body, &o.Template, &params, &o.ExternalRef, &o.Status, &o.Detail,
-		&o.IdempotencyKey, &o.CreatedAt); err != nil {
+		&o.IdempotencyKey, &o.CreatedAt, &scheduledFor); err != nil {
 		return nil, err
 	}
 	_ = json.Unmarshal(params, &o.Params)
+	if scheduledFor.Valid {
+		t := scheduledFor.Time
+		o.ScheduledFor = &t
+	}
 	return &o, nil
+}
+
+// UpdateSendResult (Phase 35): the due-send sweep flips a "scheduled" row
+// to its terminal delivery outcome. The WHERE status='scheduled' guard
+// makes a double-fire between two sweepers a harmless no-op.
+func (s pgOutreach) UpdateSendResult(ctx context.Context, tenantID, sendID, status, detail, externalRef string) error {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
+		`UPDATE outreach_sends SET status=$3, detail=$4, external_ref=$5
+		 WHERE tenant_id=$1 AND id=$2 AND status='scheduled'`,
+		tenantID, sendID, status, detail, externalRef)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
 }
 
 func (s pgOutreach) SendsForClient(ctx context.Context, tenantID, clientID string, since time.Time) ([]model.OutreachSend, error) {

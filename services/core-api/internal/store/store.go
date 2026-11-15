@@ -216,6 +216,10 @@ type OutreachStore interface {
 	SendsForClient(ctx context.Context, tenantID, clientID string, since time.Time) ([]model.OutreachSend, error)
 	// ListSends: recent sends for the tenant, newest first.
 	ListSends(ctx context.Context, tenantID string, limit int) ([]model.OutreachSend, error)
+	// UpdateSendResult (Phase 35): the due-send sweep flips a "scheduled"
+	// send to its terminal outcome (sent/held/failed). Guarded on the
+	// scheduled status so a double-fire is a harmless no-op.
+	UpdateSendResult(ctx context.Context, tenantID, sendID, status, detail, externalRef string) error
 }
 
 // TemplateStore (Phase 21): tenant-managed outreach message templates.

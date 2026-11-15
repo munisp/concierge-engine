@@ -162,6 +162,9 @@ func TestPostTripFollowUp(t *testing.T) {
 		}
 	}
 
+	// Journey notifications (Phase 35) already fired during Advance — count
+	// only the follow-up sweep's calls from here.
+	before := calls
 	res, err := s.FollowUps.Run(ctx, tenantID)
 	if err != nil {
 		t.Fatal(err)
@@ -169,8 +172,8 @@ func TestPostTripFollowUp(t *testing.T) {
 	if res.PostTripSent != 1 {
 		t.Fatalf("post-trip sends: %+v", res)
 	}
-	if calls != 1 {
-		t.Fatalf("adapter calls: %d", calls)
+	if calls-before != 1 {
+		t.Fatalf("adapter calls: %d", calls-before)
 	}
 	// Hourly re-run: idempotency key replays, nothing re-sends, counters
 	// reflect this run only.
@@ -178,8 +181,8 @@ func TestPostTripFollowUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.PostTripSent != 0 || calls != 1 {
-		t.Fatalf("re-run re-sent: %+v calls=%d", res, calls)
+	if res.PostTripSent != 0 || calls-before != 1 {
+		t.Fatalf("re-run re-sent: %+v calls=%d", res, calls-before)
 	}
 }
 

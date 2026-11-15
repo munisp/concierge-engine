@@ -538,3 +538,24 @@ deposit, en+de locales, Schiphol office WhatsApp entry, Amsterdam/Schiphol
 the media API (hero + 9 card images + gallery), which flips the Phase 33
 `service_imagery` onboarding step to done. Static export published as a
 shareable preview (booking CTAs → WhatsApp, embed → static panel).
+
+**Phase 35 — delivered (see `docs/phase35.md`).** Customer acquisition &
+outreach: 30 innovations. Acquisition — airport SEO pages gated on real
+geo coverage, city-pair route pages priced from the live catalog, an
+anonymous instant-estimate endpoint, shareable HMAC quote links with a
+no-store public page, referral leaderboard, per-channel capture link
+builder, Referer auto-attribution, first-booking credit, corporate
+self-serve signup, honest social proof, review deep links, campaign
+windows that retag every CTA, embed theming, a gift voucher storefront
+that 404s without stock, and sitemap coverage that never lists a 404.
+Outreach — segment broadcasts with a preview that IS the audience, a
+rule-based segment engine, drip sequences derived from the sends ledger
+(no state table), deterministic template A/B, STOP/START consent
+keywords at intake, scheduled sends with delivery-time consent
+re-validation, quiet hours with per-client preferred send time, quote
+abandonment nudges carrying the share link, tiered win-back, anniversary
+and re-permission campaigns, review requests, journey notifications on
+every trip transition, monthly corporate summaries, and a per-campaign
+funnel. Console Growth page gains four cards (links, leaderboard,
+broadcast, funnel) and the composer schedules sends. 17 domain + 11
+server + 1 pg tests, all suites green.

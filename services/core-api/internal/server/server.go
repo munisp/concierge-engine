@@ -140,6 +140,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerStudio(mux)
 	h.registerMedia(mux)
 	h.registerPhase17(mux)
+	h.registerPhase35(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
@@ -769,6 +770,16 @@ func (h *handlers) trackAttribution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e.TenantID = tenantOf(r)
+	// Phase 35 (A7): Referer auto-attribution — when the caller supplied no
+	// channel, classify the HTTP Referer so organic social/search arrivals
+	// on the capture page still attribute, without any client-side tagging.
+	if e.Channel == "" {
+		ch, camp := refererAttribution(r.Header.Get("Referer"))
+		e.Channel = ch
+		if e.Campaign == "" {
+			e.Campaign = camp
+		}
+	}
 	h.svc.Events.Track(r.Context(), &e)
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "tracked"})
 }

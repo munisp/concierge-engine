@@ -59,6 +59,12 @@ type SendOutreachInput struct {
 	// and delivered. A template whose purpose is "marketing" cannot be
 	// sent as "service" (the frequency cap is not a suggestion).
 	TemplateID string `json:"template_id,omitempty"`
+	// ScheduledFor (Phase 35, O6): explicit delivery time. Future = the
+	// send is recorded "scheduled" and the hourly sweep delivers it;
+	// past/nil = immediate (subject to quiet-hours/optimization deferral
+	// for marketing sends). Operator-set schedules always win over the
+	// automatic deferral.
+	ScheduledFor *time.Time `json:"scheduled_for,omitempty"`
 }
 
 // Verdict reports whether a send to this client would be allowed right now,
@@ -165,6 +171,20 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 		return nil, fmt.Errorf("%w: client has no phone on file", httpx.ErrValidation)
 	}
 
+	// Phase 35: deferral. An explicit future schedule wins; otherwise
+	// marketing sends defer to the tenant's quiet-hours window end and/or
+	// the client's optimized send hour. Service sends never defer —
+	// a safety message at 02:00 still goes at 02:00.
+	when := in.ScheduledFor
+	if when == nil && in.Purpose == model.OutreachMarketing {
+		when = svc.deferral(ctx, tenantID, in.ClientID)
+	}
+	if when != nil && when.After(svc.s.Now()) {
+		o.Status, o.ScheduledFor = "scheduled", when
+		o.Detail = "scheduled for " + when.UTC().Format(time.RFC3339)
+		return svc.record(ctx, o)
+	}
+
 	// Deliver through the channel adapter (freeform inside the 24h session,
 	// approved template outside it; the adapter decides and may hold).
 	status, detail, ref := svc.deliver(ctx, tenantID, cl.Phone, in)
@@ -254,6 +274,146 @@ func (svc *OutreachService) deliver(ctx context.Context, tenantID, phone string,
 // Sends lists recent outreach sends (console growth board).
 func (svc *OutreachService) Sends(ctx context.Context, tenantID string, limit int) ([]model.OutreachSend, error) {
 	return svc.s.Store.Outreach().ListSends(ctx, tenantID, limit)
+}
+
+// ---------------------------------------------------------- Phase 35: scheduling
+
+// deferral computes a marketing send's delivery time under the tenant's
+// quiet hours (O7) and send-time optimization (O6). Nil = send now.
+func (svc *OutreachService) deferral(ctx context.Context, tenantID, clientID string) *time.Time {
+	t, err := svc.s.Store.Tenants().Get(ctx, tenantID)
+	if err != nil {
+		return nil
+	}
+	cfg := t.OutreachConfig
+	now := svc.s.Now()
+	var when time.Time
+	if cfg.OptimizeSendTime {
+		when = svc.preferredHour(ctx, tenantID, clientID, now)
+	}
+	if q := quietDefer(cfg, now); q.After(when) {
+		when = q
+	}
+	if when.IsZero() || !when.After(now) {
+		return nil
+	}
+	return &when
+}
+
+// quietDefer returns the end of the tenant's quiet-hours window when now
+// falls inside it (O7). The window wraps midnight (e.g. 21→8). Both hours
+// zero = disabled. A malformed config (equal or out-of-range hours) is
+// ignored — it degrades to no deferral rather than blocking sends.
+func quietDefer(cfg model.OutreachConfig, now time.Time) time.Time {
+	start, end := cfg.QuietStartHour, cfg.QuietEndHour
+	if start == end || start < 0 || start > 23 || end < 0 || end > 23 {
+		return time.Time{}
+	}
+	h := now.Hour()
+	inQuiet := false
+	if start < end {
+		inQuiet = h >= start && h < end
+	} else {
+		inQuiet = h >= start || h < end
+	}
+	if !inQuiet {
+		return time.Time{}
+	}
+	d := time.Date(now.Year(), now.Month(), now.Day(), end, 0, 0, 0, now.Location())
+	if !d.After(now) {
+		d = d.Add(24 * time.Hour)
+	}
+	return d
+}
+
+// preferredHour derives the client's most responsive send hour from their
+// own booking history (O6): the modal CreatedAt hour of their bookings,
+// at least one hour in the future. No history = zero (no preference — the
+// send is not deferred). This is honest optimization: it uses the
+// client's real behavior, never a fabricated "best time".
+func (svc *OutreachService) preferredHour(ctx context.Context, tenantID, clientID string, now time.Time) time.Time {
+	bookings, err := svc.s.Store.Bookings().List(ctx, tenantID)
+	if err != nil {
+		return time.Time{}
+	}
+	reqClient := map[string]string{}
+	var hours [24]int
+	found := false
+	for _, b := range bookings {
+		cid, ok := reqClient[b.RequestID]
+		if !ok {
+			sr, err := svc.s.Store.Requests().Get(ctx, tenantID, b.RequestID)
+			if err != nil {
+				continue
+			}
+			cid = sr.ClientID
+			reqClient[b.RequestID] = cid
+		}
+		if cid == clientID {
+			hours[b.CreatedAt.Hour()]++
+			found = true
+		}
+	}
+	if !found {
+		return time.Time{}
+	}
+	best, bestN := 10, 0
+	for h, n := range hours {
+		if n > bestN {
+			best, bestN = h, n
+		}
+	}
+	d := time.Date(now.Year(), now.Month(), now.Day(), best, 0, 0, 0, now.Location())
+	if !d.After(now.Add(time.Hour)) {
+		d = d.Add(24 * time.Hour)
+	}
+	return d
+}
+
+// RunDue delivers scheduled sends whose time has come (Phase 35 sweep).
+// Consent and erasure are RE-VALIDATED at delivery time — a client who
+// withdrew consent between scheduling and delivery is held, not sent.
+// Advisory per send: one failure never aborts the sweep. Returns the
+// number of due sends attempted.
+func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, error) {
+	sends, err := svc.s.Store.Outreach().ListSends(ctx, tenantID, 2000)
+	if err != nil {
+		return 0, err
+	}
+	now := svc.s.Now()
+	attempted := 0
+	for _, o := range sends {
+		if o.Status != "scheduled" || o.ScheduledFor == nil || o.ScheduledFor.After(now) {
+			continue
+		}
+		attempted++
+		finish := func(status, detail, ref string) {
+			if uerr := svc.s.Store.Outreach().UpdateSendResult(ctx, tenantID, o.ID, status, detail, ref); uerr != nil {
+				svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.sweep_error",
+					map[string]any{"error": uerr.Error()})
+			}
+		}
+		v, err := svc.Verdict(ctx, tenantID, o.ClientID, o.Purpose)
+		if err != nil {
+			continue // transient store error — leave scheduled, retry next sweep
+		}
+		if !v.Allowed {
+			finish("held", "at delivery: "+v.Reason, "")
+			continue
+		}
+		cl, err := svc.s.Store.Clients().Get(ctx, tenantID, o.ClientID)
+		if err != nil || cl.Phone == "" {
+			finish("failed", "at delivery: client phone unavailable", "")
+			continue
+		}
+		status, detail, ref := svc.deliver(ctx, tenantID, cl.Phone, SendOutreachInput{
+			Body: o.Body, Template: o.Template, Params: o.Params,
+		})
+		finish(status, detail, ref)
+		svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.scheduled_delivered",
+			map[string]any{"client_id": o.ClientID, "status": status})
+	}
+	return attempted, nil
 }
 
 // ---------------------------------------------------------- Phase 21: templates

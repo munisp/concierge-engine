@@ -36,6 +36,16 @@ type FollowUpResult struct {
 	LeadNudgeSent  int `json:"lead_nudge_sent"`
 	LeadNudgeHeld  int `json:"lead_nudge_held"`
 	ClientsScanned int `json:"clients_scanned"`
+	// Phase 35 lifecycle rules (O8-O11, O13, O14).
+	QuoteNudgeSent   int `json:"quote_nudge_sent"`
+	WinBack2Sent     int `json:"win_back2_sent"`
+	WinBack3Sent     int `json:"win_back3_sent"`
+	AnniversarySent  int `json:"anniversary_sent"`
+	AnniversaryHeld  int `json:"anniversary_held"`
+	ReviewAskSent    int `json:"review_ask_sent"`
+	CorpSummarySent  int `json:"corp_summary_sent"`
+	RepermissionSent int `json:"repermission_sent"`
+	RepermissionHeld int `json:"repermission_held"`
 }
 
 func (svc *FollowUpService) lifecycleConfig(ctx context.Context, tenantID string) (model.LifecycleConfig, error) {
@@ -52,6 +62,9 @@ func (svc *FollowUpService) lifecycleConfig(ctx context.Context, tenantID string
 	}
 	if cfg.LeadNudgeDays <= 0 {
 		cfg.LeadNudgeDays = 7
+	}
+	if cfg.QuoteNudgeHours == 0 {
+		cfg.QuoteNudgeHours = 24 // negative disables the rule outright
 	}
 	return cfg, nil
 }
@@ -78,6 +91,26 @@ func (svc *FollowUpService) Run(ctx context.Context, tenantID string) (*FollowUp
 		return res, err
 	}
 	if err := svc.runLeadNudge(ctx, tenantID, cfg, runStart, res); err != nil {
+		return res, err
+	}
+	// Phase 35: quote-abandonment nudge (O8), travel anniversary (O10),
+	// review-ask sequencing (O11), corporate monthly summary (O13) and the
+	// annual re-permission campaign (O14). All advisory, all idempotent.
+	if cfg.QuoteNudgeHours > 0 {
+		if err := svc.runQuoteNudge(ctx, tenantID, cfg, runStart, res); err != nil {
+			return res, err
+		}
+	}
+	if err := svc.runAnniversary(ctx, tenantID, runStart, res); err != nil {
+		return res, err
+	}
+	if err := svc.runReviewAsk(ctx, tenantID, runStart, res); err != nil {
+		return res, err
+	}
+	if err := svc.runCorpSummary(ctx, tenantID, runStart, res); err != nil {
+		return res, err
+	}
+	if err := svc.runRepermission(ctx, tenantID, runStart, res); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -170,16 +203,39 @@ func (svc *FollowUpService) runWinBack(ctx context.Context, tenantID string, cfg
 	now := svc.s.Now()
 	year, week := now.ISOWeek()
 	cutoff := now.Add(-time.Duration(cfg.WinBackDays) * 24 * time.Hour)
+	cutoff2 := now.Add(-time.Duration(cfg.WinBackDays*2) * 24 * time.Hour)
+	cutoff3 := now.Add(-time.Duration(cfg.WinBackDays*3) * 24 * time.Hour)
 	for _, c := range clients {
 		last, ok := lastBooking[c.ID]
 		if !ok || last.After(cutoff) {
 			continue // never booked, or active recently
 		}
+		// Phase 35 (O9): tiered win-back. The longer the silence, the
+		// stronger the touch — one tier per client per ISO week, the tier
+		// chosen by how deep the dormancy runs.
+		tier := 1
 		body := "It's been a while — your concierge is still here whenever you need us. " +
 			"One message is all it takes to have your next trip arranged end to end."
+		if last.Before(cutoff3) {
+			tier = 3
+			body = "We'd genuinely love to have you back. Reply to this message and a senior " +
+				"concierge will personally arrange your next trip — and make sure it reminds " +
+				"you why you rode with us."
+		} else if last.Before(cutoff2) {
+			tier = 2
+			body = "Still here whenever you need us — and your preferences are still on file. " +
+				"Your usual car, your usual pickup point, one message away."
+		}
+		// Tier 1 keeps the original key shape so in-flight weekly keys from
+		// before the tiered rollout stay replay-safe (no double-send in the
+		// same ISO week).
+		key := fmt.Sprintf("followup:winback:%s:%d-W%02d", c.ID, year, week)
+		if tier > 1 {
+			key = fmt.Sprintf("followup:winback%d:%s:%d-W%02d", tier, c.ID, year, week)
+		}
 		o, err := svc.s.Outreach.Send(ctx, tenantID, SendOutreachInput{
 			ClientID: c.ID, Purpose: model.OutreachMarketing, Body: body,
-			IdempotencyKey: fmt.Sprintf("followup:winback:%s:%d-W%02d", c.ID, year, week),
+			IdempotencyKey: key,
 		})
 		if err != nil {
 			continue
@@ -189,6 +245,11 @@ func (svc *FollowUpService) runWinBack(ctx context.Context, tenantID string, cfg
 		}
 		if o.Status == "sent" {
 			res.WinBackSent++
+			if tier == 2 {
+				res.WinBack2Sent++
+			} else if tier == 3 {
+				res.WinBack3Sent++
+			}
 		} else if o.Status == "held" {
 			res.WinBackHeld++ // consent/cap gate said no — counted, never forced
 		}

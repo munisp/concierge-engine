@@ -96,6 +96,7 @@ type Send = {
   status: string;
   detail?: string;
   external_ref?: string;
+  scheduled_for?: string;
   created_at: string;
 };
 
@@ -106,6 +107,52 @@ type MsgTemplate = {
   body: string;
   created_at: string;
   updated_at: string;
+};
+
+// Phase 35: acquisition & outreach surfaces.
+type LeaderRow = {
+  client_id: string;
+  name: string;
+  code: string;
+  conversions: number;
+  rewards_minor: number;
+  currency?: string;
+};
+
+type SegmentRules = {
+  locale?: string;
+  loyalty_tier?: string;
+  min_bookings?: number;
+  no_booking_since_days?: number;
+  has_bookings?: boolean;
+  marketing_consent?: boolean;
+};
+
+type BroadcastResult = {
+  campaign: string;
+  matched: number;
+  sent: number;
+  scheduled: number;
+  held: number;
+  failed: number;
+  variant_a?: number;
+  variant_b?: number;
+};
+
+type CampaignFunnel = {
+  campaign: string;
+  sent: number;
+  scheduled: number;
+  held: number;
+  failed: number;
+  converted: number;
+  variants?: Record<string, number>;
+};
+
+type MarketingLinks = {
+  capture_links: Record<string, string>;
+  active_campaign: string;
+  capture_page: string;
 };
 
 const KIND_ORDER = ["page_view", "ad_click", "conversation_started", "request_created", "booking", "outreach_sent", "referral_converted"];
@@ -134,6 +181,7 @@ export default function Growth() {
   const [tplPurpose, setTplPurpose] = useState("any");
   const [tplBody, setTplBody] = useState("");
   const [oTemplateId, setOTemplateId] = useState("");
+  const [oWhen, setOWhen] = useState(""); // Phase 35 (O6): schedule for later
 
   const [promos, setPromos] = useState<Promo[]>([]);
   const [pCode, setPCode] = useState("");
@@ -146,6 +194,30 @@ export default function Growth() {
   const [pCurrency, setPCurrency] = useState("EUR");
   const [pMax, setPMax] = useState("");
   const [pDays, setPDays] = useState("");
+  // Phase 35: leaderboard, broadcasts, campaign funnel, link builder.
+  const [leaders, setLeaders] = useState<LeaderRow[]>([]);
+  const [links, setLinks] = useState<MarketingLinks | null>(null);
+  const [bCampaign, setBCampaign] = useState("");
+  const [bBody, setBBody] = useState("");
+  const [bTemplateId, setBTemplateId] = useState("");
+  const [bAB, setBAB] = useState(false);
+  const [bTier, setBTier] = useState("");
+  const [bMinBookings, setBMinBookings] = useState("");
+  const [bDormantDays, setBDormantDays] = useState("");
+  const [bConsentOnly, setBConsentOnly] = useState(true);
+  const [segCount, setSegCount] = useState<number | null>(null);
+  const [bResult, setBResult] = useState<BroadcastResult | null>(null);
+  const [fName, setFName] = useState("");
+  const [funnel35, setFunnel35] = useState<CampaignFunnel | null>(null);
+
+  const segmentRules = (): SegmentRules => {
+    const r: SegmentRules = {};
+    if (bTier) r.loyalty_tier = bTier;
+    if (bMinBookings) r.min_bookings = parseInt(bMinBookings, 10);
+    if (bDormantDays) r.no_booking_since_days = parseInt(bDormantDays, 10);
+    if (bConsentOnly) r.marketing_consent = true;
+    return r;
+  };
 
   const load = () => {
     api.get<FunnelRow[]>("/v1/attribution/funnel").then(setFunnel).catch((e) => setErr(String(e)));
@@ -154,6 +226,37 @@ export default function Growth() {
     api.get<MsgTemplate[]>("/v1/outreach/templates").then(setTemplates).catch((e) => setErr(String(e)));
     api.get<Cohort>("/v1/acquisition/cohort").then(setCohort).catch(() => setCohort(null));
     api.get<FeeInvoice>("/v1/billing/acquisition-fees").then(setInvoice).catch(() => setInvoice(null));
+    api.get<{ leaderboard: LeaderRow[] }>("/v1/growth/referral-leaderboard?limit=10")
+      .then((r) => setLeaders(r.leaderboard)).catch(() => setLeaders([]));
+    api.get<MarketingLinks>("/v1/marketing/links").then(setLinks).catch(() => setLinks(null));
+  };
+
+  const previewSegment = async () => {
+    setErr(""); setSegCount(null);
+    try {
+      const r = await api.post<{ count: number }>("/v1/outreach/segments/preview", segmentRules());
+      setSegCount(r.count);
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const broadcast = async () => {
+    setErr(""); setBResult(null);
+    try {
+      const r = await api.post<BroadcastResult>("/v1/outreach/broadcast", {
+        campaign: bCampaign, purpose: "marketing",
+        body: bBody || undefined, template_id: bTemplateId || undefined,
+        ab_test: bAB || undefined, segment: segmentRules(),
+      });
+      setBResult(r);
+      load();
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const loadFunnel = async () => {
+    setErr(""); setFunnel35(null);
+    try {
+      setFunnel35(await api.get<CampaignFunnel>(`/v1/outreach/campaigns/${encodeURIComponent(fName)}/funnel`));
+    } catch (e) { setErr(String(e)); }
   };
 
   const saveTemplate = async () => {
@@ -223,6 +326,7 @@ export default function Growth() {
       const o = await api.post<Send>("/v1/outreach/send", {
         client_id: oClient, purpose: oPurpose, body: oBody || undefined,
         template: oTemplate || undefined, template_id: oTemplateId || undefined,
+        scheduled_for: oWhen ? new Date(oWhen).toISOString() : undefined,
         idempotency_key: `console-${Date.now()}`,
       });
       setSentMsg(`${o.status}${o.detail ? ` — ${o.detail}` : ""}${o.external_ref ? ` (ref ${o.external_ref})` : ""}`);
@@ -323,6 +427,107 @@ export default function Growth() {
               </tbody>
             </table>
           </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Marketing links</h2>
+        {links ? (
+          <>
+            {links.active_campaign && (
+              <p className="ok">Campaign window active: <strong>{links.active_campaign}</strong> — all CTAs stamp it as utm_campaign.</p>
+            )}
+            <table>
+              <thead><tr><th>Channel</th><th>Capture link</th></tr></thead>
+              <tbody>
+                {Object.entries(links.capture_links).map(([ch, url]) => (
+                  <tr key={ch}>
+                    <td>{ch}</td>
+                    <td><code style={{ fontSize: 11 }}>{url}</code></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : <p className="muted">Link builder unavailable.</p>}
+      </div>
+
+      <div className="card">
+        <h2>Referral leaderboard</h2>
+        {leaders.length === 0 ? <p>No referral conversions yet — share a client's code to start the loop.</p> : (
+          <table>
+            <thead><tr><th>#</th><th>Client</th><th>Code</th><th>Conversions</th><th>Rewards earned</th></tr></thead>
+            <tbody>
+              {leaders.map((r, i) => (
+                <tr key={r.client_id}>
+                  <td>{i + 1}</td>
+                  <td>{r.name || r.client_id.slice(0, 8)}</td>
+                  <td><strong>{r.code}</strong></td>
+                  <td>{r.conversions}</td>
+                  <td>{(r.rewards_minor / 100).toFixed(2)} {r.currency || ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Broadcast campaign</h2>
+        <p className="muted">
+          Fan one message out to a segment. Every send keeps its consent gate, weekly cap and
+          quiet-hours deferral; re-running the same campaign name is idempotent per client.
+        </p>
+        <div className="row">
+          <input placeholder="campaign name (e.g. spring-launch)" value={bCampaign} onChange={(e) => setBCampaign(e.target.value)} />
+          <select value={bTemplateId} onChange={(e) => setBTemplateId(e.target.value)}>
+            <option value="">freeform body…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.purpose})</option>
+            ))}
+          </select>
+          <label><input type="checkbox" checked={bAB} onChange={(e) => setBAB(e.target.checked)} disabled={!bTemplateId} /> A/B (needs a #b template)</label>
+        </div>
+        {!bTemplateId && (
+          <div className="row">
+            <input style={{ flex: 1 }} placeholder="message body" value={bBody} onChange={(e) => setBBody(e.target.value)} />
+          </div>
+        )}
+        <div className="row">
+          <select value={bTier} onChange={(e) => setBTier(e.target.value)}>
+            <option value="">any tier</option>
+            <option value="vip">vip</option>
+            <option value="gold">gold</option>
+            <option value="silver">silver</option>
+          </select>
+          <input placeholder="min bookings" value={bMinBookings} onChange={(e) => setBMinBookings(e.target.value)} style={{ width: 110 }} />
+          <input placeholder="dormant ≥ days" value={bDormantDays} onChange={(e) => setBDormantDays(e.target.value)} style={{ width: 130 }} />
+          <label><input type="checkbox" checked={bConsentOnly} onChange={(e) => setBConsentOnly(e.target.checked)} /> consented only</label>
+          <button onClick={previewSegment}>Preview audience</button>
+          <button onClick={broadcast} disabled={!bCampaign || (!bBody && !bTemplateId)}>Send broadcast</button>
+        </div>
+        {segCount !== null && <p className="ok">Audience: <strong>{segCount}</strong> clients match.</p>}
+        {bResult && (
+          <p className="ok">
+            {bResult.campaign}: {bResult.matched} matched — {bResult.sent} sent, {bResult.scheduled} scheduled,{" "}
+            {bResult.held} held, {bResult.failed} failed
+            {bResult.variant_a !== undefined && ` · A ${bResult.variant_a} / B ${bResult.variant_b}`}
+          </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Campaign funnel</h2>
+        <div className="row">
+          <input placeholder="campaign name" value={fName} onChange={(e) => setFName(e.target.value)} />
+          <button onClick={loadFunnel} disabled={!fName}>Load funnel</button>
+        </div>
+        {funnel35 && (
+          <p>
+            <strong>{funnel35.campaign}</strong> — sent {funnel35.sent} · scheduled {funnel35.scheduled} ·
+            held {funnel35.held} · failed {funnel35.failed} · <strong>converted {funnel35.converted}</strong>
+            {funnel35.variants && ` · A ${funnel35.variants.a ?? 0} sent / B ${funnel35.variants.b ?? 0} sent`}
+          </p>
         )}
       </div>
 
@@ -438,6 +643,7 @@ export default function Growth() {
             ))}
           </select>
           <input placeholder="or approved WA template name" value={oTemplate} onChange={(e) => setOTemplate(e.target.value)} />
+          <input type="datetime-local" title="schedule for later (optional)" value={oWhen} onChange={(e) => setOWhen(e.target.value)} />
           <button onClick={send} disabled={!oClient || (!oBody && !oTemplate && !oTemplateId)}>Send</button>
         </div>
         {oTemplateId && (
@@ -490,7 +696,8 @@ export default function Growth() {
                   <td>{new Date(s.created_at).toLocaleString()}</td>
                   <td>{s.client_id.slice(0, 8)}</td>
                   <td>{s.purpose}</td>
-                  <td>{s.status}</td>
+                  <td>{s.status}{s.status === "scheduled" && s.scheduled_for
+                    ? ` (${new Date(s.scheduled_for).toLocaleString()})` : ""}</td>
                   <td>{s.detail || "—"}</td>
                   <td>{s.external_ref ? s.external_ref.slice(0, 14) : "—"}</td>
                 </tr>

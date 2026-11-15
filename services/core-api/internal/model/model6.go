@@ -11,19 +11,24 @@ import "time"
 // (tenant, idempotency key), and records the channel message id so Phase
 // 11 receipts close the delivery loop.
 type OutreachSend struct {
-	ID             string    `json:"id"`
-	TenantID       string    `json:"tenant_id"`
-	ClientID       string    `json:"client_id"`
-	Channel        string    `json:"channel"`  // whatsapp (v1)
-	Purpose        string    `json:"purpose"`  // service | marketing
-	Body           string    `json:"body,omitempty"`
-	Template       string    `json:"template,omitempty"` // approved WA template; outside-24h sends
-	Params         []string  `json:"params,omitempty"`
-	ExternalRef    string    `json:"external_ref,omitempty"` // channel message id (wamid)
-	Status         string    `json:"status"`   // sent | held | failed
-	Detail         string    `json:"detail,omitempty"`
-	IdempotencyKey string    `json:"-"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string   `json:"id"`
+	TenantID       string   `json:"tenant_id"`
+	ClientID       string   `json:"client_id"`
+	Channel        string   `json:"channel"` // whatsapp (v1)
+	Purpose        string   `json:"purpose"` // service | marketing
+	Body           string   `json:"body,omitempty"`
+	Template       string   `json:"template,omitempty"` // approved WA template; outside-24h sends
+	Params         []string `json:"params,omitempty"`
+	ExternalRef    string   `json:"external_ref,omitempty"` // channel message id (wamid)
+	Status         string   `json:"status"`                 // scheduled | sent | held | failed
+	Detail         string   `json:"detail,omitempty"`
+	IdempotencyKey string   `json:"-"`
+	// ScheduledFor (Phase 35): when set, the send is recorded as
+	// "scheduled" and the hourly sweep delivers it once due. Nil = send
+	// immediately. A scheduled send still passes consent/cap gates at
+	// schedule time AND re-validates consent at delivery time.
+	ScheduledFor *time.Time `json:"scheduled_for,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 const (

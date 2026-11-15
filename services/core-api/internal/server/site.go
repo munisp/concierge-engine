@@ -86,6 +86,8 @@ var siteReserved = map[string]bool{
 	"book": true, "areas": true, "links": true, "partners": true,
 	"sitemap.xml": true, "robots.txt": true, "og.png": true,
 	"media": true, // Phase 31: public media serving
+	// Phase 35: acquisition pages
+	"airport": true, "routes": true, "gift": true,
 }
 
 // siteDispatch routes /site/{slug}/... manually: optional {locale} prefix,
@@ -135,6 +137,15 @@ func (h *handlers) siteDispatch(w http.ResponseWriter, r *http.Request) {
 	case len(segs) == 2 && segs[0] == "media":
 		r.SetPathValue("mediaID", segs[1])
 		h.siteMedia(w, r)
+	// Phase 35: acquisition pages
+	case len(segs) == 2 && segs[0] == "airport":
+		r.SetPathValue("iata", segs[1])
+		h.siteAirport(w, r)
+	case len(segs) == 2 && segs[0] == "routes":
+		r.SetPathValue("pair", segs[1])
+		h.siteRoute(w, r)
+	case len(segs) == 1 && segs[0] == "gift":
+		h.siteGift(w, r)
 	default:
 		httpx.WriteError(w, httpx.ErrNotFound)
 	}
@@ -694,6 +705,18 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 	if p.ReviewCount > 0 {
 		p.Stats = append(p.Stats, siteStat{Value: "★ " + p.ReviewAvg, Label: p.D.ClientReviews})
 	}
+	// Phase 35 (A10): the social-proof band — real ledger counts only,
+	// rendered only when non-zero. "Clients served" counts clients holding
+	// at least one booking; "trips completed" counts COMPLETED_TRIP
+	// assignments. No rounding up, no projections.
+	if proof, err := h.svc.SocialProof(r.Context(), t.ID); err == nil {
+		if proof.ClientsServed > 0 {
+			p.Stats = append(p.Stats, siteStat{Value: fmt.Sprintf("%d", proof.ClientsServed), Label: p.D.ClientsServed})
+		}
+		if proof.TripsCompleted > 0 {
+			p.Stats = append(p.Stats, siteStat{Value: fmt.Sprintf("%d", proof.TripsCompleted), Label: p.D.TripsCompleted})
+		}
+	}
 	if reviews, err := h.svc.Store.Reviews().Consented(r.Context(), t.ID); err == nil {
 		for _, rv := range reviews {
 			if rv.Text == "" || len(p.Reviews) >= 3 {
@@ -1091,6 +1114,69 @@ func (h *handlers) siteSitemap(w http.ResponseWriter, r *http.Request) {
 			writeURL(fmt.Sprintf("%s/areas/%s", base, a.ID), "0.8")
 		}
 	}
+	// Phase 35 (A15): acquisition pages — but only URLs that actually
+	// resolve. A sitemap that lists 404s teaches crawlers to distrust the
+	// whole site, so every entry here passes the same honesty gate the page
+	// handler applies.
+	hasPerKM := false
+	for _, s := range services {
+		if s.Vertical == "CHAUFFEUR_POINT_TO_POINT" && s.PerKMMinor > 0 && s.AutoQuotable {
+			hasPerKM = true
+			break
+		}
+	}
+	areaCache := map[string]bool{}
+	covered := func(lat, lng float64) bool {
+		key := fmt.Sprintf("%.4f,%.4f", lat, lng)
+		if v, ok := areaCache[key]; ok {
+			return v
+		}
+		hits, err := h.svc.Geo.Contains(r.Context(), t.ID, lat, lng)
+		ok := err == nil && len(hits) > 0
+		areaCache[key] = ok
+		return ok
+	}
+	// Airports the tenant covers (A1).
+	for _, ap := range airports35 {
+		if !covered(ap.Lat, ap.Lng) {
+			continue
+		}
+		for _, l := range tenantLocales(t) {
+			writeURL(fmt.Sprintf("%s/airport/%s", localeBase(rawBase, t, l), ap.Code), "0.7")
+		}
+	}
+	// City-pair routes where BOTH endpoints are covered and the tenant can
+	// price the distance (A2). Cap at the 40 strongest pairs per tenant —
+	// sitemap quality beats sitemap size.
+	if hasPerKM {
+		var coveredCities []geoPoint
+		for _, c := range cities35 {
+			if covered(c.Lat, c.Lng) {
+				coveredCities = append(coveredCities, c)
+			}
+		}
+		n := 0
+		for i := 0; i < len(coveredCities) && n < 40; i++ {
+			for j := 0; j < len(coveredCities) && n < 40; j++ {
+				if i == j {
+					continue
+				}
+				writeURL(fmt.Sprintf("%s/routes/%s-to-%s", localeBase(rawBase, t, tenantLocales(t)[0]),
+					coveredCities[i].Code, coveredCities[j].Code), "0.6")
+				n++
+			}
+		}
+	}
+	// Gift storefront, only when vouchers exist (A14).
+	if promos, err := h.svc.Store.Promos().List(r.Context(), t.ID); err == nil {
+		now := h.svc.Now()
+		for _, pr := range promos {
+			if pr.Gift && pr.Active && (pr.ExpiresAt.IsZero() || now.Before(pr.ExpiresAt)) {
+				writeURL(localeBase(rawBase, t, tenantLocales(t)[0])+"/gift", "0.5")
+				break
+			}
+		}
+	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
@@ -1170,13 +1256,35 @@ func (h *handlers) siteLinks(w http.ResponseWriter, r *http.Request) {
 // embedWidget is the iframe-able booking entry point for tenants who keep
 // their existing website. Stripped chrome (no header/nav), target=_top so
 // the CTA takes over the parent's tab, attribution channel=widget.
+// Phase 35 (A13): ?theme=light inverts the palette for dark host pages and
+// &compact=1 renders a single slim CTA bar — both are pure presentation;
+// the booking flow and attribution are identical.
 func (h *handlers) embedWidget(w http.ResponseWriter, r *http.Request) {
 	t, services, _, err := h.siteData(r)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	cta := h.captureChannelURL(t.ID, "widget", "embed", "widget-"+t.Slug)
+	cta := h.captureChannelURLFor(r, t, "widget", "embed", "widget-"+t.Slug)
+	light := r.URL.Query().Get("theme") == "light"
+	compact := r.URL.Query().Get("compact") == "1"
+	fg, bg, hover := "#fff", "#0b5fff", "#0946c0"
+	body := "#fff"
+	if light {
+		// light theme = dark widget chrome for light-on-dark embeds
+		fg, bg, hover, body = "#0b5fff", "#ffffff", "#e8eeff", "transparent"
+	}
+	if compact {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{font-family:system-ui,sans-serif;margin:0;background:%s}
+a{display:block;background:%s;color:%s;text-decoration:none;padding:10px 14px;border-radius:8px;text-align:center;font-weight:600;font-size:14px}
+a:hover{background:%s}</style></head><body>
+<a target="_top" href="%s">Book %s</a></body></html>`,
+			body, bg, fg, hover, template.HTMLEscapeString(cta), template.HTMLEscapeString(t.Name))
+		return
+	}
 	var items strings.Builder
 	for _, s := range services {
 		fmt.Fprintf(&items, `<li><a target="_top" href="%s">Book %s%s</a></li>`,
@@ -1192,9 +1300,10 @@ func (h *handlers) embedWidget(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>body{font-family:system-ui,sans-serif;margin:0;padding:12px;background:#fff}
-a{display:block;background:#0b5fff;color:#fff;text-decoration:none;padding:12px;border-radius:8px;margin:8px 0;text-align:center;font-weight:600}
-a:hover{background:#0946c0}</style></head><body>%s</body></html>`, items.String())
+<style>body{font-family:system-ui,sans-serif;margin:0;padding:12px;background:%s}
+a{display:block;background:%s;color:%s;text-decoration:none;padding:12px;border-radius:8px;margin:8px 0;text-align:center;font-weight:600}
+a:hover{background:%s}</style></head><body>%s</body></html>`,
+		body, bg, fg, hover, items.String())
 }
 
 // ---------------------------------------------------------- rendering

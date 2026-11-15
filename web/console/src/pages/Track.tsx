@@ -20,6 +20,9 @@ type TrackView = {
   window_start?: string;
   window_end?: string;
   position?: TrackPosition;
+  // Phase 35 (A11): review deep link + already-reviewed flag.
+  review_url?: string;
+  review_submitted?: boolean;
 };
 
 const STEPS = [
@@ -55,7 +58,7 @@ async function tokenCall<T>(method: string, path: string, body?: unknown): Promi
 // ReviewForm (Phase 27): after a completed trip the passenger rates it here.
 // The track token authenticates the review — no login. Publishing is
 // opt-in: without the consent checkbox the review is private feedback only.
-function ReviewForm({ token }: { token: string }) {
+function ReviewForm({ token, submitted }: { token: string; submitted?: boolean }) {
   const [rating, setRating] = useState(0);
   const [text, setText] = useState("");
   const [consent, setConsent] = useState(false);
@@ -71,8 +74,9 @@ function ReviewForm({ token }: { token: string }) {
     }
   };
   if (msg) return <p className="muted">{msg}</p>;
+  if (submitted) return <p className="muted">Thank you — your review is already on file for this trip.</p>;
   return (
-    <div className="card">
+    <div className="card" id="review">
       <h2>How was your journey?</h2>
       <div className="row" style={{ gap: 6 }}>
         {[1, 2, 3, 4, 5].map((n) => (
@@ -190,7 +194,7 @@ export default function Track() {
             )}
           </div>
 
-          {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} />}
+          {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} submitted={view.review_submitted} />}
         </>
       )}
     </div>

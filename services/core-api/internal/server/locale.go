@@ -59,6 +59,9 @@ type siteDict struct {
 	ReviewsHeading string
 	ServicesWord   string // stats strip plural: "services"
 	AreasWord      string // stats strip plural: "areas"
+	// Phase 35 (A10): social-proof band labels.
+	ClientsServed  string // "clients served"
+	TripsCompleted string // "trips completed"
 	CTABandTitle   string
 	CTABandBody    string
 	VerifiedClient string // review attribution line
@@ -90,6 +93,8 @@ var siteDicts = map[string]siteDict{
 		ReviewsHeading: "What clients say",
 		ServicesWord:   "services",
 		AreasWord:      "areas",
+		ClientsServed:  "clients served",
+		TripsCompleted: "trips completed",
 		CTABandTitle:   "Ready when you are",
 		CTABandBody:    "Book in under a minute — your concierge takes it from there.",
 		VerifiedClient: "Verified client",
@@ -119,6 +124,8 @@ var siteDicts = map[string]siteDict{
 		ReviewsHeading: "O que dizem os clientes",
 		ServicesWord:   "serviços",
 		AreasWord:      "zonas",
+		ClientsServed:  "clientes servidos",
+		TripsCompleted: "viagens concluídas",
 		CTABandTitle:   "Prontos quando quiser",
 		CTABandBody:    "Reserve em menos de um minuto — o seu concierge trata do resto.",
 		VerifiedClient: "Cliente verificado",
@@ -169,6 +176,7 @@ func dictFor(locale string) siteDict {
 		{&d.FleetTitle, &en.FleetTitle}, {&d.FleetBody, &en.FleetBody},
 		{&d.ReviewsHeading, &en.ReviewsHeading},
 		{&d.ServicesWord, &en.ServicesWord}, {&d.AreasWord, &en.AreasWord},
+		{&d.ClientsServed, &en.ClientsServed}, {&d.TripsCompleted, &en.TripsCompleted},
 		{&d.CTABandTitle, &en.CTABandTitle}, {&d.CTABandBody, &en.CTABandBody},
 		{&d.VerifiedClient, &en.VerifiedClient},
 	} {

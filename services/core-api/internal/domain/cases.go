@@ -227,6 +227,13 @@ func (svc *CaseService) Intake(ctx context.Context, tenantID, clientID, text, co
 	if clientID == "" || text == "" {
 		return nil, httpx.ErrValidation
 	}
+	// Phase 35 (O5): consent keywords are intercepted before triage — an
+	// opt-out never opens a case and never waits for a human.
+	if handled, err := svc.maybeConsentKeyword(ctx, tenantID, clientID, text); err != nil {
+		return nil, err
+	} else if handled {
+		return &IntakeResult{Kind: "consent", Reason: "consent keyword handled"}, nil
+	}
 	kind, priority, summary, engine := svc.triage(ctx, text)
 	res := &IntakeResult{Kind: kind, Priority: priority, Engine: engine}
 	if !caseIntakeKinds[kind] && priority != "P1" && priority != "P2" {

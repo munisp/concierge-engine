@@ -55,14 +55,15 @@ func (svc *TripService) TokenFor(tenantID, assignmentID string) string {
 }
 
 // ParseToken verifies and extracts (tenantID, assignmentID). Client
-// tracking tokens (track/ prefix, Phase 25) are rejected here — a
-// monitoring link must never drive the trip.
+// tracking tokens (track/ prefix, Phase 25) and quote share tokens
+// (quote/ prefix, Phase 35) are rejected here — neither a monitoring link
+// nor a priced offer may ever drive the trip.
 func (svc *TripService) ParseToken(token string) (string, string, error) {
 	_, _, payload, err := svc.parseAny(token)
 	if err != nil {
 		return "", "", err
 	}
-	if strings.HasPrefix(payload, clientTokenPrefix) {
+	if strings.HasPrefix(payload, clientTokenPrefix) || strings.HasPrefix(payload, quoteTokenPrefix) {
 		return "", "", httpx.ErrForbidden
 	}
 	return splitPayload(payload)
@@ -229,6 +230,11 @@ type TrackView struct {
 	// Position is nil until the chauffeur's first stamp — the page says
 	// "position pending", never invents one.
 	Position *TrackPosition `json:"position,omitempty"`
+	// Phase 35 (A11): review deep link — the anchor URL of the review form
+	// on this very page, plus whether a review already landed (the form
+	// hides when one has; one review per assignment structurally).
+	ReviewURL       string `json:"review_url,omitempty"`
+	ReviewSubmitted bool   `json:"review_submitted"`
 }
 
 type TrackPosition struct {
@@ -291,8 +297,16 @@ func (svc *TripService) Track(ctx context.Context, token string) (*TrackView, er
 		}
 	}
 	// Latest position, best-effort (nil until the first stamp).
-	if g, err := svc.s.Store.Dispatch().LatestGeoStamp(ctx, tenantID, a.ID); err == nil {
+	if g, err := svc.s.Store.Dispatch().LatestGeoStamp(ctx, tenantID, a.ID); err == nil && g != nil {
 		view.Position = &TrackPosition{Lat: g.Lat, Lng: g.Lng, Kind: g.Kind, At: g.At}
+	}
+	// Phase 35 (A11): review deep link once the trip is reviewable
+	// (completed). The URL anchors the review form on this track page.
+	if a.Status == "COMPLETED_TRIP" {
+		view.ReviewURL = svc.s.ConsoleBase() + "/track?token=" + token + "#review"
+		if rv, err := svc.s.Store.Reviews().GetByAssignment(ctx, tenantID, a.ID); err == nil && rv != nil {
+			view.ReviewSubmitted = true
+		}
 	}
 	return view, nil
 }

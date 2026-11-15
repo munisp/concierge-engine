@@ -73,6 +73,10 @@ type LifecycleConfig struct {
 	// and cap-gated like win_back; one attempt per client per ISO week).
 	// 0 = default 7.
 	LeadNudgeDays int `json:"lead_nudge_days,omitempty"`
+	// QuoteNudgeHours (Phase 35, O8): an instant quote left unconfirmed this
+	// many hours triggers ONE service-lane nudge containing the quote's
+	// share link. 0 = default 24; negative = disabled.
+	QuoteNudgeHours int `json:"quote_nudge_hours,omitempty"`
 }
 
 // AcquisitionConfig is the tenant's acquisition-monetization posture
@@ -89,6 +93,15 @@ type AcquisitionConfig struct {
 	GoalClients     int      `json:"goal_clients,omitempty"`
 	GoalDays        int      `json:"goal_days,omitempty"`
 	CohortStartedAt string   `json:"cohort_started_at,omitempty"` // RFC3339
+	// FirstBookingCreditMinor (Phase 35, A8): welcome credit posted to a
+	// NEW client's rewards ledger the moment their first booking is
+	// confirmed. 0 = disabled. Posted once per client (ledger idempotency
+	// key first_booking:{client}).
+	FirstBookingCreditMinor int64 `json:"first_booking_credit_minor,omitempty"`
+	// CampaignWindows (Phase 35, A12): named seasonal windows. During a
+	// window the public site carries the campaign name in its CTA links
+	// (utm_campaign) so attribution and the campaign funnel group cleanly.
+	CampaignWindows []CampaignWindow `json:"campaign_windows,omitempty"`
 }
 
 // OperatorConfig is the tenant's operator roster. AlertPhones receive
@@ -152,8 +165,19 @@ type RewardProgram struct {
 // OutreachConfig holds per-tenant proactive-outreach settings (Phase 20).
 // MarketingCap7d overrides the platform default of 3 marketing sends per
 // client per rolling 7 days; 0 = platform default.
+// Phase 35: quiet hours suppress MARKETING delivery between QuietStartHour
+// and QuietEndHour (tenant-local wall clock, 0-23; both zero = disabled) —
+// a marketing send inside quiet hours is deferred to the window's end via
+// the scheduled-send sweep. OptimizeSendTime defers marketing sends to the
+// client's historically most responsive hour (derived from booking times).
+// Sequences defines drip campaigns whose per-client progress is derived
+// from the sends ledger — no extra state table.
 type OutreachConfig struct {
-	MarketingCap7d int `json:"marketing_cap_7d,omitempty"`
+	MarketingCap7d   int        `json:"marketing_cap_7d,omitempty"`
+	QuietStartHour   int        `json:"quiet_start_hour,omitempty"`
+	QuietEndHour     int        `json:"quiet_end_hour,omitempty"`
+	OptimizeSendTime bool       `json:"optimize_send_time,omitempty"`
+	Sequences        []Sequence `json:"sequences,omitempty"`
 }
 
 // PromoCampaign is a fixed-credit promo code (Phase 20): a client redeeming

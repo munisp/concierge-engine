@@ -678,3 +678,18 @@ numbers), and sunsets clients with 8+ marketing WA sends and zero replies
 ever — one reply resets it forever. Service lane exempt, email untouched,
 both rules advisory. Console verdict line flags unreachable numbers. See
 docs/phase42.md.
+
+## Phase 43 — post-sunset re-engagement: win-back touch + reopt/ links
+
+The Phase 41/42 hygiene holds have a door back. A sunset-held client whose
+consent is still on may receive one marketing touch per 90 days on the held
+channel: eligibility derives from the sends ledger itself (the granted touch
+carries a Detail marker; failed dispatches never burn the window, scheduled
+touches hold it), the due-send sweep can deliver its own touch, and dead
+endpoints (suppressed addresses, unreachable numbers) are never exempt.
+Verdicts expose `reengagement_touch`. For clients whose consent is off, a
+new `reopt/` HMAC token family (mirroring `unsub/`) powers one-tap
+re-subscribe links, embedded as a passive footer in service-lane emails
+only — the marketing lane stays closed until the client opens it. The flip
+emits `client.reopted` and tracks `reengagement_optin` for funnel proof.
+Console verdict line flags win-back touches. See docs/phase43.md.

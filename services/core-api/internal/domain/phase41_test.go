@@ -132,10 +132,25 @@ func TestEmailSunset41(t *testing.T) {
 		}
 	}
 
-	// The 9th is held by the sunset rule.
+	// Phase 43: the 9th is the win-back touch — the sunset holds, but the
+	// exemption grants one touch per 90 days while consent is still on.
 	v, err := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, "email")
+	if err != nil || !v.Allowed || !v.ReengagementTouch {
+		t.Fatalf("9th send should be the re-engagement touch: %+v %v", v, err)
+	}
+	touch, err := s.Outreach.Send(ctx, tenantID, SendOutreachInput{
+		ClientID: clientID, Purpose: model.OutreachMarketing, Channel: "email",
+		Body: "offer", Subject: "Offer", IdempotencyKey: "sun-touch",
+	})
+	if err != nil || touch.Status != "sent" || !strings.HasPrefix(touch.Detail, "re-engagement touch") {
+		t.Fatalf("touch send: %+v %v", touch, err)
+	}
+
+	// Within the cooldown the sunset holds for real.
+	now = now.Add(8 * 24 * time.Hour) // clear the weekly cap so sunset decides
+	v, err = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, "email")
 	if err != nil || v.Allowed || !strings.Contains(v.Reason, "sunset") {
-		t.Fatalf("9th send should sunset: %+v %v", v, err)
+		t.Fatalf("10th send should sunset-hold: %+v %v", v, err)
 	}
 	// WhatsApp verdict is untouched (zero WA sends).
 	if v, _ := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, model.OutreachChannelWhatsApp); !v.Allowed {
@@ -147,7 +162,7 @@ func TestEmailSunset41(t *testing.T) {
 		TenantID: tenantID, Kind: "email_opened", Channel: "email", ClientID: clientID,
 	})
 	v, _ = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, "email")
-	if !v.Allowed {
+	if !v.Allowed || v.ReengagementTouch {
 		t.Fatalf("one open resets the sunset: %+v", v)
 	}
 }

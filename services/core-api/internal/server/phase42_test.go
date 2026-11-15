@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/model"
@@ -96,8 +97,24 @@ func TestWaSunsetReplyReset42(t *testing.T) {
 	var v domain.OutreachVerdict
 	env.do("GET", "/v1/outreach/verdict?client_id="+cl.ID+"&purpose=marketing&channel=whatsapp", env.tenantID,
 		nil, http.StatusOK, &v)
+	// Phase 43: the first sunset verdict grants the win-back touch.
+	if !v.Allowed || !v.ReengagementTouch {
+		t.Fatalf("first sunset verdict should grant the touch: %+v", v)
+	}
+
+	// A granted touch on the sends ledger puts the 90-day cooldown in force.
+	if err := env.svc.Store.Outreach().AddSend(context.Background(), &model.OutreachSend{
+		ID: "send-touch", TenantID: env.tenantID, ClientID: cl.ID,
+		Channel: "whatsapp", Purpose: "marketing", Status: "sent",
+		Body: "offer", Detail: "re-engagement touch — sunset-held client, one touch per 90d",
+		IdempotencyKey: "wa42-srv-touch", CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed touch: %v", err)
+	}
+	env.do("GET", "/v1/outreach/verdict?client_id="+cl.ID+"&purpose=marketing&channel=whatsapp", env.tenantID,
+		nil, http.StatusOK, &v)
 	if v.Allowed || !strings.Contains(v.Reason, "sunset") {
-		t.Fatalf("should sunset: %+v", v)
+		t.Fatalf("cooldown should hold: %+v", v)
 	}
 
 	// The client replies on their WA thread → sunset resets.
@@ -109,9 +126,12 @@ func TestWaSunsetReplyReset42(t *testing.T) {
 		"author": "CLIENT", "body": "tell me more",
 	}, http.StatusCreated, nil)
 
+	// Reset the struct: omitempty fields absent from the JSON would keep
+	// their stale values from the previous decode.
+	v = domain.OutreachVerdict{}
 	env.do("GET", "/v1/outreach/verdict?client_id="+cl.ID+"&purpose=marketing&channel=whatsapp", env.tenantID,
 		nil, http.StatusOK, &v)
-	if !v.Allowed {
+	if !v.Allowed || v.ReengagementTouch {
 		t.Fatalf("reply resets the sunset: %+v", v)
 	}
 }

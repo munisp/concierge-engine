@@ -108,6 +108,11 @@ type OutreachVerdict struct {
 	// Phase 42: the client's WhatsApp number looks dead — 3+ failed
 	// deliveries with none confirmed since. Marketing lane holds.
 	WaUnreachable bool `json:"wa_unreachable,omitempty"`
+	// Phase 43: the send is allowed through the sunset exemption — the
+	// client's one win-back touch per ReengagementCooldownDays on a held
+	// channel. The console flags it so the operator knows this send is the
+	// rare touch, not the lane reopening.
+	ReengagementTouch bool `json:"reengagement_touch,omitempty"`
 }
 
 // Phase 40 deliverability guard: below the minimum volume there is no
@@ -122,6 +127,13 @@ const (
 )
 
 func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, purpose, channel string) (*OutreachVerdict, error) {
+	return svc.verdict(ctx, tenantID, clientID, purpose, channel, "")
+}
+
+// verdict is Verdict plus the Phase 43 sweep hook: excludeSendID lets the
+// due-send sweep deliver a scheduled re-engagement touch without the touch's
+// own ledger marker holding it at delivery.
+func (svc *OutreachService) verdict(ctx context.Context, tenantID, clientID, purpose, channel, excludeSendID string) (*OutreachVerdict, error) {
 	cl, err := svc.s.Store.Clients().Get(ctx, tenantID, clientID)
 	if err != nil {
 		return nil, err
@@ -189,11 +201,16 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 	// clicking one is held out of the marketing lane — chronic non-openers
 	// are tomorrow's complaints, and every send to them dilutes the
 	// engagement signals mailbox providers score the tenant on. One open or
-	// click ever resets it; service email is exempt.
+	// click ever resets it; service email is exempt. Phase 43: the hold
+	// softens to one win-back touch per ReengagementCooldownDays.
 	if channel == model.OutreachChannelEmail && svc.sunsetApplies(ctx, tenantID, clientID) {
-		v.Allowed = false
-		v.Reason = fmt.Sprintf("sunset: %d+ marketing emails sent with no opens or clicks — client held out of the marketing lane", EmailSunsetMinSends)
-		return v, nil
+		if eligible, _ := svc.reengagementEligible(ctx, tenantID, clientID, channel, excludeSendID); eligible {
+			v.ReengagementTouch = true
+		} else {
+			v.Allowed = false
+			v.Reason = fmt.Sprintf("sunset: %d+ marketing emails sent with no opens or clicks — held (re-engagement touch used within the last %dd)", EmailSunsetMinSends, ReengagementCooldownDays)
+			return v, nil
+		}
 	}
 	// Phase 42 WhatsApp hygiene: a dead number (3+ failed deliveries, none
 	// confirmed since) holds the marketing lane — Meta's quality rating
@@ -208,9 +225,16 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 			return v, nil
 		}
 		if svc.waSunsetApplies(ctx, tenantID, clientID) {
-			v.Allowed = false
-			v.Reason = fmt.Sprintf("sunset: %d+ WhatsApp marketing messages with no reply ever — client held out of the marketing lane", WaSunsetMinSends)
-			return v, nil
+			// Phase 43: same win-back exemption as the email lane. The
+			// unreachable hold above is NOT exempt — a dead number stays
+			// held, no touch is worth burning Meta quality rating on it.
+			if eligible, _ := svc.reengagementEligible(ctx, tenantID, clientID, channel, excludeSendID); eligible {
+				v.ReengagementTouch = true
+			} else {
+				v.Allowed = false
+				v.Reason = fmt.Sprintf("sunset: %d+ WhatsApp marketing messages with no reply ever — held (re-engagement touch used within the last %dd)", WaSunsetMinSends, ReengagementCooldownDays)
+				return v, nil
+			}
 		}
 	}
 	if v.MarketingConsent {
@@ -354,6 +378,14 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 		o.Status, o.Detail = "held", v.Reason
 		return svc.record(ctx, o)
 	}
+	// Phase 43: a granted win-back touch carries the ledger marker — it IS
+	// the cooldown record (sent + scheduled markers count; failed does not,
+	// so a dead adapter never burns the client's window). Mutually exclusive
+	// with the intro-lane detail below by construction (intro needs < 2
+	// marketing sends, sunset needs >= 8).
+	if v.ReengagementTouch {
+		o.Detail = fmt.Sprintf("%s — sunset-held client, one touch per %dd", reengagementMarker, ReengagementCooldownDays)
+	}
 
 	// Channel recipient + payload shaping.
 	var recipient, unsubURL string
@@ -379,6 +411,14 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 			if v.IntroLane {
 				o.Detail = fmt.Sprintf("b2b introduction touch %d of %d (no marketing consent yet)", v.IntroTouches+1, EmailIntroMaxTouches)
 			}
+		} else if cl.Consent["marketing"] != true {
+			// Phase 43: service email to an opted-out (or never-opted-in)
+			// client carries a one-tap re-subscribe link. Transactional
+			// content stays primary; the marketing lane stays closed until
+			// the client opens the door themselves.
+			reoptURL := svc.s.PublicBase() + "/v1/reopt/" + svc.s.Trips.ReoptTokenFor(tenantID, cl.ID)
+			in.Body = withReoptFooter(in.Body, reoptURL)
+			o.Body = in.Body
 		}
 	default:
 		if cl.Phone == "" {
@@ -661,12 +701,22 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 			channel = model.OutreachChannelWhatsApp
 		}
 		finish := func(status, detail, ref string) {
+			// Phase 43: a granted win-back touch keeps its ledger marker
+			// across the terminal transition — UpdateSendResult overwrites
+			// Detail, and the sent record IS the cooldown.
+			if strings.HasPrefix(o.Detail, reengagementMarker) && !strings.HasPrefix(detail, reengagementMarker) {
+				if detail != "" {
+					detail = o.Detail + "; " + detail
+				} else {
+					detail = o.Detail
+				}
+			}
 			if uerr := svc.s.Store.Outreach().UpdateSendResult(ctx, tenantID, o.ID, status, detail, ref); uerr != nil {
 				svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.sweep_error",
 					map[string]any{"error": uerr.Error()})
 			}
 		}
-		v, err := svc.Verdict(ctx, tenantID, o.ClientID, o.Purpose, channel)
+		v, err := svc.verdict(ctx, tenantID, o.ClientID, o.Purpose, channel, o.ID)
 		if err != nil {
 			continue // transient store error — leave scheduled, retry next sweep
 		}
@@ -680,6 +730,7 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 			continue
 		}
 		var recipient, unsubURL string
+		body := o.Body
 		if channel == model.OutreachChannelEmail {
 			if cl.Email == "" {
 				finish("failed", "at delivery: client email unavailable", "")
@@ -688,6 +739,10 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 			recipient = cl.Email
 			if o.Purpose == model.OutreachMarketing {
 				unsubURL = svc.s.PublicBase() + "/v1/unsub/" + svc.s.Trips.UnsubTokenFor(tenantID, cl.ID)
+			} else if cl.Consent["marketing"] != true {
+				// Phase 43: scheduled service email to an opted-out client
+				// gets the same re-subscribe footer as an immediate send.
+				body = withReoptFooter(body, svc.s.PublicBase()+"/v1/reopt/"+svc.s.Trips.ReoptTokenFor(tenantID, cl.ID))
 			}
 		} else {
 			if cl.Phone == "" {
@@ -697,7 +752,7 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 			recipient = cl.Phone
 		}
 		status, detail, ref := svc.deliver(ctx, tenantID, channel, recipient, SendOutreachInput{
-			ClientID: o.ClientID, Purpose: o.Purpose, Body: o.Body, Subject: o.Subject,
+			ClientID: o.ClientID, Purpose: o.Purpose, Body: body, Subject: o.Subject,
 			Template: o.Template, Params: o.Params, Channel: channel,
 		}, unsubURL)
 		finish(status, detail, ref)

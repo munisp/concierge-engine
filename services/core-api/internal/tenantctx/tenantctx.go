@@ -41,15 +41,16 @@ var keyAuth KeyAuthenticator
 func SetKeyAuthenticator(a KeyAuthenticator) { keyAuth = a }
 
 // tenantScoped reports whether the path requires a resolved tenant.
-// /v1/trips/, /v1/track/ and /v1/unsub/ are token-authenticated (the HMAC
-// link IS the credential — chauffeur, passenger and email recipient never
-// carry a tenant header).
+// /v1/trips/, /v1/track/, /v1/unsub/ and /v1/reopt/ are token-authenticated
+// (the HMAC link IS the credential — chauffeur, passenger and email
+// recipient never carry a tenant header).
 func tenantScoped(path string) bool {
 	return strings.HasPrefix(path, "/v1/") &&
 		!strings.HasPrefix(path, "/v1/platform/") &&
 		!strings.HasPrefix(path, "/v1/trips/") &&
 		!strings.HasPrefix(path, "/v1/track/") &&
 		!strings.HasPrefix(path, "/v1/unsub/") &&
+		!strings.HasPrefix(path, "/v1/reopt/") &&
 		path != "/v1/payments/stripe/webhook"
 }
 

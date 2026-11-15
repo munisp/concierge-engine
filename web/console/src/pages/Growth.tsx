@@ -27,6 +27,9 @@ type Verdict = {
   // Phase 42: the WhatsApp number looks dead — 3+ failed deliveries, none
   // confirmed since. Marketing lane holds.
   wa_unreachable?: boolean;
+  // Phase 43: the verdict allows a win-back touch through the sunset hold —
+  // the client's one touch per 90 days on the held channel.
+  reengagement_touch?: boolean;
 };
 
 // Phase 41: one row on the tenant's email suppression list.
@@ -848,6 +851,7 @@ export default function Growth() {
               ` · email bounce ${(verdict.email_bounce_rate * 100).toFixed(1)}% (${verdict.email_sent_7d} sent 7d)`}
             {verdict.email_suppressed && " · address suppressed"}
             {verdict.wa_unreachable && " · WA number unreachable"}
+            {verdict.reengagement_touch && " · re-engagement touch (1 per 90d)"}
           </p>
         )}
         <div className="row">

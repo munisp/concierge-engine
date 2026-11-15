@@ -127,12 +127,30 @@ func TestWaSunset42(t *testing.T) {
 		}
 	}
 
-	// The 9th is held by the sunset rule.
+	// Phase 43: the 9th is the win-back touch — the sunset holds, but the
+	// exemption grants one touch per 90 days while consent is still on.
 	v, err := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, "whatsapp")
-	if err != nil || v.Allowed || !strings.Contains(v.Reason, "sunset") {
-		t.Fatalf("9th send should sunset: %+v %v", v, err)
+	if err != nil || !v.Allowed || !v.ReengagementTouch {
+		t.Fatalf("9th send should be the re-engagement touch: %+v %v", v, err)
 	}
-	// Email lane untouched (separate budget, separate signal).
+	touch, err := s.Outreach.Send(ctx, tenantID, SendOutreachInput{
+		ClientID: clientID, Purpose: model.OutreachMarketing, Channel: "whatsapp",
+		Body: "offer", IdempotencyKey: "wasun-touch",
+	})
+	if err != nil || touch.Status != "sent" || !strings.HasPrefix(touch.Detail, "re-engagement touch") {
+		t.Fatalf("touch send: %+v %v", touch, err)
+	}
+	if calls != 9 {
+		t.Fatalf("touch went through the adapter: calls=%d", calls)
+	}
+
+	// Within the cooldown the sunset holds for real.
+	now = now.Add(8 * 24 * time.Hour) // clear the weekly cap so sunset decides
+	v, err = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, "whatsapp")
+	if err != nil || v.Allowed || !strings.Contains(v.Reason, "sunset") {
+		t.Fatalf("10th send should sunset-hold: %+v %v", v, err)
+	}
+	// Service lane untouched.
 	if v, _ := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachService, "whatsapp"); !v.Allowed {
 		t.Fatalf("service exempt: %+v", v)
 	}
@@ -148,7 +166,7 @@ func TestWaSunset42(t *testing.T) {
 		t.Fatalf("append: %v", err)
 	}
 	v, _ = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, "whatsapp")
-	if !v.Allowed {
+	if !v.Allowed || v.ReengagementTouch {
 		t.Fatalf("one reply resets the sunset: %+v", v)
 	}
 }

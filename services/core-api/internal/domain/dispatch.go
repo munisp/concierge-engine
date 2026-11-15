@@ -293,6 +293,8 @@ func (svc *DispatchService) UpdateStatus(ctx context.Context, tenantID, assignme
 	svc.broadcast(tenantID, "trip_status", map[string]any{
 		"assignment_id": assignmentID, "booking_id": current.BookingID, "status": status,
 	})
+	// Phase 35 (O12): client journey notification — service lane, advisory.
+	svc.s.journeyNotify(ctx, tenantID, current, status)
 	return nil
 }
 

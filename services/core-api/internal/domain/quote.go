@@ -58,6 +58,18 @@ func formatKM(km float64) string {
 	return strconv.FormatFloat(km, 'f', 1, 64) + " km"
 }
 
+// EstimateKM (Phase 35, A2): the road-distance estimate used by the public
+// route pages — haversine × circuity × the tenant's per-km adjustment,
+// exactly the math the quote engine applies, so the page never advertises
+// a distance the engine would price differently.
+func EstimateKM(lat1, lng1, lat2, lng2 float64, rules model.PricingRules) float64 {
+	km := haversine(lat1, lng1, lat2, lng2) * 1.3
+	if rules.PerKMAdjustmentPct != 0 {
+		km = km * (1 + rules.PerKMAdjustmentPct)
+	}
+	return km
+}
+
 // BuildQuote assembles a full quote for a request from catalog + tenant rules.
 // Returns (quote, instant) — instant=false signals human-quote fallback.
 func BuildQuote(tenant model.Tenant, catalog []model.CatalogService, r *model.ServiceRequest, now time.Time) (lines []model.QuoteLine, total, deposit int64, currency string, instant bool) {

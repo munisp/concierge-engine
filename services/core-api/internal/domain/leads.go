@@ -98,14 +98,15 @@ type CaptureResult struct {
 func (svc *LeadService) Capture(ctx context.Context, tenantID string, in CaptureLeadInput) (*CaptureResult, error) {
 	in.Kind = strings.ToLower(strings.TrimSpace(in.Kind))
 	if !leadKinds[in.Kind] {
-		return nil, httpx.ErrValidation
+		return nil, fmt.Errorf("%w: kind must be person, corporate, partner or event", httpx.ErrValidation)
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	in.Phone = normLeadPhone(in.Phone)
 	in.Email = normLeadEmail(in.Email)
 	in.Company = strings.TrimSpace(in.Company)
 	if in.Name == "" || (in.Phone == "" && in.Email == "") {
-		return nil, httpx.ErrValidation // a lead we cannot contact is not a lead
+		// A lead we cannot contact is not a lead.
+		return nil, fmt.Errorf("%w: name and a phone or email are required", httpx.ErrValidation)
 	}
 	if in.Source == "" {
 		in.Source = "api"
@@ -134,11 +135,12 @@ func (svc *LeadService) Capture(ctx context.Context, tenantID string, in Capture
 	switch in.Kind {
 	case model.LeadKindCorporate, model.LeadKindPartner:
 		if in.Company == "" {
-			return nil, httpx.ErrValidation
+			return nil, fmt.Errorf("%w: %s leads require a company", httpx.ErrValidation, in.Kind)
 		}
 	case model.LeadKindEvent:
 		if in.EventType == "" && in.EventDate == nil && in.Venue == "" {
-			return nil, httpx.ErrValidation // event brief needs at least one anchor
+			// An event brief needs at least one anchor.
+			return nil, fmt.Errorf("%w: event leads require an event type, date or venue", httpx.ErrValidation)
 		}
 	}
 

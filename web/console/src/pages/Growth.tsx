@@ -160,6 +160,7 @@ const KIND_ORDER = ["page_view", "ad_click", "conversation_started", "request_cr
 export default function Growth() {
   const [funnel, setFunnel] = useState<FunnelRow[]>([]);
   const [sends, setSends] = useState<Send[]>([]);
+  const [sendsView, setSendsView] = useState<"feed" | "table">("feed");
   const [err, setErr] = useState("");
 
   // referral code lookup
@@ -687,7 +688,30 @@ export default function Growth() {
 
       <div className="card">
         <h2>Recent outreach sends</h2>
-        {sends.length === 0 ? <p>No outreach sends yet.</p> : (
+        <div style={{ marginBottom: 8, display: "flex", gap: 4 }}>
+          <button className={sendsView === "feed" ? "" : "secondary"} onClick={() => setSendsView("feed")}>Feed</button>
+          <button className={sendsView === "table" ? "" : "secondary"} onClick={() => setSendsView("table")}>Table</button>
+        </div>
+        {sends.length === 0 ? <p>No outreach sends yet.</p> : sendsView === "feed" ? (
+          <div className="outfeed">
+            {sends.map((s) => (
+              <div className={`bubble ${s.status}`} key={s.id}>
+                <div className="bubble-head">
+                  {s.purpose}{s.template ? ` · ${s.template}` : ""} → client {s.client_id.slice(0, 8)}
+                </div>
+                {s.body && <div className="bubble-body">{s.body}</div>}
+                <div className="bubble-foot">
+                  <span className={`chip chip-${s.status}`}>
+                    {s.status}{s.status === "scheduled" && s.scheduled_for
+                      ? ` · ${new Date(s.scheduled_for).toLocaleString()}` : ""}
+                  </span>
+                  {s.detail ? ` ${s.detail}` : ""} · {new Date(s.created_at).toLocaleString()}
+                  {s.external_ref ? ` · ${s.external_ref.slice(0, 14)}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
           <table>
             <thead><tr><th>When</th><th>Client</th><th>Purpose</th><th>Status</th><th>Detail</th><th>Ref</th></tr></thead>
             <tbody>

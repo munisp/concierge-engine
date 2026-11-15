@@ -577,3 +577,18 @@ segment audiences. Console Leads page: pipeline board, filters, capture
 form, convert/transition actions. 13 domain + 7 server + 3 pg tests
 (pg verified against a local Postgres+PostGIS with RLS-active role), all
 suites green.
+
+## Phase 37 — Greenfield bootstrap: bulk lead import + board/feed console
+
+Zero-customer tenants bootstrap the pipeline from a spreadsheet or CRM
+export: `POST /v1/leads/import` batches up to 500 rows through the Capture
+path itself — same dedup/backfill, scoring, ResolveV2 client link,
+grant-only consent mirror and lead_captured attribution (source=import) —
+with advisory per-row reject reasons and replay-safe keyed re-imports.
+Imported leads are immediately segment-visible (`lead_kind`) and
+broadcast-able. Console: Leads gains a kanban Board view (default) beside
+the table plus a CSV/JSON import panel with receipts; Growth's recent
+outreach sends render as a phone-style bubble feed (sent/held/scheduled/
+failed chips) with the dense table one toggle away. Capture validation
+messages are now descriptive (sentinel-preserving). 4 domain + 2 server
+tests, all suites green.

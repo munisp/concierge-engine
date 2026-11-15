@@ -38,13 +38,24 @@ func (svc *OutreachService) marketingCap(ctx context.Context, tenantID string) i
 }
 
 type OutreachService struct {
-	s     *Services
-	waURL string // channel adapter base URL; empty = record-only
+	s        *Services
+	waURL    string // WhatsApp adapter base URL; empty = record-only
+	emailURL string // Phase 39: email adapter base URL; empty = record-only
 }
 
-func NewOutreachService(s *Services, waURL string) *OutreachService {
-	return &OutreachService{s: s, waURL: waURL}
+func NewOutreachService(s *Services, waURL, emailURL string) *OutreachService {
+	return &OutreachService{s: s, waURL: waURL, emailURL: emailURL}
 }
+
+// EmailIntroMaxTouches bounds the Phase 39 b2b-introduction exception: a
+// client reachable only through a bought/partner list (open lead with
+// contact_basis = b2b_legitimate_interest, no marketing consent) may receive
+// at most this many introduction emails. Every one carries one-click
+// unsubscribe; after the cap the lane closes until consent is earned on a
+// reply (Phase 38 repeat-touch grant). GDPR recital 47 territory — the
+// platform enforces the narrow version: business contacts, few touches,
+// easy out, full audit.
+const EmailIntroMaxTouches = 2
 
 type SendOutreachInput struct {
 	ClientID       string   `json:"client_id"`
@@ -53,6 +64,13 @@ type SendOutreachInput struct {
 	Template       string   `json:"template,omitempty"`
 	Params         []string `json:"params,omitempty"`
 	IdempotencyKey string   `json:"idempotency_key"`
+	// Channel (Phase 39): whatsapp (default) | email. Email sends go to the
+	// client's email address, require a subject, and every marketing email
+	// carries a mandated unsubscribe footer + one-click link (server-side —
+	// a template or operator cannot omit it).
+	Channel string `json:"channel,omitempty"`
+	// Subject is required for email sends; ignored on whatsapp.
+	Subject string `json:"subject,omitempty"`
 	// TemplateID (Phase 21): a tenant-managed message template. The body is
 	// rendered server-side ({{client_name}}, {{tenant_name}}) and the
 	// rendered text — not the template reference — is what gets recorded
@@ -75,9 +93,13 @@ type OutreachVerdict struct {
 	MarketingSent7d  int    `json:"marketing_sent_7d"`
 	MarketingCap     int    `json:"marketing_cap"`
 	MarketingConsent bool   `json:"marketing_consent"`
+	// Phase 39: b2b-introduction lane state (email channel only).
+	IntroTouches int  `json:"intro_touches,omitempty"`
+	IntroMax     int  `json:"intro_max,omitempty"`
+	IntroLane    bool `json:"intro_lane,omitempty"`
 }
 
-func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, purpose string) (*OutreachVerdict, error) {
+func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, purpose, channel string) (*OutreachVerdict, error) {
 	cl, err := svc.s.Store.Clients().Get(ctx, tenantID, clientID)
 	if err != nil {
 		return nil, err
@@ -100,19 +122,68 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 	if err != nil {
 		return nil, err
 	}
+	// Phase 39: the frequency cap is per channel — a WhatsApp send and an
+	// email are different intrusions and deplete separate budgets.
 	for _, o := range sends {
-		if o.Purpose == model.OutreachMarketing && o.Status == "sent" {
+		if o.Purpose == model.OutreachMarketing && o.Status == "sent" && o.Channel == channel {
 			v.MarketingSent7d++
 		}
 	}
-	if !v.MarketingConsent {
-		v.Allowed = false
-		v.Reason = "marketing consent not granted"
-	} else if v.MarketingSent7d >= maxSends {
+	if v.MarketingSent7d >= maxSends {
 		v.Allowed = false
 		v.Reason = fmt.Sprintf("frequency cap: %d marketing sends per 7 days", maxSends)
+		return v, nil
 	}
+	if v.MarketingConsent {
+		return v, nil
+	}
+	// Phase 39 b2b-introduction exception (email only): an open lead sourced
+	// from a b2b list (Phase 38 contact_basis) earns the client up to
+	// EmailIntroMaxTouches introduction emails before the lane closes.
+	if channel == model.OutreachChannelEmail {
+		if ok, touches := svc.introLane(ctx, tenantID, clientID, sends); ok {
+			v.Allowed, v.IntroLane = true, true
+			v.IntroTouches, v.IntroMax = touches, EmailIntroMaxTouches
+			return v, nil
+		}
+	}
+	v.Allowed = false
+	v.Reason = "marketing consent not granted"
 	return v, nil
+}
+
+// introLane reports whether the b2b-introduction exception applies and how
+// many introduction touches the client has already received (all-time, from
+// the sends ledger — no separate counter that could drift).
+func (svc *OutreachService) introLane(ctx context.Context, tenantID, clientID string, recent []model.OutreachSend) (bool, int) {
+	leads, err := svc.s.Store.Leads().List(ctx, tenantID, 2000)
+	if err != nil {
+		return false, 0
+	}
+	eligible := false
+	for i := range leads {
+		l := &leads[i]
+		if l.ClientID == clientID && l.Open() && l.ContactBasis == model.ContactBasisB2B {
+			eligible = true
+			break
+		}
+	}
+	if !eligible {
+		return false, 0
+	}
+	touches := 0
+	if all, err := svc.s.Store.Outreach().SendsForClient(ctx, tenantID, clientID, time.Time{}); err == nil {
+		for _, o := range all {
+			if o.Channel == model.OutreachChannelEmail && o.Purpose == model.OutreachMarketing && o.Status == "sent" {
+				touches++
+			}
+		}
+	} else {
+		// Fall back to the recent window — never grant the lane on a store
+		// error we cannot count through.
+		touches = len(recent)
+	}
+	return touches < EmailIntroMaxTouches, touches
 }
 
 // Send delivers one proactive message to a client. Idempotent: a replayed
@@ -126,6 +197,18 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 	}
 	if in.Purpose != model.OutreachService && in.Purpose != model.OutreachMarketing {
 		return nil, httpx.ErrValidation
+	}
+	// Phase 39: channel normalization. Empty keeps the Phase 14 default
+	// (whatsapp) so every existing caller and replayed key is unchanged.
+	if in.Channel == "" {
+		in.Channel = model.OutreachChannelWhatsApp
+	}
+	if in.Channel != model.OutreachChannelWhatsApp && in.Channel != model.OutreachChannelEmail {
+		return nil, fmt.Errorf("%w: unknown outreach channel %q", httpx.ErrValidation, in.Channel)
+	}
+	in.Subject = strings.TrimSpace(in.Subject)
+	if in.Channel == model.OutreachChannelEmail && in.Subject == "" {
+		return nil, fmt.Errorf("%w: subject required for email sends", httpx.ErrValidation)
 	}
 	if in.TemplateID != "" {
 		rendered, err := svc.renderTemplate(ctx, tenantID, in)
@@ -153,7 +236,7 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 
 	o := &model.OutreachSend{
 		ID: NewID(), TenantID: tenantID, ClientID: in.ClientID,
-		Channel: "whatsapp", Purpose: in.Purpose, Body: in.Body,
+		Channel: in.Channel, Purpose: in.Purpose, Body: in.Body, Subject: in.Subject,
 		Template: in.Template, Params: in.Params,
 		IdempotencyKey: in.IdempotencyKey, CreatedAt: svc.s.Now(),
 	}
@@ -161,14 +244,45 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 	// Gates: consent + frequency cap + erasure. A gated send is recorded as
 	// "held" — the decision is auditable, and a replayed key returns the
 	// same verdict.
-	if v, err := svc.Verdict(ctx, tenantID, in.ClientID, in.Purpose); err != nil {
+	v, err := svc.Verdict(ctx, tenantID, in.ClientID, in.Purpose, in.Channel)
+	if err != nil {
 		return nil, err
-	} else if !v.Allowed {
+	}
+	if !v.Allowed {
 		o.Status, o.Detail = "held", v.Reason
 		return svc.record(ctx, o)
 	}
-	if cl.Phone == "" {
-		return nil, fmt.Errorf("%w: client has no phone on file", httpx.ErrValidation)
+
+	// Channel recipient + payload shaping.
+	var recipient, unsubURL string
+	switch in.Channel {
+	case model.OutreachChannelEmail:
+		if cl.Email == "" {
+			return nil, fmt.Errorf("%w: client has no email on file", httpx.ErrValidation)
+		}
+		recipient = cl.Email
+		if in.Purpose == model.OutreachMarketing {
+			// Mandated server-side: every marketing email carries the
+			// sender identity and a one-click unsubscribe link. The
+			// RECORDED body includes it — provenance shows exactly what
+			// was sent, and no template or operator can omit it.
+			unsubURL = svc.s.PublicBase() + "/v1/unsub/" + svc.s.Trips.UnsubTokenFor(tenantID, cl.ID)
+			t, terr := svc.s.Store.Tenants().Get(ctx, tenantID)
+			tenantName := ""
+			if terr == nil {
+				tenantName = t.Name
+			}
+			in.Body = withUnsubFooter(in.Body, tenantName, unsubURL)
+			o.Body = in.Body
+			if v.IntroLane {
+				o.Detail = fmt.Sprintf("b2b introduction touch %d of %d (no marketing consent yet)", v.IntroTouches+1, EmailIntroMaxTouches)
+			}
+		}
+	default:
+		if cl.Phone == "" {
+			return nil, fmt.Errorf("%w: client has no phone on file", httpx.ErrValidation)
+		}
+		recipient = cl.Phone
 	}
 
 	// Phase 35: deferral. An explicit future schedule wins; otherwise
@@ -181,23 +295,32 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 	}
 	if when != nil && when.After(svc.s.Now()) {
 		o.Status, o.ScheduledFor = "scheduled", when
-		o.Detail = "scheduled for " + when.UTC().Format(time.RFC3339)
+		if o.Detail == "" {
+			o.Detail = "scheduled for " + when.UTC().Format(time.RFC3339)
+		}
 		return svc.record(ctx, o)
 	}
 
 	// Deliver through the channel adapter (freeform inside the 24h session,
 	// approved template outside it; the adapter decides and may hold).
-	status, detail, ref := svc.deliver(ctx, tenantID, cl.Phone, in)
-	o.Status, o.Detail, o.ExternalRef = status, detail, ref
+	status, detail, ref := svc.deliver(ctx, tenantID, in.Channel, recipient, in, unsubURL)
+	o.Status, o.ExternalRef = status, ref
+	if detail != "" {
+		if o.Detail != "" {
+			o.Detail += "; " + detail
+		} else {
+			o.Detail = detail
+		}
+	}
 	rec, err := svc.record(ctx, o)
 	if err != nil {
 		return nil, err
 	}
 	svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.sent",
 		map[string]any{"client_id": o.ClientID, "purpose": o.Purpose,
-			"status": o.Status, "external_ref": o.ExternalRef})
+			"channel": o.Channel, "status": o.Status, "external_ref": o.ExternalRef})
 	svc.s.Events.Track(ctx, &model.AttributionEvent{
-		TenantID: tenantID, Kind: "outreach_sent", Channel: "whatsapp",
+		TenantID: tenantID, Kind: "outreach_sent", Channel: o.Channel,
 		Campaign: o.Purpose, ClientID: o.ClientID,
 	})
 	return rec, nil
@@ -224,10 +347,18 @@ func (svc *OutreachService) record(ctx context.Context, o *model.OutreachSend) (
 	return nil, err
 }
 
-// deliver calls the adapter /v1/send. Advisory by construction: any adapter
+// deliver calls the channel adapter. Advisory by construction: any adapter
 // failure yields status "failed" with the cause in detail — never an error,
 // so the send record always lands.
-func (svc *OutreachService) deliver(ctx context.Context, tenantID, phone string, in SendOutreachInput) (status, detail, externalRef string) {
+func (svc *OutreachService) deliver(ctx context.Context, tenantID, channel, recipient string, in SendOutreachInput, unsubURL string) (status, detail, externalRef string) {
+	if channel == model.OutreachChannelEmail {
+		return svc.deliverEmail(ctx, tenantID, recipient, in, unsubURL)
+	}
+	return svc.deliverWhatsApp(ctx, tenantID, recipient, in)
+}
+
+// deliverWhatsApp calls the WA adapter /v1/send.
+func (svc *OutreachService) deliverWhatsApp(ctx context.Context, tenantID, phone string, in SendOutreachInput) (status, detail, externalRef string) {
 	if svc.waURL == "" {
 		return "failed", "channel adapter not configured (CE_WHATSAPP_ADAPTER_URL)", ""
 	}
@@ -235,8 +366,30 @@ func (svc *OutreachService) deliver(ctx context.Context, tenantID, phone string,
 		"tenant_id": tenantID, "contact": phone,
 		"body": in.Body, "template": in.Template, "params": in.Params,
 	})
+	return postToAdapter(ctx, svc.waURL, payload)
+}
+
+// deliverEmail calls the email adapter /v1/send (Phase 39). The body
+// already carries the mandated unsubscribe footer for marketing sends;
+// unsubscribe_url goes separately so the adapter can set the
+// List-Unsubscribe header (one-click, RFC 8058 signal).
+func (svc *OutreachService) deliverEmail(ctx context.Context, tenantID, email string, in SendOutreachInput, unsubURL string) (status, detail, externalRef string) {
+	if svc.emailURL == "" {
+		return "failed", "email adapter not configured (CE_EMAIL_ADAPTER_URL)", ""
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"tenant_id": tenantID, "to": email,
+		"subject": in.Subject, "body": in.Body,
+		"unsubscribe_url": unsubURL, "client_id": in.ClientID,
+	})
+	return postToAdapter(ctx, svc.emailURL, payload)
+}
+
+// postToAdapter posts one outbound payload to a channel adapter and maps
+// the response to (status, detail, externalRef).
+func postToAdapter(ctx context.Context, baseURL string, payload []byte) (status, detail, externalRef string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimSuffix(svc.waURL, "/")+"/v1/send", strings.NewReader(string(payload)))
+		strings.TrimSuffix(baseURL, "/")+"/v1/send", strings.NewReader(string(payload)))
 	if err != nil {
 		return "failed", "adapter request build: " + err.Error(), ""
 	}
@@ -258,6 +411,8 @@ func (svc *OutreachService) deliver(ctx context.Context, tenantID, phone string,
 				ID string `json:"id"`
 			} `json:"messages"`
 		} `json:"body"`
+		// Email adapters return the RFC message id at top level.
+		MessageID string `json:"message_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ar); err != nil {
 		return "failed", "adapter response unreadable: " + err.Error(), ""
@@ -268,7 +423,19 @@ func (svc *OutreachService) deliver(ctx context.Context, tenantID, phone string,
 	if len(ar.Body.Messages) > 0 {
 		externalRef = ar.Body.Messages[0].ID
 	}
+	if ar.MessageID != "" {
+		externalRef = ar.MessageID
+	}
 	return "sent", ar.Mode, externalRef
+}
+
+// withUnsubFooter appends the mandated marketing footer. Plain text — the
+// adapter wraps it into the MIME structure.
+func withUnsubFooter(body, tenantName, unsubURL string) string {
+	if tenantName == "" {
+		tenantName = "Your concierge"
+	}
+	return strings.TrimRight(body, "\n") + "\n\n—\n" + tenantName + "\nUnsubscribe from these messages: " + unsubURL + "\n"
 }
 
 // Sends lists recent outreach sends (console growth board).
@@ -387,13 +554,17 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 			continue
 		}
 		attempted++
+		channel := o.Channel
+		if channel == "" {
+			channel = model.OutreachChannelWhatsApp
+		}
 		finish := func(status, detail, ref string) {
 			if uerr := svc.s.Store.Outreach().UpdateSendResult(ctx, tenantID, o.ID, status, detail, ref); uerr != nil {
 				svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.sweep_error",
 					map[string]any{"error": uerr.Error()})
 			}
 		}
-		v, err := svc.Verdict(ctx, tenantID, o.ClientID, o.Purpose)
+		v, err := svc.Verdict(ctx, tenantID, o.ClientID, o.Purpose, channel)
 		if err != nil {
 			continue // transient store error — leave scheduled, retry next sweep
 		}
@@ -402,13 +573,31 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 			continue
 		}
 		cl, err := svc.s.Store.Clients().Get(ctx, tenantID, o.ClientID)
-		if err != nil || cl.Phone == "" {
-			finish("failed", "at delivery: client phone unavailable", "")
+		if err != nil {
+			finish("failed", "at delivery: client unavailable", "")
 			continue
 		}
-		status, detail, ref := svc.deliver(ctx, tenantID, cl.Phone, SendOutreachInput{
-			Body: o.Body, Template: o.Template, Params: o.Params,
-		})
+		var recipient, unsubURL string
+		if channel == model.OutreachChannelEmail {
+			if cl.Email == "" {
+				finish("failed", "at delivery: client email unavailable", "")
+				continue
+			}
+			recipient = cl.Email
+			if o.Purpose == model.OutreachMarketing {
+				unsubURL = svc.s.PublicBase() + "/v1/unsub/" + svc.s.Trips.UnsubTokenFor(tenantID, cl.ID)
+			}
+		} else {
+			if cl.Phone == "" {
+				finish("failed", "at delivery: client phone unavailable", "")
+				continue
+			}
+			recipient = cl.Phone
+		}
+		status, detail, ref := svc.deliver(ctx, tenantID, channel, recipient, SendOutreachInput{
+			ClientID: o.ClientID, Purpose: o.Purpose, Body: o.Body, Subject: o.Subject,
+			Template: o.Template, Params: o.Params, Channel: channel,
+		}, unsubURL)
 		finish(status, detail, ref)
 		svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.scheduled_delivered",
 			map[string]any{"client_id": o.ClientID, "status": status})

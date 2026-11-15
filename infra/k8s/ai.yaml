@@ -73,3 +73,43 @@ metadata:
 spec:
   selector: { app: whatsapp-adapter }
   ports: [{ port: 8110, targetPort: 8110 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: email-adapter
+  namespace: concierge-engine
+  labels: { app: email-adapter }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: email-adapter }
+  template:
+    metadata:
+      labels: { app: email-adapter }
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "email-adapter"
+    spec:
+      containers:
+        - name: email-adapter
+          image: ghcr.io/munisp/concierge-engine/email-adapter:latest
+          args: ["uvicorn", "email_adapter.main:app", "--host", "0.0.0.0", "--port", "8120"]
+          ports: [{ containerPort: 8120 }]
+          env:
+            - name: CE_CORE_API_URL
+              value: "http://core-api:8000"
+            - name: CE_AGENT_URL
+              value: "http://concierge-agent:8100"
+            # CE_SMTP_* / CE_EMAIL_PUBLIC_BASE / CE_EMAIL_TRACKING_SECRET /
+            # CE_EMAIL_TENANT_MAP come from the per-environment Secret —
+            # without CE_SMTP_HOST the adapter runs sandbox (record-only).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: email-adapter
+  namespace: concierge-engine
+spec:
+  selector: { app: email-adapter }
+  ports: [{ port: 8120, targetPort: 8120 }]

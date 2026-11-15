@@ -61,6 +61,7 @@ func main() {
 		AmadeusSecret: cfg.AmadeusSecret,
 		AgentURL:      cfg.AgentURL,
 		WhatsAppURL:   cfg.WhatsAppURL,
+		EmailURL:      cfg.EmailURL,
 		OperatorPhone: cfg.OperatorPhone,
 		GeocodeURL:    cfg.GeocodeURL,
 		GeocodeKey:    cfg.GeocodeKey,

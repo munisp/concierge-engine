@@ -29,6 +29,8 @@ spec:
               value: "http://policy-engine:8200"
             - name: CE_LEDGER_ADAPTER_URL
               value: "http://ledger-adapter:8210"
+            - name: CE_EMAIL_ADAPTER_URL
+              value: "http://email-adapter:8120"
           readinessProbe:
             httpGet: { path: /healthz, port: 8000 }
           resources:

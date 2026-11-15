@@ -121,9 +121,9 @@ func TestPromoValidation(t *testing.T) {
 	tenantID := seedTenant(t, s)
 
 	for _, in := range []CreatePromoInput{
-		{Code: "X", CreditMinor: 500, Currency: "EUR"},          // too short
-		{Code: "VALID", CreditMinor: 0, Currency: "EUR"},        // zero credit
-		{Code: "VALID", CreditMinor: 500, Currency: "XX"},       // bad currency
+		{Code: "X", CreditMinor: 500, Currency: "EUR"},    // too short
+		{Code: "VALID", CreditMinor: 0, Currency: "EUR"},  // zero credit
+		{Code: "VALID", CreditMinor: 500, Currency: "XX"}, // bad currency
 	} {
 		if _, err := s.CreatePromo(ctx, tenantID, in); err != httpx.ErrValidation {
 			t.Fatalf("want validation for %+v, got %v", in, err)
@@ -164,7 +164,7 @@ func TestMarketingCapOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	v, err := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing)
+	v, err := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, model.OutreachChannelWhatsApp)
 	if err != nil || !v.Allowed || v.MarketingCap != 1 {
 		t.Fatalf("verdict with override: %+v %v", v, err)
 	}
@@ -175,7 +175,7 @@ func TestMarketingCapOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Second marketing send is held at the tenant's cap of 1.
-	v, err = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing)
+	v, err = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, model.OutreachChannelWhatsApp)
 	if err != nil || v.Allowed {
 		t.Fatalf("cap override not enforced: %+v %v", v, err)
 	}

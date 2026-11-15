@@ -14,9 +14,10 @@ type OutreachSend struct {
 	ID             string   `json:"id"`
 	TenantID       string   `json:"tenant_id"`
 	ClientID       string   `json:"client_id"`
-	Channel        string   `json:"channel"` // whatsapp (v1)
+	Channel        string   `json:"channel"` // whatsapp | email (Phase 39)
 	Purpose        string   `json:"purpose"` // service | marketing
 	Body           string   `json:"body,omitempty"`
+	Subject        string   `json:"subject,omitempty"`  // Phase 39: email lane
 	Template       string   `json:"template,omitempty"` // approved WA template; outside-24h sends
 	Params         []string `json:"params,omitempty"`
 	ExternalRef    string   `json:"external_ref,omitempty"` // channel message id (wamid)
@@ -34,6 +35,13 @@ type OutreachSend struct {
 const (
 	OutreachService   = "service"   // booking updates, safety — always allowed
 	OutreachMarketing = "marketing" // offers, win-back — consent + cap gated
+)
+
+// Outreach channels (Phase 39). Empty input channel normalizes to whatsapp
+// (the Phase 14 default) so existing callers keep their behavior.
+const (
+	OutreachChannelWhatsApp = "whatsapp"
+	OutreachChannelEmail    = "email"
 )
 
 // MessageTemplate (Phase 21) is a tenant-managed outreach message body.

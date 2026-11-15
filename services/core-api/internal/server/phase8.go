@@ -46,8 +46,12 @@ func (h *handlers) outreachSends(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) outreachVerdict(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	channel := q.Get("channel")
+	if channel == "" {
+		channel = model.OutreachChannelWhatsApp
+	}
 	v, err := h.svc.Outreach.Verdict(r.Context(), tenantOf(r),
-		q.Get("client_id"), q.Get("purpose"))
+		q.Get("client_id"), q.Get("purpose"), channel)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

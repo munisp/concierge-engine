@@ -31,12 +31,12 @@ func (s pgOutreach) AddSend(ctx context.Context, o *model.OutreachSend) error {
 	var id string
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO outreach_sends
-		 (id, tenant_id, client_id, channel, purpose, body, template, params,
+		 (id, tenant_id, client_id, channel, purpose, body, subject, template, params,
 		  external_ref, status, detail, idempotency_key, created_at, scheduled_for)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		 ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
 		 RETURNING id`,
-		o.ID, o.TenantID, o.ClientID, o.Channel, o.Purpose, o.Body, o.Template,
+		o.ID, o.TenantID, o.ClientID, o.Channel, o.Purpose, o.Body, o.Subject, o.Template,
 		params, o.ExternalRef, o.Status, o.Detail, o.IdempotencyKey, o.CreatedAt,
 		o.ScheduledFor).Scan(&id)
 	if err == sql.ErrNoRows {
@@ -48,7 +48,7 @@ func (s pgOutreach) AddSend(ctx context.Context, o *model.OutreachSend) error {
 	return tx.Commit()
 }
 
-const outreachCols = `id, tenant_id, client_id, channel, purpose, body, template,
+const outreachCols = `id, tenant_id, client_id, channel, purpose, body, subject, template,
 	coalesce(to_jsonb(params), '[]'::jsonb), external_ref, status, detail,
 	idempotency_key, created_at, scheduled_for`
 
@@ -57,7 +57,7 @@ func (s pgOutreach) scan(rows *sql.Rows) (*model.OutreachSend, error) {
 	var params []byte
 	var scheduledFor sql.NullTime
 	if err := rows.Scan(&o.ID, &o.TenantID, &o.ClientID, &o.Channel, &o.Purpose,
-		&o.Body, &o.Template, &params, &o.ExternalRef, &o.Status, &o.Detail,
+		&o.Body, &o.Subject, &o.Template, &params, &o.ExternalRef, &o.Status, &o.Detail,
 		&o.IdempotencyKey, &o.CreatedAt, &scheduledFor); err != nil {
 		return nil, err
 	}

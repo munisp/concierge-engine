@@ -68,7 +68,7 @@ func TestConsentWritePathGatesOutreach(t *testing.T) {
 	if _, err := s.Clients.SetConsent(ctx, tenantID, clientID, "marketing", true); err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing)
+	v, err := s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, model.OutreachChannelWhatsApp)
 	if err != nil || !v.Allowed || !v.MarketingConsent {
 		t.Fatalf("post-consent verdict: %+v %v", v, err)
 	}
@@ -76,7 +76,7 @@ func TestConsentWritePathGatesOutreach(t *testing.T) {
 	if _, err := s.Clients.SetConsent(ctx, tenantID, clientID, "marketing", false); err != nil {
 		t.Fatal(err)
 	}
-	v, _ = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing)
+	v, _ = s.Outreach.Verdict(ctx, tenantID, clientID, model.OutreachMarketing, model.OutreachChannelWhatsApp)
 	if v.Allowed {
 		t.Fatal("revoked consent must re-gate outreach")
 	}

@@ -21,6 +21,7 @@ type testEnv struct {
 	t        *testing.T
 	server   *httptest.Server
 	tenantID string
+	svc      *domain.Services // Phase 39: token minting in unsub tests
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -36,7 +37,7 @@ func newEnvDeps(t *testing.T, deps domain.Deps) *testEnv {
 	svc := domain.NewServices(store.NewMemory(), deps)
 	srv := httptest.NewServer(server.New(svc))
 	t.Cleanup(srv.Close)
-	env := &testEnv{t: t, server: srv}
+	env := &testEnv{t: t, server: srv, svc: svc}
 
 	// platform admin: onboard a tenant (Taylor archetype: flagship)
 	var tenant model.Tenant

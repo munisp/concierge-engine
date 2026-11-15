@@ -112,7 +112,7 @@ func TestEraseAnonymizesAndGates(t *testing.T) {
 		t.Fatalf("SavePreference on erased: %v", err)
 	}
 	// Outreach: held (auditable refusal), never delivered, any purpose.
-	v, err := s.Outreach.Verdict(ctx, tenantID, id, model.OutreachService)
+	v, err := s.Outreach.Verdict(ctx, tenantID, id, model.OutreachService, model.OutreachChannelWhatsApp)
 	if err != nil || v.Allowed {
 		t.Fatalf("verdict on erased: %+v %v", v, err)
 	}

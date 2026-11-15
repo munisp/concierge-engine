@@ -90,8 +90,10 @@ type FeeInvoice = {
 type Send = {
   id: string;
   client_id: string;
+  channel?: string;
   purpose: string;
   body?: string;
+  subject?: string;
   template?: string;
   status: string;
   detail?: string;
@@ -208,6 +210,8 @@ export default function Growth() {
   const [bDormantDays, setBDormantDays] = useState("");
   const [bConsentOnly, setBConsentOnly] = useState(true);
   const [bBasis, setBBasis] = useState(""); // Phase 38: contact-basis segment rule
+  const [bChannel, setBChannel] = useState("whatsapp"); // Phase 39: email lane
+  const [bSubject, setBSubject] = useState("");
   const [segCount, setSegCount] = useState<number | null>(null);
   const [bResult, setBResult] = useState<BroadcastResult | null>(null);
   const [fName, setFName] = useState("");
@@ -250,6 +254,8 @@ export default function Growth() {
         campaign: bCampaign, purpose: "marketing",
         body: bBody || undefined, template_id: bTemplateId || undefined,
         ab_test: bAB || undefined, segment: segmentRules(),
+        channel: bChannel,
+        subject: bChannel === "email" ? bSubject || undefined : undefined,
       });
       setBResult(r);
       load();
@@ -484,6 +490,10 @@ export default function Growth() {
         </p>
         <div className="row">
           <input placeholder="campaign name (e.g. spring-launch)" value={bCampaign} onChange={(e) => setBCampaign(e.target.value)} />
+          <select value={bChannel} onChange={(e) => setBChannel(e.target.value)} title="Channel (Phase 39)">
+            <option value="whatsapp">WhatsApp</option>
+            <option value="email">email</option>
+          </select>
           <select value={bTemplateId} onChange={(e) => setBTemplateId(e.target.value)}>
             <option value="">freeform body…</option>
             {templates.map((t) => (
@@ -492,10 +502,22 @@ export default function Growth() {
           </select>
           <label><input type="checkbox" checked={bAB} onChange={(e) => setBAB(e.target.checked)} disabled={!bTemplateId} /> A/B (needs a #b template)</label>
         </div>
+        {bChannel === "email" && (
+          <div className="row">
+            <input style={{ flex: 1 }} placeholder="email subject (required)" value={bSubject} onChange={(e) => setBSubject(e.target.value)} />
+          </div>
+        )}
         {!bTemplateId && (
           <div className="row">
             <input style={{ flex: 1 }} placeholder="message body" value={bBody} onChange={(e) => setBBody(e.target.value)} />
           </div>
+        )}
+        {bChannel === "email" && (
+          <p className="muted">
+            Email sends go to the client's email address with a mandated unsubscribe footer and
+            List-Unsubscribe header. Consented clients follow the normal cap; b2b-sourced leads
+            (Phase 38) may receive at most two introduction emails before the lane closes.
+          </p>
         )}
         <div className="row">
           <select value={bTier} onChange={(e) => setBTier(e.target.value)}>
@@ -514,7 +536,7 @@ export default function Growth() {
           </select>
           <label><input type="checkbox" checked={bConsentOnly} onChange={(e) => setBConsentOnly(e.target.checked)} /> consented only</label>
           <button onClick={previewSegment}>Preview audience</button>
-          <button onClick={broadcast} disabled={!bCampaign || (!bBody && !bTemplateId)}>Send broadcast</button>
+          <button onClick={broadcast} disabled={!bCampaign || (!bBody && !bTemplateId) || (bChannel === "email" && !bSubject)}>Send broadcast</button>
         </div>
         {segCount !== null && <p className="ok">Audience: <strong>{segCount}</strong> clients match.</p>}
         {bResult && (
@@ -706,8 +728,9 @@ export default function Growth() {
             {sends.map((s) => (
               <div className={`bubble ${s.status}`} key={s.id}>
                 <div className="bubble-head">
-                  {s.purpose}{s.template ? ` · ${s.template}` : ""} → client {s.client_id.slice(0, 8)}
+                  {s.channel === "email" ? "✉ " : ""}{s.purpose}{s.template ? ` · ${s.template}` : ""} → client {s.client_id.slice(0, 8)}
                 </div>
+                {s.channel === "email" && s.subject && <div className="bubble-foot"><strong>{s.subject}</strong></div>}
                 {s.body && <div className="bubble-body">{s.body}</div>}
                 <div className="bubble-foot">
                   <span className={`chip chip-${s.status}`}>
@@ -722,12 +745,13 @@ export default function Growth() {
           </div>
         ) : (
           <table>
-            <thead><tr><th>When</th><th>Client</th><th>Purpose</th><th>Status</th><th>Detail</th><th>Ref</th></tr></thead>
+            <thead><tr><th>When</th><th>Client</th><th>Channel</th><th>Purpose</th><th>Status</th><th>Detail</th><th>Ref</th></tr></thead>
             <tbody>
               {sends.map((s) => (
                 <tr key={s.id}>
                   <td>{new Date(s.created_at).toLocaleString()}</td>
                   <td>{s.client_id.slice(0, 8)}</td>
+                  <td>{s.channel || "whatsapp"}</td>
                   <td>{s.purpose}</td>
                   <td>{s.status}{s.status === "scheduled" && s.scheduled_for
                     ? ` (${new Date(s.scheduled_for).toLocaleString()})` : ""}</td>

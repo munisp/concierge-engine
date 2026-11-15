@@ -32,6 +32,7 @@ type Deps struct {
 	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
 	AgentURL      string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
 	WhatsAppURL   string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
+	EmailURL      string // CE_EMAIL_ADAPTER_URL: Phase 39 email channel adapter; empty = record-only
 	OperatorPhone string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
 	GeocodeURL    string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
 	GeocodeKey    string // CE_GEOCODE_API_KEY when the provider needs one
@@ -127,7 +128,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Cases = &CaseService{s: s, assist: NewCaseAssistClient(deps.AgentURL), waURL: deps.WhatsAppURL}
 	s.Geo = NewGeoService(s, deps.GeocodeURL, deps.GeocodeKey)
 	s.Receipts = NewReceiptsService(s, deps.WhatsAppURL, deps.OperatorPhone)
-	s.Outreach = NewOutreachService(s, deps.WhatsAppURL)
+	s.Outreach = NewOutreachService(s, deps.WhatsAppURL, deps.EmailURL)
 	s.FollowUps = &FollowUpService{s: s}
 	s.Sequences = &SequenceService{s: s}
 	s.Leads = &LeadService{s: s}

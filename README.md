@@ -610,3 +610,23 @@ composer selector); the Leads board/table show basis and list source. The
 loop stays: acquire early → prioritize by score → nurture automatically →
 convert to durable accounts → attribute everything → fund the next event
 from evidence. 4 domain + 3 server + 1 pg tests, all suites green.
+
+## Phase 39 — Email outreach channel
+
+Bought data is email-first: the platform can now lawfully *use* the lists
+Phase 38 made lawful to hold. Outreach gains a second channel —
+`channel: email` on sends and broadcasts (subject required, recipient is
+the client's email, `subject` persisted through the scheduled-send sweep,
+migration 0027). Frequency caps are per channel; the b2b-introduction lane
+permits at most two marketing emails to a client reachable only via an
+open b2b-sourced lead, then closes until consent is earned on a reply.
+Every marketing email's recorded body carries a mandated unsubscribe footer
+with a one-click `unsub/` HMAC link (public, idempotent, flips the shared
+consent spine; tampered or cross-family tokens refused). The new
+`ai/email-adapter` service builds the compliance MIME (List-Unsubscribe +
+one-click headers), delivers via SMTP or degrades honestly to a sandbox
+outbox, serves open/click tracking on HMAC-tokened public endpoints,
+forwards ESP events (a complaint flips marketing consent off), and bridges
+inbound email into the same resolve → conversation → intake → agent loop
+as WhatsApp. 6 domain + 2 server + 1 pg + 13 adapter tests, all suites
+green.

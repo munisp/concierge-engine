@@ -27,6 +27,7 @@ type Config struct {
 	AmadeusSecret    string // CE_AMADEUS_CLIENT_SECRET
 	AgentURL         string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
 	WhatsAppURL      string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
+	EmailURL         string // CE_EMAIL_ADAPTER_URL: Phase 39 email channel adapter; empty = record-only
 	OperatorPhone    string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
 	GeocodeURL       string // CE_GEOCODE_URL: Nominatim-compatible geocoder; empty = built-in gazetteer
 	GeocodeKey       string // CE_GEOCODE_API_KEY
@@ -66,6 +67,7 @@ func Load() Config {
 		AmadeusSecret:              getenv("CE_AMADEUS_CLIENT_SECRET", ""),
 		AgentURL:                   getenv("CE_AGENT_URL", "http://localhost:8100"),
 		WhatsAppURL:                getenv("CE_WHATSAPP_ADAPTER_URL", ""),
+		EmailURL:                   getenv("CE_EMAIL_ADAPTER_URL", ""),
 		OperatorPhone:              getenv("CE_OPERATOR_PHONE", ""),
 		GeocodeURL:                 getenv("CE_GEOCODE_URL", ""),
 		GeocodeKey:                 getenv("CE_GEOCODE_API_KEY", ""),

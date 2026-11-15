@@ -27,6 +27,14 @@ type BroadcastInput struct {
 	Body       string             `json:"body,omitempty"`
 	TemplateID string             `json:"template_id,omitempty"`
 	Segment    model.SegmentRules `json:"segment"`
+	// Channel (Phase 39): whatsapp (default) | email. Email broadcasts
+	// require a subject; the per-client sends land on the email lane with
+	// its own consent/cap gates (and the b2b-introduction exception for
+	// Phase 38 list-sourced leads). The idempotency key gains a channel
+	// suffix for email so the same campaign can run on both channels
+	// without one replay-swallowing the other.
+	Channel string `json:"channel,omitempty"`
+	Subject string `json:"subject,omitempty"`
 	// ABTest: when the named template has a "name#b" variant in the
 	// template store, the audience splits deterministically by client id
 	// (FNV hash & 1) — A receives "name", B receives "name#b". The variant
@@ -96,12 +104,16 @@ func (svc *CampaignService) Broadcast(ctx context.Context, tenantID string, in B
 			}
 		}
 		key := fmt.Sprintf("bcast:%s:%s", in.Campaign, c.ID)
+		if in.Channel != "" && in.Channel != model.OutreachChannelWhatsApp {
+			key += ":" + in.Channel
+		}
 		if variant != "" {
 			key += "#" + variant
 		}
 		o, err := svc.s.Outreach.Send(ctx, tenantID, SendOutreachInput{
 			ClientID: c.ID, Purpose: in.Purpose, Body: in.Body,
 			TemplateID: tplID, IdempotencyKey: key,
+			Channel: in.Channel, Subject: in.Subject,
 		})
 		if err != nil {
 			res.Failed++

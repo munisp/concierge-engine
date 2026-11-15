@@ -322,6 +322,19 @@ type CampaignSpendStore interface {
 	List(ctx context.Context, tenantID, campaign string, limit int) ([]model.CampaignSpend, error)
 }
 
+// EmailSuppressionStore (Phase 41): permanently suppressed addresses.
+// Add is idempotent per (tenant, email) — re-suppressing surfaces
+// ErrConflict and the domain returns the existing row. Emails are
+// normalized (lowercase, trimmed) by the domain before they reach here.
+type EmailSuppressionStore interface {
+	Add(ctx context.Context, s *model.EmailSuppression) error
+	Exists(ctx context.Context, tenantID, email string) (bool, error)
+	List(ctx context.Context, tenantID string, limit int) ([]model.EmailSuppression, error)
+	// Delete removes one suppression (operator recovery when an address
+	// comes back to life). Missing row = ErrNotFound.
+	Delete(ctx context.Context, tenantID, email string) error
+}
+
 // ------------------------------------------------------------- Phase 3 stores
 
 type ApiKeyStore interface {
@@ -414,5 +427,6 @@ type Store interface {
 	Media() MediaStore
 	Leads() LeadStore
 	CampaignSpend() CampaignSpendStore
+	EmailSuppressions() EmailSuppressionStore
 	Close()
 }

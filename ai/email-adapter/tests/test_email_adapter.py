@@ -234,7 +234,8 @@ def test_bounce_receipt_forwarded(monkeypatch):
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
     client = TestClient(app)
     r = client.post("/webhooks/email/events", json={
-        "type": "bounced", "message_ref": "<m2@x>", "tenant_id": "t1"})
+        "type": "bounced", "message_ref": "<m2@x>", "tenant_id": "t1",
+        "recipient": "dead@acme.example"})
     assert r.json()["status"] == "recorded"
     assert ("POST", "/v1/channels/receipts",
             {"channel": "email", "external_ref": "<m2@x>",
@@ -244,6 +245,11 @@ def test_bounce_receipt_forwarded(monkeypatch):
     assert ("POST", "/v1/attribution",
             {"kind": "email_bounced", "channel": "email",
              "campaign": "<m2@x>"}) in FakeAsyncClient.calls
+    # Phase 41: a hard bounce suppresses the address permanently.
+    assert r.json()["suppression"] == "hard_bounce"
+    assert ("POST", "/v1/email/suppressions",
+            {"email": "dead@acme.example", "reason": "hard_bounce",
+             "source_ref": "<m2@x>"}) in FakeAsyncClient.calls
 
 
 # ---------------------------------------------------------------- inbound

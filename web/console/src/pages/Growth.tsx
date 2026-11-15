@@ -22,6 +22,17 @@ type Verdict = {
   // Phase 40: tenant email deliverability health (email marketing verdicts).
   email_sent_7d?: number;
   email_bounce_rate?: number;
+  // Phase 41: the address is on the suppression list — all email lanes hold.
+  email_suppressed?: boolean;
+};
+
+// Phase 41: one row on the tenant's email suppression list.
+type Suppression = {
+  id: string;
+  email: string;
+  reason: string;
+  source_ref?: string;
+  created_at: string;
 };
 
 type RewardRow = {
@@ -236,6 +247,11 @@ export default function Growth() {
   const [spCurrency, setSpCurrency] = useState("NGN");
   const [spNote, setSpNote] = useState("");
   const [spMsg, setSpMsg] = useState("");
+  // Phase 41: email suppression list.
+  const [suppressions, setSuppressions] = useState<Suppression[]>([]);
+  const [supEmail, setSupEmail] = useState("");
+  const [supReason, setSupReason] = useState("manual");
+  const [supMsg, setSupMsg] = useState("");
 
   const segmentRules = (): SegmentRules => {
     const r: SegmentRules = {};
@@ -259,6 +275,27 @@ export default function Growth() {
     api.get<MarketingLinks>("/v1/marketing/links").then(setLinks).catch(() => setLinks(null));
     api.get<{ campaigns: CampaignFunnel[] }>("/v1/outreach/campaigns")
       .then((r) => setBoard(r.campaigns)).catch(() => setBoard([]));
+    api.get<{ suppressions: Suppression[] }>("/v1/email/suppressions")
+      .then((r) => setSuppressions(r.suppressions)).catch(() => setSuppressions([]));
+  };
+
+  const addSuppression = async () => {
+    setErr(""); setSupMsg("");
+    try {
+      await api.post("/v1/email/suppressions", { email: supEmail, reason: supReason });
+      setSupMsg("Address suppressed — every email lane holds until removed.");
+      setSupEmail("");
+      load();
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const removeSuppression = async (email: string) => {
+    setErr(""); setSupMsg("");
+    try {
+      await api.del(`/v1/email/suppressions/${encodeURIComponent(email)}`);
+      setSupMsg(`${email} removed from the suppression list.`);
+      load();
+    } catch (e) { setErr(String(e)); }
   };
 
   const recordSpend = async () => {
@@ -660,6 +697,43 @@ export default function Growth() {
       </div>
 
       <div className="card">
+        <h2>Email suppressions</h2>
+        <p className="muted">
+          Addresses the ESP reported hard-bounced or complained land here automatically and every
+          email lane — marketing and service — holds for them: re-mailing a dead address is the
+          single biggest bounce driver. Add an address manually to block it; remove one only when
+          it verifiably works again. Clients with {8}+ marketing emails and zero opens sunset out
+          of the marketing lane on their own — no list entry needed.
+        </p>
+        <div className="row">
+          <input placeholder="address@example.com" value={supEmail} onChange={(e) => setSupEmail(e.target.value)} />
+          <select value={supReason} onChange={(e) => setSupReason(e.target.value)}>
+            <option value="manual">manual</option>
+            <option value="hard_bounce">hard bounce</option>
+            <option value="complaint">complaint</option>
+          </select>
+          <button onClick={addSuppression} disabled={!supEmail}>Suppress</button>
+        </div>
+        {supMsg && <p className="ok">{supMsg}</p>}
+        {suppressions.length === 0 ? <p>No suppressed addresses — the list is clean.</p> : (
+          <table>
+            <thead><tr><th>Address</th><th>Reason</th><th>Source</th><th>Since</th><th></th></tr></thead>
+            <tbody>
+              {suppressions.map((s) => (
+                <tr key={s.id}>
+                  <td><strong>{s.email}</strong></td>
+                  <td>{s.reason}</td>
+                  <td>{s.source_ref || "—"}</td>
+                  <td>{new Date(s.created_at).toLocaleDateString()}</td>
+                  <td><button onClick={() => removeSuppression(s.email)}>Remove</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
         <h2>Client referral codes</h2>
         <div className="row">
           <input placeholder="client id" value={clientId} onChange={(e) => setClientId(e.target.value)} />
@@ -769,6 +843,7 @@ export default function Growth() {
               ` · consent ${verdict.marketing_consent ? "yes" : "no"} · ${verdict.marketing_sent_7d}/${verdict.marketing_cap} this week`}
             {verdict.email_bounce_rate !== undefined &&
               ` · email bounce ${(verdict.email_bounce_rate * 100).toFixed(1)}% (${verdict.email_sent_7d} sent 7d)`}
+            {verdict.email_suppressed && " · address suppressed"}
           </p>
         )}
         <div className="row">

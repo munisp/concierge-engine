@@ -102,6 +102,9 @@ type OutreachVerdict struct {
 	// / sent over the trailing 7 days, from the attribution spine.
 	EmailSent7d     int     `json:"email_sent_7d,omitempty"`
 	EmailBounceRate float64 `json:"email_bounce_rate,omitempty"`
+	// Phase 41: the client's address is on the tenant suppression list
+	// (hard bounce / complaint / manual) — every email lane holds.
+	EmailSuppressed bool `json:"email_suppressed,omitempty"`
 }
 
 // Phase 40 deliverability guard: below the minimum volume there is no
@@ -128,6 +131,19 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 		v.Allowed = false
 		v.Reason = "client erased (GDPR/CCPA)"
 		return v, nil
+	}
+	// Phase 41 suppression list (email only): an address the ESP reported
+	// hard-bounced or complained (or an operator blocked manually) is held
+	// on BOTH lanes — a dead address delivers nothing, and re-mailing it is
+	// the single biggest bounce driver. Advisory: a store error fails open;
+	// consent and cap remain the authoritative refusals.
+	if channel == model.OutreachChannelEmail && cl.Email != "" {
+		if suppressed, serr := svc.s.Store.EmailSuppressions().Exists(ctx, tenantID, strings.ToLower(strings.TrimSpace(cl.Email))); serr == nil && suppressed {
+			v.Allowed = false
+			v.EmailSuppressed = true
+			v.Reason = "email address suppressed (hard bounce, complaint or manual block) — remove it from the suppression list to resume"
+			return v, nil
+		}
 	}
 	v.MarketingConsent = cl.Consent["marketing"] == true
 	if purpose != model.OutreachMarketing {
@@ -164,6 +180,17 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 				rate*100, sent, EmailGuardMaxRate*100)
 			return v, nil
 		}
+	}
+	// Phase 41 engagement sunset (marketing email only): a client sent
+	// EmailSunsetMinSends or more marketing emails without ever opening or
+	// clicking one is held out of the marketing lane — chronic non-openers
+	// are tomorrow's complaints, and every send to them dilutes the
+	// engagement signals mailbox providers score the tenant on. One open or
+	// click ever resets it; service email is exempt.
+	if channel == model.OutreachChannelEmail && svc.sunsetApplies(ctx, tenantID, clientID) {
+		v.Allowed = false
+		v.Reason = fmt.Sprintf("sunset: %d+ marketing emails sent with no opens or clicks — client held out of the marketing lane", EmailSunsetMinSends)
+		return v, nil
 	}
 	if v.MarketingConsent {
 		return v, nil

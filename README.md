@@ -650,3 +650,18 @@ rate is honest. The console gains the economics board, a spend entry form,
 funnel economics, a channel selector on single sends, and live bounce-rate
 health in the verdict line. 7 domain + 2 server + 2 pg + 13 adapter tests,
 all suites green.
+
+## Phase 41 — Email list hygiene: bounce suppression + engagement sunsetting
+
+Phase 40's guard pauses a tenant whose reputation is burning; Phase 41
+removes the fuel. The `email_suppressions` list (migration 0029, FORCE RLS)
+permanently holds any address the ESP reports hard-bounced or complained —
+the adapter's bounce webhook suppresses it automatically — and an operator
+can add or remove addresses by hand. Suppression holds BOTH email lanes: a
+dead address delivers nothing, and re-mailing one is the biggest bounce
+driver. Separately, the engagement sunset holds marketing email to any
+client with 8+ all-time marketing sends and zero recorded opens or clicks —
+chronic non-openers are tomorrow's complaints, and one open resets the
+sunset forever. Service email and WhatsApp are exempt. Console: an
+"Email suppressions" card on Growth, and the verdict line flags suppressed
+addresses. See docs/phase41.md.

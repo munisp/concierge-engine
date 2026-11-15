@@ -173,6 +173,18 @@ async def esp_events(ev: ESPEvent, request: Request) -> dict[str, Any]:
                     out["attribution"] = "email_bounced"
                 except Exception:
                     out["attribution"] = "unavailable"
+                # Phase 41: a hard bounce suppresses the address permanently —
+                # re-mailing known-dead addresses is the single biggest
+                # bounce driver. Idempotent on the core side (replay = 200).
+                if ev.recipient:
+                    try:
+                        await c.post("/v1/email/suppressions", json={
+                            "email": ev.recipient,
+                            "reason": "hard_bounce",
+                            "source_ref": ev.message_ref})
+                        out["suppression"] = "hard_bounce"
+                    except Exception:
+                        out["suppression"] = "unavailable"
         elif ev.type == "complained":
             # A spam complaint is an opt-out: find the client by email and
             # flip marketing consent off on the shared consent spine.

@@ -225,6 +225,10 @@ type OutreachStore interface {
 	// send to its terminal outcome (sent/held/failed). Guarded on the
 	// scheduled status so a double-fire is a harmless no-op.
 	UpdateSendResult(ctx context.Context, tenantID, sendID, status, detail, externalRef string) error
+	// SendByExternalRef (Phase 42): resolve a channel message id (wamid)
+	// back to its send — receipt correlation for the WA hygiene rules.
+	// ErrNotFound when the ref belongs to no send (e.g. a case reply).
+	SendByExternalRef(ctx context.Context, tenantID, externalRef string) (*model.OutreachSend, error)
 }
 
 // TemplateStore (Phase 21): tenant-managed outreach message templates.

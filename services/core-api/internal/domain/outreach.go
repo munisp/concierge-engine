@@ -105,6 +105,9 @@ type OutreachVerdict struct {
 	// Phase 41: the client's address is on the tenant suppression list
 	// (hard bounce / complaint / manual) — every email lane holds.
 	EmailSuppressed bool `json:"email_suppressed,omitempty"`
+	// Phase 42: the client's WhatsApp number looks dead — 3+ failed
+	// deliveries with none confirmed since. Marketing lane holds.
+	WaUnreachable bool `json:"wa_unreachable,omitempty"`
 }
 
 // Phase 40 deliverability guard: below the minimum volume there is no
@@ -191,6 +194,24 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 		v.Allowed = false
 		v.Reason = fmt.Sprintf("sunset: %d+ marketing emails sent with no opens or clicks — client held out of the marketing lane", EmailSunsetMinSends)
 		return v, nil
+	}
+	// Phase 42 WhatsApp hygiene: a dead number (3+ failed deliveries, none
+	// confirmed since) holds the marketing lane — Meta's quality rating
+	// punishes re-mailing dead numbers the way mailbox providers punish
+	// bounces. And a client sent WaSunsetMinSends marketing messages with
+	// zero replies ever sunsets out; one reply resets it. Both advisory.
+	if channel == model.OutreachChannelWhatsApp {
+		if svc.waUnreachable(ctx, tenantID, clientID) {
+			v.Allowed = false
+			v.WaUnreachable = true
+			v.Reason = fmt.Sprintf("whatsapp unreachable: %d+ deliveries failed with none confirmed since — verify the client's number", WaUnreachableMinFailures)
+			return v, nil
+		}
+		if svc.waSunsetApplies(ctx, tenantID, clientID) {
+			v.Allowed = false
+			v.Reason = fmt.Sprintf("sunset: %d+ WhatsApp marketing messages with no reply ever — client held out of the marketing lane", WaSunsetMinSends)
+			return v, nil
+		}
 	}
 	if v.MarketingConsent {
 		return v, nil

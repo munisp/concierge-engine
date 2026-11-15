@@ -56,6 +56,18 @@ func (svc *ConversationService) AppendMessage(ctx context.Context, m *model.Mess
 	}
 	svc.s.Events.Emit(ctx, m.TenantID, "conversation", m.ConversationID, "message.appended",
 		map[string]any{"author": m.Author})
+	// Phase 42: a client's own reply is the WhatsApp engagement signal —
+	// the WA sunset holds never-repliers out of the marketing lane, and one
+	// reply resets it. Advisory: any lookup/track failure loses a signal,
+	// never the message.
+	if m.Author == "CLIENT" {
+		if c, err := svc.s.Store.Conversations().GetConversation(ctx, m.TenantID, m.ConversationID); err == nil && c.ClientID != "" {
+			_ = svc.s.Store.Attribution().Track(ctx, &model.AttributionEvent{
+				TenantID: m.TenantID, Kind: "client_replied", Channel: c.Channel,
+				ClientID: c.ClientID, RequestID: m.ID, At: m.SentAt,
+			})
+		}
+	}
 	return m, nil
 }
 

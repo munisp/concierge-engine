@@ -42,6 +42,20 @@ func (s *memOutreach) SendsForClient(_ context.Context, tenantID, clientID strin
 	return out, nil
 }
 
+// SendByExternalRef (Phase 42): resolve a wamid back to its send. Receipts
+// for non-outreach messages (case replies) find nothing — ErrNotFound.
+func (s *memOutreach) SendByExternalRef(_ context.Context, tenantID, externalRef string) (*model.OutreachSend, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	for _, o := range s.m.outreachSends {
+		if o.TenantID == tenantID && o.ExternalRef != "" && o.ExternalRef == externalRef {
+			cp := *o
+			return &cp, nil
+		}
+	}
+	return nil, httpx.ErrNotFound
+}
+
 func (s *memOutreach) ListSends(_ context.Context, tenantID string, limit int) ([]model.OutreachSend, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()

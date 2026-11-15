@@ -55,8 +55,40 @@ func (svc *ReceiptsService) Record(ctx context.Context, tenantID, channel, exter
 	}
 	svc.s.Events.Emit(ctx, tenantID, "channel", externalRef, "channel.receipt",
 		map[string]any{"channel": rc.Channel, "status": status, "at": rc.At.Format(time.RFC3339)})
+	svc.trackOutreachOutcome(ctx, tenantID, rc)
 	svc.alertLinkedCase(ctx, tenantID, rc)
 	return rc, nil
+}
+
+// trackOutreachOutcome (Phase 42): a WhatsApp receipt whose external_ref
+// resolves to an outreach send feeds the attribution spine per client —
+// wa_failed / wa_delivered / wa_read. The verdict's unreachable-number hold
+// and the WA engagement sunset read these. Advisory by construction: a ref
+// that belongs to no send (a case reply, an operator alert) or any store
+// error simply records no event — the receipt itself is already safe.
+func (svc *ReceiptsService) trackOutreachOutcome(ctx context.Context, tenantID string, rc *model.MessageReceipt) {
+	if rc.Channel != "whatsapp" {
+		return // email outcomes arrive via esp_events with their own kinds
+	}
+	var kind string
+	switch rc.Status {
+	case "failed":
+		kind = "wa_failed"
+	case "delivered":
+		kind = "wa_delivered"
+	case "read":
+		kind = "wa_read"
+	default: // "sent" proves nothing about reachability
+		return
+	}
+	o, err := svc.s.Store.Outreach().SendByExternalRef(ctx, tenantID, rc.ExternalRef)
+	if err != nil || o.ClientID == "" {
+		return
+	}
+	_ = svc.s.Store.Attribution().Track(ctx, &model.AttributionEvent{
+		TenantID: tenantID, Kind: kind, Channel: model.OutreachChannelWhatsApp,
+		Campaign: o.Purpose, ClientID: o.ClientID, At: rc.At,
+	})
 }
 
 // alertLinkedCase (Phase 12): a receipt for a SendReply-linked channel

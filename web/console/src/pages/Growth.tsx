@@ -24,6 +24,9 @@ type Verdict = {
   email_bounce_rate?: number;
   // Phase 41: the address is on the suppression list — all email lanes hold.
   email_suppressed?: boolean;
+  // Phase 42: the WhatsApp number looks dead — 3+ failed deliveries, none
+  // confirmed since. Marketing lane holds.
+  wa_unreachable?: boolean;
 };
 
 // Phase 41: one row on the tenant's email suppression list.
@@ -844,6 +847,7 @@ export default function Growth() {
             {verdict.email_bounce_rate !== undefined &&
               ` · email bounce ${(verdict.email_bounce_rate * 100).toFixed(1)}% (${verdict.email_sent_7d} sent 7d)`}
             {verdict.email_suppressed && " · address suppressed"}
+            {verdict.wa_unreachable && " · WA number unreachable"}
           </p>
         )}
         <div className="row">

@@ -665,3 +665,16 @@ chronic non-openers are tomorrow's complaints, and one open resets the
 sunset forever. Service email and WhatsApp are exempt. Console: an
 "Email suppressions" card on Growth, and the verdict line flags suppressed
 addresses. See docs/phase41.md.
+
+## Phase 42 — WhatsApp list hygiene: unreachable hold + reply-reset sunset
+
+Phase 41 hardened email; Phase 42 brings the primary lane to parity.
+WhatsApp receipts whose wamid resolves to an outreach send now feed the
+attribution spine (`wa_failed` / `wa_delivered` / `wa_read`), and inbound
+client messages track `client_replied` — WA's only true engagement signal.
+The marketing verdict holds a client whose number has 3+ failed deliveries
+with none confirmed since (Meta's quality rating punishes re-mailing dead
+numbers), and sunsets clients with 8+ marketing WA sends and zero replies
+ever — one reply resets it forever. Service lane exempt, email untouched,
+both rules advisory. Console verdict line flags unreachable numbers. See
+docs/phase42.md.

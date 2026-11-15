@@ -525,3 +525,16 @@ reference resolves through `liveMediaURL`, so a dangling id falls back to
 the gradient/monogram and never reaches the HTML. Console: "no card
 image" badge on the Catalog page; Studio media delete simplified to
 del + reload. 4 server + 1 pg tests.
+
+**Phase 34 — delivered (see `docs/phase34.md`).** Taylor Travel Management
+reference demo (`scripts/seed-taylor.sh`): flagship tenant shaped after
+the real taylortravelmanagement.com business — 9 service lines split
+honestly between instant-quotable (airport transfer, hourly chauffeur,
+meet & greet, intercity — base + per-km/per-hour priced in seconds) and
+on-request (event transport, helicopter, private jet, yacht, close
+protection — manual quote, no fabricated prices); NL VAT, EUR 30%
+deposit, en+de locales, Schiphol office WhatsApp entry, Amsterdam/Schiphol
++ Dubai service areas, and 10 AI-generated editorial assets wired through
+the media API (hero + 9 card images + gallery), which flips the Phase 33
+`service_imagery` onboarding step to done. Static export published as a
+shareable preview (booking CTAs → WhatsApp, embed → static panel).

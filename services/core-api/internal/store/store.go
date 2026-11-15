@@ -194,6 +194,11 @@ type AttributionStore interface {
 	List(ctx context.Context, tenantID, clientID string, limit int) ([]model.AttributionEvent, error)
 	// Funnel aggregates events by (kind, channel, campaign).
 	Funnel(ctx context.Context, tenantID string) ([]FunnelRow, error)
+	// CountSince (Phase 40) counts events of one kind — optionally narrowed
+	// to one channel ("" = all channels) — recorded at or after since. The
+	// email deliverability guard reads its 7-day bounce/complaint window
+	// from this.
+	CountSince(ctx context.Context, tenantID, kind, channel string, since time.Time) (int, error)
 }
 
 // FunnelRow is one acquisition funnel cell: how many events of a kind came
@@ -306,6 +311,17 @@ type LeadStore interface {
 	List(ctx context.Context, tenantID string, limit int) ([]model.Lead, error)
 }
 
+// CampaignSpendStore (Phase 40): the campaign spend ledger. Add is
+// idempotent on (tenant, idempotency_key) when the key is set — replay
+// surfaces ErrConflict and the domain reloads the original row, so a
+// retried POST never double-books cost. Unkeyed adds always insert.
+// List filters by campaign ("" = all campaigns of the tenant), newest
+// spend first.
+type CampaignSpendStore interface {
+	Add(ctx context.Context, s *model.CampaignSpend) error
+	List(ctx context.Context, tenantID, campaign string, limit int) ([]model.CampaignSpend, error)
+}
+
 // ------------------------------------------------------------- Phase 3 stores
 
 type ApiKeyStore interface {
@@ -397,5 +413,6 @@ type Store interface {
 	Reviews() ReviewStore
 	Media() MediaStore
 	Leads() LeadStore
+	CampaignSpend() CampaignSpendStore
 	Close()
 }

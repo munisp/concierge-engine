@@ -630,3 +630,23 @@ forwards ESP events (a complaint flips marketing consent off), and bridges
 inbound email into the same resolve → conversation → intake → agent loop
 as WhatsApp. 6 domain + 2 server + 1 pg + 13 adapter tests, all suites
 green.
+
+## Phase 40 — Campaign economics + email deliverability guardrail
+
+The loop's last clause — "fund the next event from evidence" — now has a
+cost side. The `campaign_spend` ledger (migration 0028) records what a
+campaign cost (idempotent per tenant+key, FORCE RLS), and the campaign
+funnel joins it to the attribution spine: spend, attributed value,
+cost-per-conversion and ROAS per campaign, with mixed-currency spend
+flagged and its ratios withheld rather than blended into a lie. The
+economics board (`GET /v1/outreach/campaigns`) unions every campaign the
+tenant ran or paid for. On the email lane, ESP bounces and complaints now
+land on the attribution spine (`email_bounced`/`email_complained`), and a
+tenant-level deliverability guard holds marketing email when the 7-day
+bounce+complaint rate exceeds 5% at ≥20 sends — service email exempt,
+WhatsApp untouched, self-healing as the bad window ages out; sweep-
+delivered scheduled sends count toward the guard's denominator so the
+rate is honest. The console gains the economics board, a spend entry form,
+funnel economics, a channel selector on single sends, and live bounce-rate
+health in the verdict line. 7 domain + 2 server + 2 pg + 13 adapter tests,
+all suites green.

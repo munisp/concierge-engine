@@ -19,6 +19,9 @@ type Verdict = {
   marketing_sent_7d: number;
   marketing_cap: number;
   marketing_consent: boolean;
+  // Phase 40: tenant email deliverability health (email marketing verdicts).
+  email_sent_7d?: number;
+  email_bounce_rate?: number;
 };
 
 type RewardRow = {
@@ -150,6 +153,13 @@ type CampaignFunnel = {
   failed: number;
   converted: number;
   variants?: Record<string, number>;
+  // Phase 40 economics: spend ledger × attribution spine.
+  spend_minor: number;
+  attributed_value_minor: number;
+  cost_per_conversion_minor?: number;
+  roas?: number;
+  currency?: string;
+  mixed_currency?: boolean;
 };
 
 type MarketingLinks = {
@@ -174,6 +184,8 @@ export default function Growth() {
   // outreach composer
   const [oClient, setOClient] = useState("");
   const [oPurpose, setOPurpose] = useState("service");
+  const [oChannel, setOChannel] = useState("whatsapp"); // Phase 40: email lane on single sends
+  const [oSubject, setOSubject] = useState("");
   const [oBody, setOBody] = useState("");
   const [oTemplate, setOTemplate] = useState("");
   const [verdict, setVerdict] = useState<Verdict | null>(null);
@@ -216,6 +228,14 @@ export default function Growth() {
   const [bResult, setBResult] = useState<BroadcastResult | null>(null);
   const [fName, setFName] = useState("");
   const [funnel35, setFunnel35] = useState<CampaignFunnel | null>(null);
+  // Phase 40: spend entry + economics board.
+  const [board, setBoard] = useState<CampaignFunnel[]>([]);
+  const [spCampaign, setSpCampaign] = useState("");
+  const [spChannel, setSpChannel] = useState("");
+  const [spAmount, setSpAmount] = useState("");
+  const [spCurrency, setSpCurrency] = useState("NGN");
+  const [spNote, setSpNote] = useState("");
+  const [spMsg, setSpMsg] = useState("");
 
   const segmentRules = (): SegmentRules => {
     const r: SegmentRules = {};
@@ -237,6 +257,24 @@ export default function Growth() {
     api.get<{ leaderboard: LeaderRow[] }>("/v1/growth/referral-leaderboard?limit=10")
       .then((r) => setLeaders(r.leaderboard)).catch(() => setLeaders([]));
     api.get<MarketingLinks>("/v1/marketing/links").then(setLinks).catch(() => setLinks(null));
+    api.get<{ campaigns: CampaignFunnel[] }>("/v1/outreach/campaigns")
+      .then((r) => setBoard(r.campaigns)).catch(() => setBoard([]));
+  };
+
+  const recordSpend = async () => {
+    setErr(""); setSpMsg("");
+    try {
+      await api.post(`/v1/outreach/campaigns/${encodeURIComponent(spCampaign)}/spend`, {
+        channel: spChannel || undefined,
+        amount_minor: Math.round(parseFloat(spAmount) * 100),
+        currency: spCurrency,
+        note: spNote || undefined,
+        idempotency_key: `ui-${spCampaign}-${Date.now()}`,
+      });
+      setSpMsg("Spend recorded — replay-safe, one cost booked once.");
+      setSpAmount(""); setSpNote("");
+      load();
+    } catch (e) { setErr(String(e)); }
   };
 
   const previewSegment = async () => {
@@ -326,7 +364,7 @@ export default function Growth() {
     setErr(""); setVerdict(null);
     try {
       setVerdict(await api.get<Verdict>(
-        `/v1/outreach/verdict?client_id=${encodeURIComponent(oClient)}&purpose=${encodeURIComponent(oPurpose)}`));
+        `/v1/outreach/verdict?client_id=${encodeURIComponent(oClient)}&purpose=${encodeURIComponent(oPurpose)}&channel=${oChannel}`));
     } catch (e) { setErr(String(e)); }
   };
 
@@ -337,6 +375,8 @@ export default function Growth() {
         client_id: oClient, purpose: oPurpose, body: oBody || undefined,
         template: oTemplate || undefined, template_id: oTemplateId || undefined,
         scheduled_for: oWhen ? new Date(oWhen).toISOString() : undefined,
+        channel: oChannel,
+        subject: oChannel === "email" ? oSubject || undefined : undefined,
         idempotency_key: `console-${Date.now()}`,
       });
       setSentMsg(`${o.status}${o.detail ? ` — ${o.detail}` : ""}${o.external_ref ? ` (ref ${o.external_ref})` : ""}`);
@@ -555,11 +595,67 @@ export default function Growth() {
           <button onClick={loadFunnel} disabled={!fName}>Load funnel</button>
         </div>
         {funnel35 && (
-          <p>
-            <strong>{funnel35.campaign}</strong> — sent {funnel35.sent} · scheduled {funnel35.scheduled} ·
-            held {funnel35.held} · failed {funnel35.failed} · <strong>converted {funnel35.converted}</strong>
-            {funnel35.variants && ` · A ${funnel35.variants.a ?? 0} sent / B ${funnel35.variants.b ?? 0} sent`}
-          </p>
+          <>
+            <p>
+              <strong>{funnel35.campaign}</strong> — sent {funnel35.sent} · scheduled {funnel35.scheduled} ·
+              held {funnel35.held} · failed {funnel35.failed} · <strong>converted {funnel35.converted}</strong>
+              {funnel35.variants && ` · A ${funnel35.variants.a ?? 0} sent / B ${funnel35.variants.b ?? 0} sent`}
+            </p>
+            {funnel35.spend_minor > 0 && (
+              <p>
+                spend <strong>{(funnel35.spend_minor / 100).toFixed(2)} {funnel35.currency}</strong>
+                {funnel35.mixed_currency
+                  ? " · mixed currencies — ratios withheld (sum is not one money)"
+                  : ` · attributed ${(funnel35.attributed_value_minor / 100).toFixed(2)} ${funnel35.currency}` +
+                    (funnel35.cost_per_conversion_minor
+                      ? ` · cost/conversion ${(funnel35.cost_per_conversion_minor / 100).toFixed(2)} ${funnel35.currency}` : "") +
+                    (funnel35.roas ? ` · ROAS ${funnel35.roas.toFixed(2)}×` : "")}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Campaign economics</h2>
+        <p className="muted">
+          What each campaign cost (spend ledger) against what the attribution spine earned under
+          its name. Fund the next event from evidence: budget follows the lowest
+          cost-per-conversion, never the loudest clicks.
+        </p>
+        <div className="row">
+          <input placeholder="campaign" value={spCampaign} onChange={(e) => setSpCampaign(e.target.value)} />
+          <input placeholder="channel (paid_search…)" value={spChannel} onChange={(e) => setSpChannel(e.target.value)} />
+          <input placeholder="amount (2500.00)" value={spAmount} onChange={(e) => setSpAmount(e.target.value)} />
+          <select value={spCurrency} onChange={(e) => setSpCurrency(e.target.value)}>
+            <option value="NGN">NGN</option><option value="EUR">EUR</option>
+            <option value="USD">USD</option><option value="GBP">GBP</option>
+          </select>
+          <input placeholder="note (invoice ref…)" value={spNote} onChange={(e) => setSpNote(e.target.value)} />
+          <button onClick={recordSpend} disabled={!spCampaign || !spAmount}>Record spend</button>
+        </div>
+        {spMsg && <p className="ok">{spMsg}</p>}
+        {board.length === 0 ? <p>No campaigns yet — run a broadcast or record spend.</p> : (
+          <table>
+            <thead><tr>
+              <th>Campaign</th><th>Sent</th><th>Converted</th><th>Spend</th>
+              <th>Attributed</th><th>Cost/conv</th><th>ROAS</th>
+            </tr></thead>
+            <tbody>
+              {board.map((c) => (
+                <tr key={c.campaign}>
+                  <td><strong>{c.campaign}</strong></td>
+                  <td>{c.sent}</td>
+                  <td>{c.converted}</td>
+                  <td>{c.spend_minor ? `${(c.spend_minor / 100).toFixed(2)} ${c.currency || ""}` : "—"}
+                    {c.mixed_currency ? " ⚠ mixed" : ""}</td>
+                  <td>{c.attributed_value_minor ? `${(c.attributed_value_minor / 100).toFixed(2)} ${c.currency || ""}` : "—"}</td>
+                  <td>{c.cost_per_conversion_minor ? `${(c.cost_per_conversion_minor / 100).toFixed(2)} ${c.currency || ""}` : "—"}</td>
+                  <td>{c.roas ? `${c.roas.toFixed(2)}×` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -654,13 +750,25 @@ export default function Growth() {
             <option value="service">service</option>
             <option value="marketing">marketing</option>
           </select>
+          <select value={oChannel} onChange={(e) => setOChannel(e.target.value)}>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="email">email</option>
+          </select>
           <button onClick={checkVerdict}>Check verdict</button>
         </div>
+        {oChannel === "email" && (
+          <div className="row">
+            <input style={{ flex: 1 }} placeholder="subject (required for email)" value={oSubject}
+              onChange={(e) => setOSubject(e.target.value)} />
+          </div>
+        )}
         {verdict && (
           <p className={verdict.allowed ? "ok" : "error"}>
             {verdict.allowed ? "allowed" : `held — ${verdict.reason}`}
             {oPurpose === "marketing" &&
               ` · consent ${verdict.marketing_consent ? "yes" : "no"} · ${verdict.marketing_sent_7d}/${verdict.marketing_cap} this week`}
+            {verdict.email_bounce_rate !== undefined &&
+              ` · email bounce ${(verdict.email_bounce_rate * 100).toFixed(1)}% (${verdict.email_sent_7d} sent 7d)`}
           </p>
         )}
         <div className="row">
@@ -676,7 +784,7 @@ export default function Growth() {
           </select>
           <input placeholder="or approved WA template name" value={oTemplate} onChange={(e) => setOTemplate(e.target.value)} />
           <input type="datetime-local" title="schedule for later (optional)" value={oWhen} onChange={(e) => setOWhen(e.target.value)} />
-          <button onClick={send} disabled={!oClient || (!oBody && !oTemplate && !oTemplateId)}>Send</button>
+          <button onClick={send} disabled={!oClient || (!oBody && !oTemplate && !oTemplateId) || (oChannel === "email" && !oSubject)}>Send</button>
         </div>
         {oTemplateId && (
           <p className="muted">Body renders server-side from the template — {"{{client_name}}"} and {"{{tenant_name}}"} are substituted at send time.</p>

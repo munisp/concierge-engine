@@ -97,7 +97,23 @@ type OutreachVerdict struct {
 	IntroTouches int  `json:"intro_touches,omitempty"`
 	IntroMax     int  `json:"intro_max,omitempty"`
 	IntroLane    bool `json:"intro_lane,omitempty"`
+	// Phase 40: tenant-level email deliverability health (populated on
+	// marketing email verdicts only). Bounce rate = (bounced + complained)
+	// / sent over the trailing 7 days, from the attribution spine.
+	EmailSent7d     int     `json:"email_sent_7d,omitempty"`
+	EmailBounceRate float64 `json:"email_bounce_rate,omitempty"`
 }
+
+// Phase 40 deliverability guard: below the minimum volume there is no
+// signal worth acting on; above the bounce+complaint ceiling the tenant is
+// burning sender reputation and marketing email pauses until the window
+// clears. 5% is the conservative end of ESP guidance (Gmail bulk-sender
+// complaint threshold is 0.3%, but that excludes bounces; a small sender's
+// bounce-heavy list breaches 5% long before complaints register).
+const (
+	EmailGuardMinSends7d = 20
+	EmailGuardMaxRate    = 0.05
+)
 
 func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, purpose, channel string) (*OutreachVerdict, error) {
 	cl, err := svc.s.Store.Clients().Get(ctx, tenantID, clientID)
@@ -134,6 +150,21 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 		v.Reason = fmt.Sprintf("frequency cap: %d marketing sends per 7 days", maxSends)
 		return v, nil
 	}
+	// Phase 40 deliverability guard (email only): when the tenant's trailing
+	// 7-day bounce+complaint rate breaches the ceiling at meaningful volume,
+	// marketing email pauses tenant-wide — held and auditable, self-healing
+	// as the bad window ages out. Service email is exempt (a safety message
+	// still goes), WhatsApp is untouched.
+	if channel == model.OutreachChannelEmail {
+		sent, _, _, rate := svc.emailHealth(ctx, tenantID, since)
+		v.EmailSent7d, v.EmailBounceRate = sent, rate
+		if sent >= EmailGuardMinSends7d && rate > EmailGuardMaxRate {
+			v.Allowed = false
+			v.Reason = fmt.Sprintf("deliverability guard: %.1f%% of %d emails bounced or complained in 7 days (max %.0f%%) — clean the list before sending more",
+				rate*100, sent, EmailGuardMaxRate*100)
+			return v, nil
+		}
+	}
 	if v.MarketingConsent {
 		return v, nil
 	}
@@ -150,6 +181,29 @@ func (svc *OutreachService) Verdict(ctx context.Context, tenantID, clientID, pur
 	v.Allowed = false
 	v.Reason = "marketing consent not granted"
 	return v, nil
+}
+
+// emailHealth reads the tenant's trailing-window email deliverability from
+// the attribution spine: attempted email sends (outreach_sent on the email
+// channel) vs. ESP-reported bounces and complaints. Advisory by
+// construction — a store error returns zeros and the guard stays inert; the
+// consent and frequency gates remain the authoritative refusals.
+func (svc *OutreachService) emailHealth(ctx context.Context, tenantID string, since time.Time) (sent, bounces, complaints int, rate float64) {
+	a := svc.s.Store.Attribution()
+	var err error
+	if sent, err = a.CountSince(ctx, tenantID, "outreach_sent", model.OutreachChannelEmail, since); err != nil {
+		return 0, 0, 0, 0
+	}
+	if bounces, err = a.CountSince(ctx, tenantID, "email_bounced", "", since); err != nil {
+		return 0, 0, 0, 0
+	}
+	if complaints, err = a.CountSince(ctx, tenantID, "email_complained", "", since); err != nil {
+		return 0, 0, 0, 0
+	}
+	if sent > 0 {
+		rate = float64(bounces+complaints) / float64(sent)
+	}
+	return sent, bounces, complaints, rate
 }
 
 // introLane reports whether the b2b-introduction exception applies and how
@@ -601,6 +655,13 @@ func (svc *OutreachService) RunDue(ctx context.Context, tenantID string) (int, e
 		finish(status, detail, ref)
 		svc.s.Events.Emit(ctx, tenantID, "outreach", o.ID, "outreach.scheduled_delivered",
 			map[string]any{"client_id": o.ClientID, "status": status})
+		// Phase 40: sweep-delivered sends join the attribution spine too —
+		// the deliverability guard's denominator counts every attempted
+		// delivery, not just interactive ones (same shape as Send).
+		svc.s.Events.Track(ctx, &model.AttributionEvent{
+			TenantID: tenantID, Kind: "outreach_sent", Channel: channel,
+			Campaign: o.Purpose, ClientID: o.ClientID,
+		})
 	}
 	return attempted, nil
 }

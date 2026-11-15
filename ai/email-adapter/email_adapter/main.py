@@ -163,9 +163,20 @@ async def esp_events(ev: ESPEvent, request: Request) -> dict[str, Any]:
                     "detail": ev.type})
             except Exception:
                 out["receipt"] = "unavailable"
+            if ev.type == "bounced":
+                # Phase 40: feed the deliverability guard — bounces count
+                # against the tenant's 7-day sender-reputation window.
+                try:
+                    await c.post("/v1/attribution", json={
+                        "kind": "email_bounced", "channel": "email",
+                        "campaign": ev.message_ref})
+                    out["attribution"] = "email_bounced"
+                except Exception:
+                    out["attribution"] = "unavailable"
         elif ev.type == "complained":
             # A spam complaint is an opt-out: find the client by email and
             # flip marketing consent off on the shared consent spine.
+            client_id = ""
             try:
                 rr = await c.post("/v1/clients/resolve",
                                   json={"email": ev.recipient})
@@ -176,6 +187,15 @@ async def esp_events(ev: ESPEvent, request: Request) -> dict[str, Any]:
                 out["consent"] = "marketing=false"
             except Exception:
                 out["consent"] = "unavailable"
+            # Phase 40: complaints weigh on the deliverability guard even
+            # when the recipient was never a known client.
+            try:
+                await c.post("/v1/attribution", json={
+                    "kind": "email_complained", "channel": "email",
+                    "client_id": client_id, "campaign": ev.message_ref})
+                out["attribution"] = "email_complained"
+            except Exception:
+                out["attribution"] = "unavailable"
         elif ev.type in ("opened", "clicked"):
             await _track(tenant_id, f"email_{ev.type}", "", ev.message_ref)
         else:

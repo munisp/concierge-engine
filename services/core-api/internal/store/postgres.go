@@ -1320,10 +1320,16 @@ func (s pgAttribution) Track(ctx context.Context, e *model.AttributionEvent) err
 		return err
 	}
 	defer tx.Rollback()
+	// Phase 40: an explicit At is honored (tests, backfill); zero falls back
+	// to the column default now().
+	var at any
+	if !e.At.IsZero() {
+		at = e.At
+	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO attribution_events (tenant_id, kind, channel, campaign, client_id, request_id, value_minor)
-		 VALUES ($1,$2,$3,$4,nullif($5,'')::uuid,nullif($6,'')::uuid,$7)`,
-		e.TenantID, e.Kind, e.Channel, e.Campaign, e.ClientID, e.RequestID, e.ValueMinor); err != nil {
+		`INSERT INTO attribution_events (tenant_id, kind, channel, campaign, client_id, request_id, value_minor, at)
+		 VALUES ($1,$2,$3,$4,nullif($5,'')::uuid,nullif($6,'')::uuid,$7,COALESCE($8, now()))`,
+		e.TenantID, e.Kind, e.Channel, e.Campaign, e.ClientID, e.RequestID, e.ValueMinor, at); err != nil {
 		return err
 	}
 	return tx.Commit()

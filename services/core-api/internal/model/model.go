@@ -632,4 +632,7 @@ type AttributionEvent struct {
 	ClientID   string `json:"client_id,omitempty"`
 	RequestID  string `json:"request_id,omitempty"`
 	ValueMinor int64  `json:"value_minor,omitempty"`
+	// At (Phase 40): when the event happened. Zero = the store stamps it at
+	// write time. The deliverability guard's 7-day windows read this.
+	At time.Time `json:"at,omitempty"`
 }

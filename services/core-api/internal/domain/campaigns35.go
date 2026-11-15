@@ -153,6 +153,15 @@ type CampaignFunnel struct {
 	Failed    int            `json:"failed"`
 	Converted int            `json:"converted"`
 	Variants  map[string]int `json:"variants,omitempty"` // "a"/"b" -> sent count
+	// Phase 40 economics: what the campaign cost vs. what the attribution
+	// spine earned under its name. Ratios are withheld (zero) when spend
+	// mixes currencies — mixed_currency flags that honestly.
+	SpendMinor             int64   `json:"spend_minor"`
+	AttributedValueMinor   int64   `json:"attributed_value_minor"`
+	CostPerConversionMinor int64   `json:"cost_per_conversion_minor,omitempty"`
+	ROAS                   float64 `json:"roas,omitempty"`
+	Currency               string  `json:"currency,omitempty"`
+	MixedCurrency          bool    `json:"mixed_currency,omitempty"`
 }
 
 func (svc *CampaignService) Funnel(ctx context.Context, tenantID, campaign string) (*CampaignFunnel, error) {
@@ -201,5 +210,7 @@ func (svc *CampaignService) Funnel(ctx context.Context, tenantID, campaign strin
 			}
 		}
 	}
+	// Phase 40: spend, attributed value, cost-per-conversion, ROAS.
+	svc.economics(ctx, tenantID, campaign, f)
 	return f, nil
 }

@@ -222,6 +222,11 @@ def test_complaint_suppresses_consent(monkeypatch):
     assert r.json()["consent"] == "marketing=false"
     assert ("PUT", "/v1/clients/c9/consent",
             {"scope": "marketing", "granted": False}) in FakeAsyncClient.calls
+    # Phase 40: complaints also weigh on the deliverability guard.
+    assert r.json()["attribution"] == "email_complained"
+    assert ("POST", "/v1/attribution",
+            {"kind": "email_complained", "channel": "email",
+             "client_id": "c9", "campaign": "<m1@test>"}) in FakeAsyncClient.calls
 
 
 def test_bounce_receipt_forwarded(monkeypatch):
@@ -234,6 +239,11 @@ def test_bounce_receipt_forwarded(monkeypatch):
     assert ("POST", "/v1/channels/receipts",
             {"channel": "email", "external_ref": "<m2@x>",
              "status": "failed", "detail": "bounced"}) in FakeAsyncClient.calls
+    # Phase 40: bounces feed the deliverability guard's 7-day window.
+    assert r.json()["attribution"] == "email_bounced"
+    assert ("POST", "/v1/attribution",
+            {"kind": "email_bounced", "channel": "email",
+             "campaign": "<m2@x>"}) in FakeAsyncClient.calls
 
 
 # ---------------------------------------------------------------- inbound

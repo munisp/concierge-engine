@@ -40,9 +40,11 @@ type memory struct {
 	promos        map[string]*model.PromoCampaign
 	templates     map[string]*model.MessageTemplate
 	reviews       map[string]*model.Review
-	media         map[string]*model.Media // tenantID/id (Phase 31)
-	leads         map[string]*model.Lead  // tenantID/id (Phase 36)
-	leadIdem      map[string]string       // tenant/key → lead id
+	media         map[string]*model.Media         // tenantID/id (Phase 31)
+	leads         map[string]*model.Lead          // tenantID/id (Phase 36)
+	leadIdem      map[string]string               // tenant/key → lead id
+	spend         map[string]*model.CampaignSpend // tenantID/id (Phase 40)
+	spendIdem     map[string]string               // tenant/key → spend id
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
 	partners      map[string]*model.Partner
@@ -94,6 +96,8 @@ func NewMemory() Store {
 		reviews:       map[string]*model.Review{},
 		leads:         map[string]*model.Lead{},
 		leadIdem:      map[string]string{},
+		spend:         map[string]*model.CampaignSpend{},
+		spendIdem:     map[string]string{},
 		media:         map[string]*model.Media{},
 		partners:      map[string]*model.Partner{},
 		corporate:     map[string]*model.CorporateAccount{},
@@ -808,6 +812,10 @@ type memAttribution struct{ m *memory }
 func (s *memAttribution) Track(_ context.Context, e *model.AttributionEvent) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	s.m.attribution = append(s.m.attribution, *e)
+	cp := *e
+	if cp.At.IsZero() {
+		cp.At = time.Now().UTC() // Phase 40: deliverability windows read this
+	}
+	s.m.attribution = append(s.m.attribution, cp)
 	return nil
 }

@@ -32,6 +32,9 @@ type Config struct {
 	GeocodeURL       string // CE_GEOCODE_URL: Nominatim-compatible geocoder; empty = built-in gazetteer
 	GeocodeKey       string // CE_GEOCODE_API_KEY
 	ConsoleBase      string // CE_CONSOLE_BASE: console SPA public origin (SEO CTA links); empty = same-origin
+	// PayoutCallbackSecret (CE_PAYOUT_CALLBACK_SECRET) authenticates Mojaloop
+	// adapter callbacks via X-Callback-Secret (Phase 48); empty = dev mode.
+	PayoutCallbackSecret string
 	// CE_WEBHOOK_ROTATION_WINDOW_HOURS: dual-secret signing window after a
 	// webhook secret rotation; default 24 (domain.WebhookRotationWindow).
 	WebhookRotationWindowHours int
@@ -72,6 +75,7 @@ func Load() Config {
 		GeocodeURL:                 getenv("CE_GEOCODE_URL", ""),
 		GeocodeKey:                 getenv("CE_GEOCODE_API_KEY", ""),
 		ConsoleBase:                getenv("CE_CONSOLE_BASE", ""),
+		PayoutCallbackSecret:       getenv("CE_PAYOUT_CALLBACK_SECRET", ""),
 		WebhookRotationWindowHours: getenvInt("CE_WEBHOOK_ROTATION_WINDOW_HOURS", 24),
 	}
 }

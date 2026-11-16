@@ -18,6 +18,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
@@ -95,6 +96,10 @@ func (svc *PayoutService) Quote(ctx context.Context, tenantID, payoutID string) 
 	p.FXRate = q.FXRate
 	p.ReceiveMinor = q.ReceiveMinor
 	p.FeesMinor = q.FeesMinor
+	// Phase 48: keep the scheme's FX-lock expiry — Execute enforces it.
+	if exp, err := time.Parse(time.RFC3339, q.ExpiresAt); err == nil {
+		p.QuoteExpiresAt = exp
+	}
 	p.UpdatedAt = svc.s.Now()
 	if err := svc.s.Store.Payouts().Update(ctx, p); err != nil {
 		return nil, err
@@ -112,6 +117,11 @@ func (svc *PayoutService) Execute(ctx context.Context, tenantID, payoutID string
 	}
 	if p.State != model.PayoutQuoted {
 		return nil, httpx.ErrConflict
+	}
+	// Phase 48: never ride a stale FX lock — an expired quote must be
+	// re-quoted, not executed.
+	if !p.QuoteExpiresAt.IsZero() && svc.s.Now().After(p.QuoteExpiresAt) {
+		return nil, fmt.Errorf("%w: quote expired — re-quote", httpx.ErrConflict)
 	}
 	// Reserve: payable -> in-flight settlement (Spec section 11.3).
 	if err := svc.s.Payments.post(ctx, tenantID, p.BookingID,
@@ -197,6 +207,7 @@ func (svc *PayoutService) settleFulfilled(ctx context.Context, p *model.Payout) 
 		}
 	}
 	p.State = model.PayoutSettled
+	p.SettledAt = svc.s.Now()
 	p.UpdatedAt = svc.s.Now()
 	if err := svc.s.Store.Payouts().Update(ctx, p); err != nil {
 		return err
@@ -250,4 +261,36 @@ func (svc *PayoutService) Get(ctx context.Context, tenantID, id string) (*model.
 
 func (svc *PayoutService) List(ctx context.Context, tenantID string) ([]model.Payout, error) {
 	return svc.s.Store.Payouts().List(ctx, tenantID)
+}
+
+// PayoutSettlementTimeoutHours is how long an IN_FLIGHT payout may go without
+// a scheme callback before the core recovers it on its own. Adapter
+// notifications are fire-and-forget HTTP — a crash or a dropped callback must
+// never strand partner funds in the in-flight account.
+const PayoutSettlementTimeoutHours = 48
+
+// SweepTimeouts compensates IN_FLIGHT payouts whose last state change is
+// older than the settlement timeout. Runs from the hourly sweep; safe to run
+// concurrently with callbacks because compensation is idempotent per saga
+// state and per ledger key.
+func (svc *PayoutService) SweepTimeouts(ctx context.Context, tenantID string) (int, error) {
+	payouts, err := svc.s.Store.Payouts().List(ctx, tenantID)
+	if err != nil {
+		return 0, err
+	}
+	cutoff := svc.s.Now().Add(-PayoutSettlementTimeoutHours * time.Hour)
+	n := 0
+	for _, p := range payouts {
+		if p.State != model.PayoutInFlight || p.UpdatedAt.After(cutoff) {
+			continue
+		}
+		p := p
+		if _, err := svc.compensate(ctx, &p, "settlement timeout"); err != nil {
+			svc.s.Events.Emit(ctx, tenantID, "payout", p.ID, "payout.sweep_failed",
+				map[string]any{"error": err.Error()})
+			continue
+		}
+		n++
+	}
+	return n, nil
 }

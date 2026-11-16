@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
@@ -296,15 +297,27 @@ func (s pgCorporate) ListInvoices(ctx context.Context, tenantID, accountID strin
 type pgPayouts struct{ p *postgres }
 
 const payoutCols = `id, tenant_id, partner_id, booking_id, amount_minor, currency, rail, state,
-	quote_id, transfer_id, fx_rate, receive_minor, fees_minor, idempotency_key, created_at, updated_at`
+	quote_id, transfer_id, fx_rate, receive_minor, fees_minor, idempotency_key, created_at, updated_at,
+	quote_expires_at, batch_id, settled_at`
 
 func scanPayout(row interface{ Scan(...any) error }) (*model.Payout, error) {
 	var p model.Payout
+	var quoteExpiresAt, settledAt *time.Time
+	var batchID *string
 	err := row.Scan(&p.ID, &p.TenantID, &p.PartnerID, &p.BookingID, &p.AmountMinor, &p.Currency,
 		&p.Rail, &p.State, &p.QuoteID, &p.TransferID, &p.FXRate, &p.ReceiveMinor, &p.FeesMinor,
-		&p.IdempotencyKey, &p.CreatedAt, &p.UpdatedAt)
+		&p.IdempotencyKey, &p.CreatedAt, &p.UpdatedAt, &quoteExpiresAt, &batchID, &settledAt)
 	if err != nil {
 		return nil, notFound(err)
+	}
+	if quoteExpiresAt != nil {
+		p.QuoteExpiresAt = *quoteExpiresAt
+	}
+	if batchID != nil {
+		p.BatchID = *batchID
+	}
+	if settledAt != nil {
+		p.SettledAt = *settledAt
 	}
 	return &p, nil
 }
@@ -325,11 +338,12 @@ func (s pgPayouts) Create(ctx context.Context, p *model.Payout) error {
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO payouts (id, tenant_id, partner_id, booking_id, amount_minor, currency, rail, state,
-			quote_id, transfer_id, fx_rate, receive_minor, fees_minor, idempotency_key, created_at, updated_at)
-		 VALUES ($1,$2,$3,nullif($4,'')::uuid,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+			quote_id, transfer_id, fx_rate, receive_minor, fees_minor, idempotency_key, created_at, updated_at,
+			quote_expires_at, batch_id, settled_at)
+		 VALUES ($1,$2,$3,nullif($4,'')::uuid,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,nullif($18,'')::uuid,$19)`,
 		p.ID, p.TenantID, p.PartnerID, p.BookingID, p.AmountMinor, p.Currency, p.Rail, p.State,
 		p.QuoteID, p.TransferID, p.FXRate, p.ReceiveMinor, p.FeesMinor, p.IdempotencyKey,
-		p.CreatedAt, p.UpdatedAt)
+		p.CreatedAt, p.UpdatedAt, nilIfZero(p.QuoteExpiresAt), p.BatchID, nilIfZero(p.SettledAt))
 	if err != nil {
 		return err
 	}
@@ -371,8 +385,10 @@ func (s pgPayouts) Update(ctx context.Context, p *model.Payout) error {
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
 		`UPDATE payouts SET state=$2, quote_id=$3, transfer_id=$4, fx_rate=$5, receive_minor=$6,
-			fees_minor=$7, updated_at=$8 WHERE id=$1`,
-		p.ID, p.State, p.QuoteID, p.TransferID, p.FXRate, p.ReceiveMinor, p.FeesMinor, p.UpdatedAt)
+			fees_minor=$7, updated_at=$8, quote_expires_at=$9, batch_id=nullif($10,'')::uuid, settled_at=$11
+		 WHERE id=$1`,
+		p.ID, p.State, p.QuoteID, p.TransferID, p.FXRate, p.ReceiveMinor, p.FeesMinor, p.UpdatedAt,
+		nilIfZero(p.QuoteExpiresAt), p.BatchID, nilIfZero(p.SettledAt))
 	if err != nil {
 		return err
 	}

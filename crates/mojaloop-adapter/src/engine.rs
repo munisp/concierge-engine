@@ -66,6 +66,9 @@ pub struct Engine {
     /// source this from the scheme's quote response; the shape is identical.
     fx_bps: i64,
     default_ttl: Duration,
+    /// Shared secret sent as X-Callback-Secret on core notifications
+    /// (Phase 48). Empty = dev mode; core enforces when configured.
+    callback_secret: String,
 }
 
 pub fn deterministic_id(prefix: &str, key: &str) -> String {
@@ -104,6 +107,7 @@ impl Engine {
             http: reqwest::Client::new(),
             fx_bps,
             default_ttl,
+            callback_secret: std::env::var("CE_PAYOUT_CALLBACK_SECRET").unwrap_or_default(),
         }
     }
 
@@ -241,13 +245,15 @@ impl Engine {
             "kind": kind,
             "payout_id": t.payout_id,
         });
-        let res = self
+        let mut req = self
             .http
             .post(&t.callback_url)
             .header("X-Tenant-ID", &t.tenant_id)
-            .json(&body)
-            .send()
-            .await;
+            .json(&body);
+        if !self.callback_secret.is_empty() {
+            req = req.header("X-Callback-Secret", &self.callback_secret);
+        }
+        let res = req.send().await;
         if let Err(e) = res {
             tracing::warn!(transfer_id = %t.transfer_id, error = %e, "core callback failed; saga sweep will retry");
         }
@@ -326,5 +332,46 @@ mod tests {
         );
         // Second sweep: nothing new.
         assert!(e.sweep().is_empty());
+    }
+
+    /// Phase 48: when CE_PAYOUT_CALLBACK_SECRET is set, core notifications
+    /// carry it as X-Callback-Secret so the core can authenticate them.
+    #[tokio::test]
+    async fn notify_core_sends_callback_secret_header() {
+        use axum::{extract::State, routing::post, Router};
+
+        #[derive(Clone)]
+        struct St {
+            tx: tokio::sync::mpsc::Sender<Option<String>>,
+        }
+        async fn capture(State(st): State<St>, headers: axum::http::HeaderMap) -> &'static str {
+            let got = headers
+                .get("x-callback-secret")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            let _ = st.tx.send(got).await;
+            "ok"
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<String>>(1);
+        let app = Router::new().route("/cb", post(capture)).with_state(St { tx });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        std::env::set_var("CE_PAYOUT_CALLBACK_SECRET", "s3cret");
+        let e = Engine::new(Duration::from_secs(900));
+        std::env::remove_var("CE_PAYOUT_CALLBACK_SECRET");
+
+        let q = e.quote("fsiop-safari", 5000, "EUR");
+        let t = e
+            .transfer(&q.quote_id, "payout:p9", "p9", "tenant", &format!("http://{addr}/cb"))
+            .unwrap();
+        e.notify_core(&t, "evt-9", "transfer.fulfilled").await;
+        let got = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.as_deref(), Some("s3cret"));
     }
 }

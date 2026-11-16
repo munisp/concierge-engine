@@ -46,19 +46,30 @@ const (
 // Payout is one partner settlement saga instance. Money truth lives in
 // TigerBeetle; this row tracks the saga state for recovery/compensation.
 type Payout struct {
-	ID             string    `json:"id"`
-	TenantID       string    `json:"tenant_id"`
-	PartnerID      string    `json:"partner_id"`
-	BookingID      string    `json:"booking_id,omitempty"`
-	AmountMinor    int64     `json:"amount_minor"`
-	Currency       string    `json:"currency"`
-	Rail           string    `json:"rail"` // MOJALOOP | MANUAL
-	State          string    `json:"state"`
-	QuoteID        string    `json:"quote_id,omitempty"`
-	TransferID     string    `json:"transfer_id,omitempty"`
-	FXRate         float64   `json:"fx_rate,omitempty"`
-	ReceiveMinor   int64     `json:"receive_minor,omitempty"`
-	FeesMinor      int64     `json:"fees_minor,omitempty"`
+	ID           string  `json:"id"`
+	TenantID     string  `json:"tenant_id"`
+	PartnerID    string  `json:"partner_id"`
+	BookingID    string  `json:"booking_id,omitempty"`
+	AmountMinor  int64   `json:"amount_minor"`
+	Currency     string  `json:"currency"`
+	Rail         string  `json:"rail"` // MOJALOOP | MANUAL
+	State        string  `json:"state"`
+	QuoteID      string  `json:"quote_id,omitempty"`
+	TransferID   string  `json:"transfer_id,omitempty"`
+	FXRate       float64 `json:"fx_rate,omitempty"`
+	ReceiveMinor int64   `json:"receive_minor,omitempty"`
+	FeesMinor    int64   `json:"fees_minor,omitempty"`
+	// Phase 48: quote_expires_at enforces the scheme's FX lock — executing
+	// against an expired quote is a 409, re-quote instead. Zero = the
+	// adapter quoted no expiry (legacy rows, manual rail).
+	QuoteExpiresAt time.Time `json:"quote_expires_at,omitempty"`
+	// BatchID links the payout into a settlement batch (Phase 48): the
+	// partner's pending payouts net into ONE scheme transfer instead of
+	// paying a scheme fee per payout.
+	BatchID string `json:"batch_id,omitempty"`
+	// SettledAt stamps terminal fulfilment for the statement/reconciliation
+	// surface.
+	SettledAt      time.Time `json:"settled_at,omitempty"`
 	IdempotencyKey string    `json:"-"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`

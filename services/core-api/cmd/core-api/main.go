@@ -43,30 +43,31 @@ func main() {
 		domain.WebhookRotationWindow = time.Duration(cfg.WebhookRotationWindowHours) * time.Hour
 	}
 	svc := domain.NewServices(st, domain.Deps{
-		PolicyURL:     cfg.PolicyEngineURL,
-		LedgerURL:     cfg.LedgerAdapterURL,
-		MojaloopURL:   cfg.MojaloopURL,
-		AvinodeURL:    cfg.AvinodeURL,
-		AvinodeKey:    cfg.AvinodeKey,
-		FieldKeyB64:   cfg.FieldKeyB64,
-		TripSecret:    cfg.TripSecret,
-		PublicBase:    cfg.PublicBase,
-		StripeKey:     cfg.StripeKey,
-		StripeBase:    cfg.StripeBase,
-		StripeWHSec:   cfg.StripeWHSec,
-		PaystackKey:   cfg.PaystackKey,
-		PaystackBase:  cfg.PaystackBase,
-		AmadeusBase:   cfg.AmadeusBase,
-		AmadeusID:     cfg.AmadeusID,
-		AmadeusSecret: cfg.AmadeusSecret,
-		AgentURL:      cfg.AgentURL,
-		WhatsAppURL:   cfg.WhatsAppURL,
-		EmailURL:      cfg.EmailURL,
-		OperatorPhone: cfg.OperatorPhone,
-		GeocodeURL:    cfg.GeocodeURL,
-		GeocodeKey:    cfg.GeocodeKey,
-		ConsoleBase:   cfg.ConsoleBase,
-		Now:           time.Now,
+		PolicyURL:            cfg.PolicyEngineURL,
+		LedgerURL:            cfg.LedgerAdapterURL,
+		MojaloopURL:          cfg.MojaloopURL,
+		AvinodeURL:           cfg.AvinodeURL,
+		AvinodeKey:           cfg.AvinodeKey,
+		FieldKeyB64:          cfg.FieldKeyB64,
+		TripSecret:           cfg.TripSecret,
+		PublicBase:           cfg.PublicBase,
+		StripeKey:            cfg.StripeKey,
+		StripeBase:           cfg.StripeBase,
+		StripeWHSec:          cfg.StripeWHSec,
+		PaystackKey:          cfg.PaystackKey,
+		PaystackBase:         cfg.PaystackBase,
+		AmadeusBase:          cfg.AmadeusBase,
+		AmadeusID:            cfg.AmadeusID,
+		AmadeusSecret:        cfg.AmadeusSecret,
+		AgentURL:             cfg.AgentURL,
+		WhatsAppURL:          cfg.WhatsAppURL,
+		EmailURL:             cfg.EmailURL,
+		OperatorPhone:        cfg.OperatorPhone,
+		GeocodeURL:           cfg.GeocodeURL,
+		GeocodeKey:           cfg.GeocodeKey,
+		ConsoleBase:          cfg.ConsoleBase,
+		PayoutCallbackSecret: cfg.PayoutCallbackSecret,
+		Now:                  time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {
 		log.Println("WARNING: CE_FIELD_KEY not set — VIP field-level encryption disabled (dev only)")
@@ -173,6 +174,19 @@ func main() {
 						log.Printf("kyc expiry sweep: tenant %s — %v", t.Slug, err)
 					} else if n > 0 {
 						log.Printf("kyc expiry sweep: tenant %s — %d cases expired", t.Slug, n)
+					}
+					// Phase 48: settlement-timeout recovery — adapter
+					// callbacks are fire-and-forget, so the core recovers
+					// stale IN_FLIGHT payouts and batches on its own.
+					if n, err := svc.Payouts.SweepTimeouts(dispatchCtx, t.ID); err != nil {
+						log.Printf("payout timeout sweep: tenant %s — %v", t.Slug, err)
+					} else if n > 0 {
+						log.Printf("payout timeout sweep: tenant %s — %d compensated", t.Slug, n)
+					}
+					if n, err := svc.Settlements.SweepBatchTimeouts(dispatchCtx, t.ID); err != nil {
+						log.Printf("batch timeout sweep: tenant %s — %v", t.Slug, err)
+					} else if n > 0 {
+						log.Printf("batch timeout sweep: tenant %s — %d compensated", t.Slug, n)
 					}
 				}
 			}

@@ -758,3 +758,18 @@ erasure scrubs those references immediately while the case row survives
 as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
+
+**Phase 48 — Mojaloop settlement / payout depth.** Four production gaps
+closed in the payout lane: adapter callbacks are now authenticated
+(`X-Callback-Secret`, constant-time compare, `CE_PAYOUT_CALLBACK_SECRET`
+on both core and adapter); quote expiry is stored and enforced — a stale
+FX lock is a 409, not a settlement; core-side timeout sweeps (hourly +
+`POST /v1/payouts/sweep`) compensate IN_FLIGHT payouts and batches older
+than 48h so dropped callbacks never strand partner funds; and settlement
+batching nets a partner's same-currency pending payouts into ONE scheme
+transfer — one scheme fee instead of N. Member lines settle pro-rata with
+the SAME ledger idempotency keys as the single flow, and never carry the
+batch transfer id, so callback routing (payout saga first, batch saga on
+miss) is unambiguous. `GET /v1/partners/{id}/settlement-statement` is the
+per-currency reconciliation surface; the console Partners page gains a
+Settlements card. See docs/phase48.md.

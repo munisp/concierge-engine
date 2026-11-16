@@ -3,6 +3,8 @@
 package server
 
 import (
+	"crypto/subtle"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -151,6 +153,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase45(mux)
 	h.registerPhase46(mux)
 	h.registerPhase47(mux)
+	h.registerPhase48(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
@@ -1041,7 +1044,19 @@ func (h *handlers) compensatePayout(w http.ResponseWriter, r *http.Request) {
 
 // payoutCallback: Mojaloop adapter notifications (FSPIOP fulfil/abort/timeout,
 // normalized by the Rust adapter). Idempotent via absorbing saga states.
+//
+// Phase 48: when CE_PAYOUT_CALLBACK_SECRET is configured the adapter must
+// present it as X-Callback-Secret — an unauthenticated callback endpoint is
+// a "settle anything" primitive. Routing: the transfer id decides which saga
+// owns the transfer — single payout first, settlement batch on miss.
 func (h *handlers) payoutCallback(w http.ResponseWriter, r *http.Request) {
+	if secret := h.svc.PayoutCallbackSecret; secret != "" {
+		got := r.Header.Get("X-Callback-Secret")
+		if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
+			httpx.WriteError(w, httpx.ErrForbidden)
+			return
+		}
+	}
 	var body struct {
 		TransferID string `json:"transfer_id"`
 		EventID    string `json:"event_id"`
@@ -1052,11 +1067,21 @@ func (h *handlers) payoutCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Payouts.HandleCallback(r.Context(), tenantOf(r), body.TransferID, body.Kind)
-	if err != nil {
+	if err == nil {
+		httpx.WriteJSON(w, http.StatusOK, p)
+		return
+	}
+	if !errors.Is(err, httpx.ErrNotFound) {
 		httpx.WriteError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, p)
+	// Not a single payout — try the batch saga.
+	b, berr := h.svc.Settlements.HandleBatchCallback(r.Context(), tenantOf(r), body.TransferID, body.Kind)
+	if berr != nil {
+		httpx.WriteError(w, berr)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, b)
 }
 
 // ------------------------------------------------------------- audit (Spec section 13)

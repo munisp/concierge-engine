@@ -49,6 +49,8 @@ type memory struct {
 	consentEvents []*model.ConsentEvent              // append-only evidence ledger (Phase 44)
 	kycCases      map[string]*model.KycCase          // tenantID/id (Phase 47)
 	kycIdem       map[string]string                  // tenant/key → case id
+	batches       map[string]*model.SettlementBatch  // tenantID/id (Phase 48)
+	batchIdem     map[string]string                  // tenant/key → batch id
 	outbox        []model.OutboxEvent
 	attribution   []model.AttributionEvent
 	partners      map[string]*model.Partner
@@ -126,6 +128,8 @@ func NewMemory() Store {
 		outreachSends: map[string]*model.OutreachSend{},
 		kycCases:      map[string]*model.KycCase{},
 		kycIdem:       map[string]string{},
+		batches:       map[string]*model.SettlementBatch{},
+		batchIdem:     map[string]string{},
 	}
 }
 

@@ -317,6 +317,23 @@ type PayoutStore interface {
 	GetByTransfer(ctx context.Context, tenantID, transferID string) (*model.Payout, error)
 	Update(ctx context.Context, p *model.Payout) error
 	List(ctx context.Context, tenantID string) ([]model.Payout, error)
+	// ListPendingForPartner (Phase 48): the partner's PENDING payouts —
+	// the batching candidate pool.
+	ListPendingForPartner(ctx context.Context, tenantID, partnerID string) ([]model.Payout, error)
+	// ListByBatch (Phase 48): the member payouts of one settlement batch.
+	ListByBatch(ctx context.Context, tenantID, batchID string) ([]model.Payout, error)
+}
+
+// SettlementBatchStore (Phase 48): netted partner settlement batches.
+// Create is idempotent on (tenant, idempotency_key) — replay surfaces
+// ErrConflict and the caller reloads via GetByIdem.
+type SettlementBatchStore interface {
+	Create(ctx context.Context, b *model.SettlementBatch) error
+	Get(ctx context.Context, tenantID, id string) (*model.SettlementBatch, error)
+	GetByIdem(ctx context.Context, tenantID, key string) (*model.SettlementBatch, error)
+	GetByTransfer(ctx context.Context, tenantID, transferID string) (*model.SettlementBatch, error)
+	Update(ctx context.Context, b *model.SettlementBatch) error
+	List(ctx context.Context, tenantID string) ([]model.SettlementBatch, error)
 }
 
 // AuditStore is append-only (Master Spec section 13).
@@ -473,6 +490,7 @@ type Store interface {
 	Partners() PartnerStore
 	Corporate() CorporateStore
 	Payouts() PayoutStore
+	Settlements() SettlementBatchStore
 	Audit() AuditStore
 	ApiKeys() ApiKeyStore
 	Webhooks() WebhookStore

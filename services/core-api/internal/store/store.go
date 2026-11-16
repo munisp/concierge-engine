@@ -371,6 +371,32 @@ type ConsentEventStore interface {
 	ListForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.ConsentEvent, error)
 }
 
+// KycCaseStore (Phase 47): identity-verification cases. Create is
+// idempotent on (tenant, idempotency_key) — replay surfaces ErrConflict
+// and the caller reloads via GetByIdem. At most one OPEN case (PENDING or
+// IN_REVIEW) per (tenant, client, level) — a second Open at the same
+// level while one is in flight is ErrConflict, not a duplicate row.
+type KycCaseStore interface {
+	Create(ctx context.Context, c *model.KycCase) error
+	Get(ctx context.Context, tenantID, id string) (*model.KycCase, error)
+	GetByIdem(ctx context.Context, tenantID, key string) (*model.KycCase, error)
+	// OpenFor returns the open (PENDING/IN_REVIEW) case for the client at
+	// the level, or ErrNotFound.
+	OpenFor(ctx context.Context, tenantID, clientID, level string) (*model.KycCase, error)
+	Update(ctx context.Context, c *model.KycCase) error
+	// List: operator queue; status "" = all statuses, newest first.
+	List(ctx context.Context, tenantID, status string, limit int) ([]model.KycCase, error)
+	ListForClient(ctx context.Context, tenantID, clientID string) ([]model.KycCase, error)
+	// ExpireBefore flips PENDING/IN_REVIEW cases created before `before`
+	// to EXPIRED (document freshness). Idempotent; returns rows expired.
+	ExpireBefore(ctx context.Context, tenantID string, before time.Time) (int, error)
+	// ScrubDocumentRefsForClient (Art. 17 companion): blank the document
+	// metadata on every case the client holds. The case row (level,
+	// decision, timestamps) survives as the AML record. Returns rows
+	// scrubbed.
+	ScrubDocumentRefsForClient(ctx context.Context, tenantID, clientID string) (int, error)
+}
+
 // ------------------------------------------------------------- Phase 3 stores
 
 type ApiKeyStore interface {
@@ -465,5 +491,6 @@ type Store interface {
 	CampaignSpend() CampaignSpendStore
 	EmailSuppressions() EmailSuppressionStore
 	ConsentEvents() ConsentEventStore
+	KycCases() KycCaseStore
 	Close()
 }

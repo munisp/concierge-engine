@@ -20,6 +20,7 @@ import Settings from "./pages/Settings";
 import Studio from "./pages/Studio";
 import Onboarding from "./pages/Onboarding";
 import Track from "./pages/Track";
+import Kyc from "./pages/Kyc";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
         <Link to="/catalog">Catalog</Link>
         <Link to="/console">Concierge console</Link>
         <Link to="/cases">Cases</Link>
+        <Link to="/kyc">KYC</Link>
         <Link to="/dispatch">Dispatch board</Link>
         <Link to="/partners">Partners</Link>
         <Link to="/geo">Geo</Link>
@@ -53,6 +55,7 @@ export default function App() {
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/console" element={<Console />} />
           <Route path="/cases" element={<Cases />} />
+          <Route path="/kyc" element={<Kyc />} />
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/partners" element={<Partners />} />
           <Route path="/geo" element={<Geo />} />

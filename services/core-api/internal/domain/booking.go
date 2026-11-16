@@ -4,6 +4,7 @@ package domain
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"concierge-engine/services/core-api/internal/httpx"
@@ -213,6 +214,26 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 	if svc.s.Now().After(q.ExpiresAt) {
 		return nil, httpx.ErrConflict // expired quote
 	}
+	// Phase 47: KYC gate — high-value quotes require the client to hold
+	// the verification level the tenant's KycConfig demands. Fail-CLOSED:
+	// a gate that cannot be evaluated blocks the booking, because a
+	// compliance control that degrades open is not a control. When the
+	// gate fires, an operator work item is auto-opened (advisory) so the
+	// verification queue shows the blocked client immediately.
+	req, rerr := svc.s.Store.Requests().Get(ctx, tenantID, q.RequestID)
+	if rerr == nil && req.ClientID != "" {
+		required, ok, gerr := svc.s.Kyc.GateCheck(ctx, tenantID, req.ClientID, q.TotalMinor)
+		if gerr != nil {
+			return nil, fmt.Errorf("kyc gate: %w", gerr)
+		}
+		if !ok {
+			// Advisory: surface the work item. A pre-existing open case
+			// conflicts harmlessly; any failure leaves the gate error
+			// unchanged.
+			_, _ = svc.s.Kyc.Open(ctx, tenantID, req.ClientID, required, "auto:"+req.ClientID+":"+required)
+			return nil, fmt.Errorf("%w: kyc_required: %s identity verification is required before this booking can confirm", httpx.ErrConflict, required)
+		}
+	}
 	b := &model.Booking{
 		ID: NewID(), TenantID: tenantID, RequestID: q.RequestID, QuoteID: q.ID,
 		State: "CONFIRMED", CreatedAt: svc.s.Now(),
@@ -228,7 +249,8 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 	// Phase 14: referral conversion runs BEFORE the booking is tracked so
 	// first-booking detection doesn't count this booking itself; the booking
 	// event then inherits first-touch channel/campaign.
-	if r, rerr := svc.s.Store.Requests().Get(ctx, tenantID, q.RequestID); rerr == nil {
+	if rerr == nil {
+		r := req
 		svc.s.ReferralConversion(ctx, tenantID, r.ClientID, b, q.TotalMinor, q.Currency)
 		// Phase 35 (A8): fixed first-booking welcome credit — runs after
 		// the booking row exists, so first-booking detection counts it.

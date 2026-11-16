@@ -166,6 +166,14 @@ func main() {
 						log.Printf("retention sweep: tenant %s — %d geo, %d bodies, %d attribution",
 							t.Slug, res.GeoStampsPurged, res.MessageBodiesScrubbed, res.AttributionPurged)
 					}
+					// Phase 47: expire stale undecided KYC cases (document
+					// freshness — a case never finished must not be
+					// decidible forever).
+					if n, err := svc.Kyc.ExpireStale(dispatchCtx, t.ID); err != nil {
+						log.Printf("kyc expiry sweep: tenant %s — %v", t.Slug, err)
+					} else if n > 0 {
+						log.Printf("kyc expiry sweep: tenant %s — %d cases expired", t.Slug, n)
+					}
 				}
 			}
 		}

@@ -742,3 +742,19 @@ idempotent sweep on demand from the console Settings card, every sweep
 writes a `retention.sweep` audit entry, and GDPR erasure (Phase 44) now
 scrubs the client's conversation content immediately — including open
 conversations the age sweep leaves alone. See docs/phase46.md.
+
+**Phase 47 — KYC / identity verification lane.** The long-dormant
+`Client.KYCStatus` field is now real: a verification case workflow
+(PENDING → IN_REVIEW → APPROVED/REJECTED/EXPIRED, one open case per
+client+level, idempotent open, absorbing terminal states) with an operator
+queue (`/kyc` console page + `/v1/kyc/cases` endpoints). Approvals advance
+the client status and never regress it; stale undecided cases expire
+hourly (default 30 days). `Tenant.KycConfig` thresholds gate
+high-value quote confirms — €10k default for STANDARD, €100k for
+ENHANCED — fail-closed, with an automatic operator work item when the
+gate fires. Data minimization is structural: the platform stores document
+metadata only (type + operator-side reference), never the document;
+erasure scrubs those references immediately while the case row survives
+as the AML accountability record. The only provider is operator review
+("manual") — external KYC vendors attach behind the same case shape when
+contracted. See docs/phase47.md.

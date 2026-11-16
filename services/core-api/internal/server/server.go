@@ -150,6 +150,7 @@ func New(svc *domain.Services) http.Handler {
 	h.registerPhase44(mux)
 	h.registerPhase45(mux)
 	h.registerPhase46(mux)
+	h.registerPhase47(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
 	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
@@ -221,6 +222,7 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 		OnboardingConfig  *model.OnboardingConfig  `json:"onboarding_config"`
 		SiteConfig        *model.SiteConfig        `json:"site_config"`
 		RetentionConfig   *model.RetentionConfig   `json:"retention_config"`
+		KycConfig         *model.KycConfig         `json:"kyc_config"`
 	}
 	if err := httpx.Decode(r, &patch); err != nil {
 		httpx.WriteError(w, err)
@@ -283,6 +285,9 @@ func (h *handlers) updateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.RetentionConfig != nil {
 		t.RetentionConfig = *patch.RetentionConfig
+	}
+	if patch.KycConfig != nil {
+		t.KycConfig = *patch.KycConfig
 	}
 	updated, err := h.svc.Tenants.UpdateConfig(r.Context(), t)
 	if err != nil {

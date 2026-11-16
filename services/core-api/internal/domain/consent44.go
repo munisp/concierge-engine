@@ -164,5 +164,10 @@ func (svc *ClientService) EraseWithEvidence(ctx context.Context, tenantID, id st
 	}
 	svc.recordErasureRevocations(ctx, tenantID, id, prevConsent)
 	svc.s.Retention.scrubClientMessages(ctx, tenantID, id)
+	// Phase 47: KYC document references go immediately too. The case rows
+	// (level, decision, timestamps) survive as the AML accountability
+	// record — same exempt class as financials — but the document
+	// pointers are personal data and are scrubbed NOW.
+	svc.s.Kyc.scrubDocumentRefs(ctx, tenantID, id)
 	return c, nil
 }

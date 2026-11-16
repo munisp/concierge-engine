@@ -50,7 +50,11 @@ type Tenant struct {
 	// operational data with personal content is kept before the retention
 	// sweep purges or scrubs it.
 	RetentionConfig RetentionConfig `json:"retention_config"`
-	CreatedAt       time.Time       `json:"created_at"`
+	// KycConfig (Phase 47): identity-verification posture — the booking
+	// totals at or above which a client must hold STANDARD / ENHANCED
+	// verification before their quote can confirm.
+	KycConfig KycConfig `json:"kyc_config"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // DispatchConfig tunes scheduling. TurnaroundMinutes extends every
@@ -110,6 +114,27 @@ type RetentionConfig struct {
 	// stops counting as engagement — the correct reading of storage
 	// limitation.
 	AttributionDays int `json:"attribution_days,omitempty"`
+}
+
+// KycConfig is the tenant's identity-verification posture (Phase 47).
+// Thresholds are booking totals in minor units: at or above the threshold
+// the client must hold the matching verification level before Confirm
+// succeeds. Per threshold: 0 = platform default, negative = never require
+// that level. Disabled skips the gate entirely (a tenant running on
+// operator trust alone opts out explicitly, not by omission).
+type KycConfig struct {
+	Disabled bool `json:"disabled,omitempty"`
+	// StandardAboveMinor: default 1,000,000 minor (€10k — the AML-adjacent
+	// due-diligence line for high-value services).
+	StandardAboveMinor int64 `json:"standard_above_minor,omitempty"`
+	// EnhancedAboveMinor: default 10,000,000 minor (€100k — jets, yachts,
+	// multi-week engagements).
+	EnhancedAboveMinor int64 `json:"enhanced_above_minor,omitempty"`
+	// CaseExpiryDays: an undecided case expires this many days after
+	// creation — identity documents go stale, so a case that was never
+	// finished must not be decidible forever. 0 = default 30; negative =
+	// never expire.
+	CaseExpiryDays int `json:"case_expiry_days,omitempty"`
 }
 
 // AcquisitionConfig is the tenant's acquisition-monetization posture

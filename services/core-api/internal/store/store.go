@@ -96,6 +96,11 @@ type DispatchStore interface {
 	// LatestGeoStamp returns the newest stamp for an assignment (Phase 25
 	// client tracking); ErrNotFound when the trip has no positions yet.
 	LatestGeoStamp(ctx context.Context, tenantID, assignmentID string) (*model.GeoStamp, error)
+	// PurgeGeoStampsBefore (Phase 46 retention): permanently delete the
+	// tenant's stamps recorded before `before`. Location history is the most
+	// sensitive data we hold — it has no retention justification once the
+	// trip is complete. Returns rows removed.
+	PurgeGeoStampsBefore(ctx context.Context, tenantID string, before time.Time) (int, error)
 }
 
 type PaymentStore interface {
@@ -118,6 +123,17 @@ type ConversationStore interface {
 	// a channel — the get-or-create anchor that keeps one thread per client
 	// per channel instead of one conversation per message.
 	FindActive(ctx context.Context, tenantID, clientID, channel string) (*model.Conversation, error)
+	// ScrubMessageBodiesBefore (Phase 46 retention): overwrite message
+	// bodies with `marker` in the tenant's CLOSED conversations whose
+	// message was sent before `before`. The message ROW (id, author,
+	// sent_at) survives — threading and counts are metadata, not content.
+	// Idempotent: an already-scrubbed body is not re-counted. Returns rows
+	// scrubbed.
+	ScrubMessageBodiesBefore(ctx context.Context, tenantID string, before time.Time, marker string) (int, error)
+	// ScrubMessageBodiesForClient (Phase 46): overwrite every message body
+	// in the client's conversations regardless of state — the erasure
+	// (GDPR Art. 17) companion. Returns rows scrubbed.
+	ScrubMessageBodiesForClient(ctx context.Context, tenantID, clientID, marker string) (int, error)
 }
 
 type HandoffStore interface {
@@ -199,6 +215,11 @@ type AttributionStore interface {
 	// email deliverability guard reads its 7-day bounce/complaint window
 	// from this.
 	CountSince(ctx context.Context, tenantID, kind, channel string, since time.Time) (int, error)
+	// PurgeBefore (Phase 46 retention): permanently delete the tenant's
+	// attribution events recorded before `before`. Note the deliberate
+	// interaction with lifecycle hygiene: engagement older than the
+	// attribution window stops counting as engagement.
+	PurgeBefore(ctx context.Context, tenantID string, before time.Time) (int, error)
 }
 
 // FunnelRow is one acquisition funnel cell: how many events of a kind came

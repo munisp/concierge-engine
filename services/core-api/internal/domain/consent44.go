@@ -144,6 +144,11 @@ func (svc *ClientService) ExportWithEvidence(ctx context.Context, tenantID, id s
 // granted scope the cascade revokes. dsar.go's Erase is untouched; the
 // erase endpoint routes through this wrapper so the ledger records the
 // revocation even though the row itself becomes a tombstone.
+//
+// Phase 46: erasure also scrubs the client's conversation message bodies
+// immediately — Art. 17 says content goes NOW, not at the next retention
+// window. Advisory fail-open: erasure itself has already committed, so a
+// scrub failure surfaces as an event rather than an error.
 func (svc *ClientService) EraseWithEvidence(ctx context.Context, tenantID, id string) (*model.Client, error) {
 	before, err := svc.s.Store.Clients().Get(ctx, tenantID, id)
 	if err != nil {
@@ -158,5 +163,6 @@ func (svc *ClientService) EraseWithEvidence(ctx context.Context, tenantID, id st
 		return nil, err
 	}
 	svc.recordErasureRevocations(ctx, tenantID, id, prevConsent)
+	svc.s.Retention.scrubClientMessages(ctx, tenantID, id)
 	return c, nil
 }

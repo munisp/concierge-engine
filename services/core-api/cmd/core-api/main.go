@@ -157,6 +157,15 @@ func main() {
 					// Phase 26: weekly acquisition pacing alert (Mondays
 					// 09:00 UTC inside this hourly sweep — fires once).
 					svc.Acquisition.PacingAlertIfDue(dispatchCtx, t.ID)
+					// Phase 46: retention sweep — purge aged geo stamps,
+					// scrub aged closed-conversation message bodies, purge
+					// aged attribution events per the tenant's config.
+					if res, err := svc.Retention.Run(dispatchCtx, t.ID); err != nil {
+						log.Printf("retention sweep: tenant %s — %v", t.Slug, err)
+					} else if res.GeoStampsPurged+res.MessageBodiesScrubbed+res.AttributionPurged > 0 {
+						log.Printf("retention sweep: tenant %s — %d geo, %d bodies, %d attribution",
+							t.Slug, res.GeoStampsPurged, res.MessageBodiesScrubbed, res.AttributionPurged)
+					}
 				}
 			}
 		}

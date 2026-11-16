@@ -24,6 +24,7 @@ export interface Tenant {
   operator_config?: { alert_phones?: string[] };
   dispatch_config?: { turnaround_minutes?: number; default_duration_minutes?: number };
   lifecycle_config?: { disabled?: boolean; post_trip_hours?: number; win_back_days?: number; lead_nudge_days?: number };
+  retention_config?: { disabled?: boolean; geo_stamps_days?: number; message_bodies_days?: number; attribution_days?: number };
   acquisition_config?: { disabled?: boolean; fee_pct?: number; channels?: string[];
     goal_clients?: number; goal_days?: number; cohort_started_at?: string };
 }

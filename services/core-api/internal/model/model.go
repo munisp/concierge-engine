@@ -46,7 +46,11 @@ type Tenant struct {
 	// SiteConfig (Phase 28): public-site posture — custom domains, Search
 	// Console verification, locale, social sameAs links.
 	SiteConfig SiteConfig `json:"site_config"`
-	CreatedAt  time.Time  `json:"created_at"`
+	// RetentionConfig (Phase 46): storage-limitation posture — how long
+	// operational data with personal content is kept before the retention
+	// sweep purges or scrubs it.
+	RetentionConfig RetentionConfig `json:"retention_config"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 // DispatchConfig tunes scheduling. TurnaroundMinutes extends every
@@ -82,6 +86,30 @@ type LifecycleConfig struct {
 	// single biggest conversion lever in high-ticket concierge). 0 =
 	// default 60; negative = disabled.
 	LeadSLAMinutes int `json:"lead_sla_minutes,omitempty"`
+}
+
+// RetentionConfig is the tenant's storage-limitation policy (Phase 46,
+// GDPR Art. 5(1)(e)): how long operational data carrying personal content
+// is kept before the retention sweep purges or scrubs it. Financial
+// records (quotes, bookings, payments, ledger postings), the consent
+// evidence ledger, and the audit log are EXEMPT — accounting retention
+// and the accountability principle outrank minimization for those.
+// Per category: 0 = platform default, negative = never purge this
+// category, positive = that many days. Disabled skips the tenant entirely.
+type RetentionConfig struct {
+	Disabled bool `json:"disabled,omitempty"`
+	// GeoStampsDays: location breadcrumbs — the most sensitive operational
+	// data the platform holds. Default 90.
+	GeoStampsDays int `json:"geo_stamps_days,omitempty"`
+	// MessageBodiesDays: raw conversation content in CLOSED conversations
+	// is scrubbed to a provenance marker (row metadata survives so
+	// threading and counts stay honest). Default 730.
+	MessageBodiesDays int `json:"message_bodies_days,omitempty"`
+	// AttributionDays: marketing telemetry. Default 730. Deliberate
+	// interaction with list hygiene: engagement older than this window
+	// stops counting as engagement — the correct reading of storage
+	// limitation.
+	AttributionDays int `json:"attribution_days,omitempty"`
 }
 
 // AcquisitionConfig is the tenant's acquisition-monetization posture

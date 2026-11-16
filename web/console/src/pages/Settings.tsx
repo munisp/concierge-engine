@@ -62,6 +62,34 @@ function RunFollowUps() {
   );
 }
 
+type RetentionResult = {
+  geo_stamps_purged: number;
+  message_bodies_scrubbed: number;
+  attribution_purged: number;
+  disabled: boolean;
+};
+
+function RunRetention() {
+  const [msg, setMsg] = useState("");
+  async function run() {
+    try {
+      const r = await api.post<RetentionResult>("/v1/retention/run");
+      setMsg(r.disabled
+        ? "Retention is disabled for this tenant — nothing swept."
+        : `${r.geo_stamps_purged} geo stamps purged, ${r.message_bodies_scrubbed} message bodies scrubbed, ` +
+          `${r.attribution_purged} attribution events purged`);
+    } catch (e) {
+      setMsg(String(e));
+    }
+  }
+  return (
+    <>
+      <button onClick={() => void run()}>Run retention sweep now</button>
+      {msg && <p className="muted">{msg}</p>}
+    </>
+  );
+}
+
 export default function Settings() {
   const { tenant, error } = useTenant();
   const [alertPhones, setAlertPhones] = useState("");
@@ -84,6 +112,11 @@ export default function Settings() {
   const [lcPostTrip, setLcPostTrip] = useState(24);
   const [lcWinBack, setLcWinBack] = useState(90);
   const [lcLeadNudge, setLcLeadNudge] = useState(7);
+  // Phase 46: data retention & minimization
+  const [retDisabled, setRetDisabled] = useState(false);
+  const [retGeoDays, setRetGeoDays] = useState(90);
+  const [retMsgDays, setRetMsgDays] = useState(730);
+  const [retAttrDays, setRetAttrDays] = useState(730);
   // Phase 27: referral boost window
   const [boostUntil, setBoostUntil] = useState("");
   const [boostMult, setBoostMult] = useState(1);
@@ -123,6 +156,10 @@ export default function Settings() {
     setLcPostTrip(tenant.lifecycle_config?.post_trip_hours ?? 24);
     setLcWinBack(tenant.lifecycle_config?.win_back_days ?? 90);
     setLcLeadNudge(tenant.lifecycle_config?.lead_nudge_days ?? 7);
+    setRetDisabled(tenant.retention_config?.disabled ?? false);
+    setRetGeoDays(tenant.retention_config?.geo_stamps_days ?? 90);
+    setRetMsgDays(tenant.retention_config?.message_bodies_days ?? 730);
+    setRetAttrDays(tenant.retention_config?.attribution_days ?? 730);
     setBoostUntil(tenant.reward_program?.boost_until ?? "");
     setBoostMult(tenant.reward_program?.boost_multiplier ?? 1);
     setAcqDisabled(tenant.acquisition_config?.disabled ?? false);
@@ -207,6 +244,40 @@ export default function Settings() {
           lifecycle_config: { disabled: lcDisabled, post_trip_hours: lcPostTrip, win_back_days: lcWinBack, lead_nudge_days: lcLeadNudge },
         })} />{" "}
         <RunFollowUps />
+      </div>
+
+      <div className="card">
+        <h2>Data retention &amp; minimization</h2>
+        <p className="muted">
+          Storage limitation (GDPR Art. 5(1)(e)) runs hourly. Geo stamps are
+          permanently purged after their window — location breadcrumbs are the
+          most sensitive data we hold. Message bodies in CLOSED conversations
+          are scrubbed to a provenance marker (the row and timestamps survive,
+          so threads and counts stay honest). Attribution events are purged
+          after their window. Financial records, the consent evidence ledger
+          and the audit log are exempt — accounting retention outranks
+          minimization for those. Per category: 0 = platform default,
+          a negative number = never purge that category.
+        </p>
+        <label>
+          <input type="checkbox" checked={retDisabled}
+            onChange={(e) => setRetDisabled(e.target.checked)} /> Disable retention sweeps for this tenant
+        </label>
+        <label>Keep geo stamps (days, default 90)</label>
+        <input type="number" value={retGeoDays}
+          onChange={(e) => setRetGeoDays(Number(e.target.value))} />
+        <label>Keep message bodies in closed conversations (days, default 730)</label>
+        <input type="number" value={retMsgDays}
+          onChange={(e) => setRetMsgDays(Number(e.target.value))} />
+        <label>Keep attribution events (days, default 730)</label>
+        <input type="number" value={retAttrDays}
+          onChange={(e) => setRetAttrDays(Number(e.target.value))} />
+        <p />
+        <SaveButton onSave={() => save({
+          retention_config: { disabled: retDisabled, geo_stamps_days: retGeoDays,
+            message_bodies_days: retMsgDays, attribution_days: retAttrDays },
+        })} />{" "}
+        <RunRetention />
       </div>
 
       <div className="card">

@@ -724,3 +724,21 @@ A downloadable JSON consent receipt (controller, pseudonymous subject,
 scopes, full trail) rides on the page, marketing email footers now carry
 "Manage your preferences" next to unsubscribe, and the console can mint
 the link per client. No migration. See docs/phase45.md.
+
+## Phase 46 — data retention & minimization engine (GDPR Art. 5(1)(e))
+
+Storage limitation: the platform no longer keeps everything forever. A
+per-tenant `retention_config` (migration 0032) drives an hourly sweep that
+permanently purges geo stamps after 90 days (location breadcrumbs are the
+most sensitive data we hold), scrubs message bodies in CLOSED
+conversations to a provenance marker after 730 days (row metadata survives
+so threads and counts stay honest), and purges attribution events after
+730 days — deliberately ending their contribution to engagement hygiene.
+Financial records, the consent evidence ledger and the audit log are
+exempt: accounting retention and accountability outrank minimization. Per
+category, 0 = platform default and a negative value = never purge; a
+tenant-level disabled flag opts out. `POST /v1/retention/run` fires an
+idempotent sweep on demand from the console Settings card, every sweep
+writes a `retention.sweep` audit entry, and GDPR erasure (Phase 44) now
+scrubs the client's conversation content immediately — including open
+conversations the age sweep leaves alone. See docs/phase46.md.

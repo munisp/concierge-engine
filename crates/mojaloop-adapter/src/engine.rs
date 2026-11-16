@@ -354,7 +354,9 @@ mod tests {
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<String>>(1);
-        let app = Router::new().route("/cb", post(capture)).with_state(St { tx });
+        let app = Router::new()
+            .route("/cb", post(capture))
+            .with_state(St { tx });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -365,7 +367,13 @@ mod tests {
 
         let q = e.quote("fsiop-safari", 5000, "EUR");
         let t = e
-            .transfer(&q.quote_id, "payout:p9", "p9", "tenant", &format!("http://{addr}/cb"))
+            .transfer(
+                &q.quote_id,
+                "payout:p9",
+                "p9",
+                "tenant",
+                &format!("http://{addr}/cb"),
+            )
             .unwrap();
         e.notify_core(&t, "evt-9", "transfer.fulfilled").await;
         let got = tokio::time::timeout(Duration::from_secs(5), rx.recv())

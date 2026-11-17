@@ -17,7 +17,11 @@ import (
 	"concierge-engine/services/core-api/internal/tenantctx"
 )
 
-func New(svc *domain.Services) http.Handler {
+func New(svc *domain.Services, optFns ...Option) http.Handler {
+	opts := (&Options{}).withDefaults()
+	for _, fn := range optFns {
+		fn(&opts)
+	}
 	mux := http.NewServeMux()
 	h := &handlers{svc: svc}
 
@@ -161,7 +165,10 @@ func New(svc *domain.Services) http.Handler {
 
 	// Phase 28: custom-domain resolution sits outermost so host-rewritten
 	// paths route through the mux (and tenantctx) exactly like native ones.
-	return h.hostRewrite(tenantctx.Middleware(mux))
+	// Phase 50: security headers wrap everything; the rate limiter runs
+	// outside tenantctx so auth-rejected floods also burn their budget
+	// (bucket from X-Tenant-ID / bearer hash / source IP).
+	return securityHeaders(h.hostRewrite(rateLimit(tenantctx.Middleware(mux), opts)))
 }
 
 type handlers struct{ svc *domain.Services }

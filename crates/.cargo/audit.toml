@@ -1,0 +1,12 @@
+# cargo-audit policy (Phase 50).
+#
+# RUSTSEC-2023-0071 (rsa crate, "Marvin Attack" timing side-channel):
+# reached only through opendal -> reqsign-azure-storage / reqsign-core, i.e.
+# the Azure Blob signing path of the blob-adapter. The advisory concerns RSA
+# private-key operations under attacker-measured timing; reqsign performs
+# request signing (and Azure shared-key auth is HMAC, not RSA), so there is
+# no attacker-controlled decryption oracle in our usage. No fixed release is
+# available through our dependency chain (fix requires rsa >= 0.10, which
+# reqsign has not adopted). Re-review on every opendal upgrade.
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]

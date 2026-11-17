@@ -42,6 +42,13 @@ type Config struct {
 	// CE_WEBHOOK_ROTATION_WINDOW_HOURS: dual-secret signing window after a
 	// webhook secret rotation; default 24 (domain.WebhookRotationWindow).
 	WebhookRotationWindowHours int
+	// Phase 50: edge rate limits (requests/sec + burst per bucket).
+	// CE_RATE_LIMIT=off disables the limiter entirely (load tests, dev).
+	RatePublicRPS   float64 // CE_RATE_PUBLIC_RPS, default 30 (per source IP, anonymous)
+	RatePublicBurst int     // CE_RATE_PUBLIC_BURST, default 60
+	RateTenantRPS   float64 // CE_RATE_TENANT_RPS, default 200 (per tenant)
+	RateTenantBurst int     // CE_RATE_TENANT_BURST, default 400
+	RateLimitOff    bool    // CE_RATE_LIMIT=off
 }
 
 func getenv(k, def string) string {
@@ -82,12 +89,26 @@ func Load() Config {
 		PayoutCallbackSecret:       getenv("CE_PAYOUT_CALLBACK_SECRET", ""),
 		BlobAdapterURL:             getenv("CE_BLOB_ADAPTER_URL", ""),
 		WebhookRotationWindowHours: getenvInt("CE_WEBHOOK_ROTATION_WINDOW_HOURS", 24),
+		RatePublicRPS:              getenvFloat("CE_RATE_PUBLIC_RPS", 30),
+		RatePublicBurst:            getenvInt("CE_RATE_PUBLIC_BURST", 60),
+		RateTenantRPS:              getenvFloat("CE_RATE_TENANT_RPS", 200),
+		RateTenantBurst:            getenvInt("CE_RATE_TENANT_BURST", 400),
+		RateLimitOff:               getenv("CE_RATE_LIMIT", "") == "off",
 	}
 }
 
 func getenvInt(k string, def int) int {
 	if v := os.Getenv(k); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+func getenvFloat(k string, def float64) float64 {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
 			return n
 		}
 	}

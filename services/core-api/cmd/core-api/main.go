@@ -208,9 +208,19 @@ func main() {
 		}
 	}()
 
+	// Phase 50: edge security — security headers on every response, tiered
+	// rate limiting (per-IP anonymous / per-tenant), env-tunable.
+	var srvOpts []server.Option
+	if cfg.RateLimitOff {
+		srvOpts = append(srvOpts, server.WithRateLimitDisabled())
+	} else {
+		srvOpts = append(srvOpts, server.WithRateLimits(
+			cfg.RatePublicRPS, cfg.RatePublicBurst, cfg.RateTenantRPS, cfg.RateTenantBurst))
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           server.New(svc),
+		Handler:           server.New(svc, srvOpts...),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

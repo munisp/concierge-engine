@@ -19,7 +19,11 @@ import (
 
 func testServices(t *testing.T, deps Deps) *Services {
 	t.Helper()
-	return NewServices(store.NewMemory(), deps)
+	s := NewServices(store.NewMemory(), deps)
+	// Phase 50: webhook delivery is SSRF-guarded; tests deliver to local
+	// httptest receivers, which the guard correctly treats as private.
+	s.Webhooks.AllowPrivateTargets = true
+	return s
 }
 
 func seedTenant(t *testing.T, s *Services) string {

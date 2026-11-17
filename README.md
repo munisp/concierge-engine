@@ -759,6 +759,19 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 50 — security hardening wave.** Response to the 2025–26 attack
+cycle (Shai-Hulud npm worm, TanStack pipeline hijack, Megalodon CI commits,
+OAuth token cascades): every GitHub Action is SHA-pinned with default-deny
+token permissions and `npm ci --ignore-scripts`; a new `security` CI job
+gates every push on gitleaks (pinned binary + sha256), govulncheck,
+cargo-audit, pip-audit, npm audit (production deps) and zizmor; core-api
+now sets security headers on every response (framing denied except the
+embeddable booking widget), enforces tiered rate limits (per-IP anonymous,
+per-tenant + per-IP anti-rotation ceiling, env-tunable), and webhook
+delivery runs through an SSRF-guarded HTTP client (no loopback/private/
+metadata targets, rebind-safe dial, bounded redirects). See
+docs/phase50.md.
+
 **Phase 49 — Apache OpenDAL object storage.** The media pipeline's bytes
 moved out of Postgres bytea into Apache OpenDAL, the platform's unified
 object-storage engine. OpenDAL is Rust-native, so it runs as a real

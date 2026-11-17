@@ -33,10 +33,30 @@ var WebhookRotationWindow = 24 * time.Hour
 type WebhookService struct {
 	s  *Services
 	hc *http.Client
+	// insecurePrivate serves deliveries when AllowPrivateTargets is set.
+	insecurePrivate *http.Client
+	// AllowPrivateTargets lets deliveries reach loopback/private addresses.
+	// Phase 50: subscriptions point at tenant-controlled URLs, so delivery
+	// goes through the SSRF-guarded client by default; this flag exists for
+	// hermetic tests (local httptest receivers) and dev only — never in prod.
+	AllowPrivateTargets bool
 }
 
 func NewWebhookService(s *Services) *WebhookService {
-	return &WebhookService{s: s, hc: &http.Client{Timeout: 10 * time.Second}}
+	return &WebhookService{
+		s:               s,
+		hc:              httpx.NewSafeClient(10*time.Second, false),
+		insecurePrivate: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// deliverClient picks the SSRF-guarded client unless the explicit test/dev
+// escape hatch is on.
+func (svc *WebhookService) deliverClient() *http.Client {
+	if svc.AllowPrivateTargets {
+		return svc.insecurePrivate
+	}
+	return svc.hc
 }
 
 func (svc *WebhookService) CreateSubscription(ctx context.Context, tenantID, url string, events []string) (*model.WebhookSubscription, error) {
@@ -184,7 +204,7 @@ func (svc *WebhookService) DispatchDue(ctx context.Context, now time.Time, limit
 		req.Header.Set("X-Concierge-Signature", SignDeliveryAny(activeSecrets(sub, now), []byte(d.Payload)))
 		req.Header.Set("X-Concierge-Event", d.EventKind)
 		req.Header.Set("X-Concierge-Delivery", d.ID)
-		resp, err := svc.hc.Do(req)
+		resp, err := svc.deliverClient().Do(req)
 		d.Attempts++
 		if err == nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
@@ -278,8 +298,8 @@ func (svc *WebhookService) TestSubscription(ctx context.Context, tenantID, subID
 	}
 	body, _ := json.Marshal(map[string]any{
 		"id": NewID(), "type": "webhook.test", "tenant_id": tenantID,
-		"created_at": svc.s.Now().UTC(),
-		"data":       map[string]any{"subscription_id": subID},
+		"created_at":     svc.s.Now().UTC(),
+		"data":           map[string]any{"subscription_id": subID},
 		"schema_version": CatalogVersion("webhook.test"),
 	})
 	d := &model.WebhookDelivery{

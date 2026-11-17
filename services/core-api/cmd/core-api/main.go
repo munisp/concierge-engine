@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"concierge-engine/services/core-api/internal/blobstore"
 	"concierge-engine/services/core-api/internal/config"
 	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/server"
@@ -36,6 +37,19 @@ func main() {
 	default:
 		st = store.NewMemory()
 		log.Println("store: in-memory")
+	}
+	// Phase 49: Apache OpenDAL media storage. When CE_BLOB_ADAPTER_URL is
+	// set, media bytes route through the blob-adapter (OpenDAL: fs/s3/gcs/
+	// azblob/...) and rows keep metadata + storage_key; legacy inline rows
+	// keep serving and POST /v1/media/backfill migrates them.
+	storageEngine := "memory"
+	if cfg.StoreKind == "pg" {
+		storageEngine = "postgres-bytea"
+	}
+	if cfg.BlobAdapterURL != "" {
+		st = store.WithBlobMedia(st, blobstore.New(cfg.BlobAdapterURL))
+		storageEngine = "opendal"
+		log.Println("media storage: apache-opendal via blob-adapter", cfg.BlobAdapterURL)
 	}
 	defer st.Close()
 
@@ -67,6 +81,7 @@ func main() {
 		GeocodeKey:           cfg.GeocodeKey,
 		ConsoleBase:          cfg.ConsoleBase,
 		PayoutCallbackSecret: cfg.PayoutCallbackSecret,
+		StorageEngine:        storageEngine,
 		Now:                  time.Now,
 	})
 	if cfg.FieldKeyB64 == "" {

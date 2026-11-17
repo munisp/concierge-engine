@@ -26,22 +26,26 @@ type Deps struct {
 	// adapter callbacks via the X-Callback-Secret header. Empty = dev mode,
 	// no check; production must set it (Phase 48).
 	PayoutCallbackSecret string
-	StripeKey            string // CE_STRIPE_KEY: secret key; empty = sandbox links
-	StripeBase           string // CE_STRIPE_BASE_URL override (tests / sandbox)
-	StripeWHSec          string // CE_STRIPE_WEBHOOK_SECRET for signature verification
-	PaystackKey          string // CE_PAYSTACK_KEY: secret key; empty = disabled (Phase 15)
-	PaystackBase         string // CE_PAYSTACK_BASE_URL override (tests / sandbox)
-	AmadeusBase          string // CE_AMADEUS_BASE_URL (test.api.amadeus.com default)
-	AmadeusID            string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
-	AmadeusSecret        string // CE_AMADEUS_CLIENT_SECRET
-	AgentURL             string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
-	WhatsAppURL          string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
-	EmailURL             string // CE_EMAIL_ADAPTER_URL: Phase 39 email channel adapter; empty = record-only
-	OperatorPhone        string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
-	GeocodeURL           string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
-	GeocodeKey           string // CE_GEOCODE_API_KEY when the provider needs one
-	ConsoleBase          string // CE_CONSOLE_BASE: public origin of the console SPA (SEO CTA target); empty = same-origin
-	Now                  func() time.Time
+	// StorageEngine (Phase 49): provenance label for the media storage
+	// engine — "opendal" when the blob-adapter wraps the store, otherwise
+	// the legacy inline store kind ("postgres-bytea" | "memory").
+	StorageEngine string
+	StripeKey     string // CE_STRIPE_KEY: secret key; empty = sandbox links
+	StripeBase    string // CE_STRIPE_BASE_URL override (tests / sandbox)
+	StripeWHSec   string // CE_STRIPE_WEBHOOK_SECRET for signature verification
+	PaystackKey   string // CE_PAYSTACK_KEY: secret key; empty = disabled (Phase 15)
+	PaystackBase  string // CE_PAYSTACK_BASE_URL override (tests / sandbox)
+	AmadeusBase   string // CE_AMADEUS_BASE_URL (test.api.amadeus.com default)
+	AmadeusID     string // CE_AMADEUS_CLIENT_ID; empty = mock GDS
+	AmadeusSecret string // CE_AMADEUS_CLIENT_SECRET
+	AgentURL      string // CE_AGENT_URL: concierge-agent (case AI assist); empty = core rules only
+	WhatsAppURL   string // CE_WHATSAPP_ADAPTER_URL: outbound channel for case replies; empty = draft-only
+	EmailURL      string // CE_EMAIL_ADAPTER_URL: Phase 39 email channel adapter; empty = record-only
+	OperatorPhone string // CE_OPERATOR_PHONE: operator WhatsApp for reply-failure alerts; empty = events only
+	GeocodeURL    string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
+	GeocodeKey    string // CE_GEOCODE_API_KEY when the provider needs one
+	ConsoleBase   string // CE_CONSOLE_BASE: public origin of the console SPA (SEO CTA target); empty = same-origin
+	Now           func() time.Time
 }
 
 type Services struct {
@@ -76,22 +80,26 @@ type Services struct {
 	Kyc           *KycService
 	// PayoutCallbackSecret authenticates adapter payout callbacks (Phase 48).
 	PayoutCallbackSecret string
-	Studio               *StudioService
-	Insights             *InsightsService
-	Supply               *SupplyService
-	Trips                *TripService
-	Audit                *AuditService
-	Policy               *PolicyClient
-	Ledger               *LedgerClient
-	Stripe               *StripeClient
-	Paystack             *PaystackClient
-	Events               *EventBus
-	Cipher               *FieldCipher
-	publicBase           string
-	consoleBase          string
-	waURL                string // shared operator-alert transport (Phase 27 notices)
-	operatorPhone        string
-	now                  func() time.Time
+	// StorageEngine (Phase 49) labels the legacy inline media store for
+	// provenance ("postgres-bytea" | "memory"); when the blob-adapter is
+	// wired the label is "opendal" and per-row engine tags carry the rest.
+	StorageEngine string
+	Studio        *StudioService
+	Insights      *InsightsService
+	Supply        *SupplyService
+	Trips         *TripService
+	Audit         *AuditService
+	Policy        *PolicyClient
+	Ledger        *LedgerClient
+	Stripe        *StripeClient
+	Paystack      *PaystackClient
+	Events        *EventBus
+	Cipher        *FieldCipher
+	publicBase    string
+	consoleBase   string
+	waURL         string // shared operator-alert transport (Phase 27 notices)
+	operatorPhone string
+	now           func() time.Time
 }
 
 func NewServices(st store.Store, deps Deps) *Services {
@@ -131,6 +139,10 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Payouts = NewPayoutService(s, ml, deps.PublicBase)
 	s.Settlements = NewSettlementService(s, ml, deps.PublicBase)
 	s.PayoutCallbackSecret = deps.PayoutCallbackSecret
+	s.StorageEngine = deps.StorageEngine
+	if s.StorageEngine == "" {
+		s.StorageEngine = "memory" // default store kind (CE_STORE unset)
+	}
 	s.Supply = NewSupplyService(s, NewAvinodeAdapter(deps.AvinodeURL, deps.AvinodeKey))
 	s.Webhooks = NewWebhookService(s)
 	s.ApiKeys = &ApiKeyService{s: s}

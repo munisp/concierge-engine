@@ -31,6 +31,8 @@ spec:
               value: "http://ledger-adapter:8210"
             - name: CE_EMAIL_ADAPTER_URL
               value: "http://email-adapter:8120"
+            - name: CE_BLOB_ADAPTER_URL
+              value: "http://blob-adapter:8230"
           readinessProbe:
             httpGet: { path: /healthz, port: 8000 }
           resources:

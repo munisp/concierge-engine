@@ -759,6 +759,26 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 49 — Apache OpenDAL object storage.** The media pipeline's bytes
+moved out of Postgres bytea into Apache OpenDAL, the platform's unified
+object-storage engine. OpenDAL is Rust-native, so it runs as a real
+sidecar — `crates/blob-adapter` (axum × opendal) — reached over HTTP
+exactly like the other adapters; the backend is chosen purely by env
+(`CE_BLOB_SCHEME` + `OPENDAL_*` passthrough: fs for dev, s3/gcs/azblob in
+production) with zero code changes. On the core side,
+`store.WithBlobMedia` decorates ANY store (memory or postgres) so every
+media call site — upload, public site serving, console raw fetch,
+ref-scrubbing delete, studio export — gets object storage untouched; rows
+keep metadata + `storage_key` + per-row engine provenance (migration
+0035). Legacy inline rows keep serving (read falls back) and
+`POST /v1/media/backfill` migrates them idempotently. Writes are
+fail-closed (an adapter error fails the upload — never a silent
+durability downgrade); deletes remove object-then-row; the tenant prefix
+is a hard boundary (`{tenant}/{key}`, strict key grammar).
+`GET /v1/storage/engine` reports honest provenance (scheme live from the
+adapter, unreachable said so); the console Settings page gains a Storage
+engine card with a backfill button. See docs/phase49.md.
+
 **Phase 48 — Mojaloop settlement / payout depth.** Four production gaps
 closed in the payout lane: adapter callbacks are now authenticated
 (`X-Callback-Secret`, constant-time compare, `CE_PAYOUT_CALLBACK_SECRET`

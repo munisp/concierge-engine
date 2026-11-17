@@ -90,6 +90,50 @@ function RunRetention() {
   );
 }
 
+type StorageEngine = {
+  engine: string;
+  detail: string;
+  legacy: boolean;
+  reachable?: boolean;
+};
+
+// Phase 49: Apache OpenDAL storage engine provenance + legacy→object
+// media backfill.
+function StorageCard() {
+  const [eng, setEng] = useState<StorageEngine | null>(null);
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    api.get<StorageEngine>("/v1/storage/engine").then(setEng).catch((e) => setMsg(String(e)));
+  }, []);
+  async function backfill() {
+    try {
+      const r = await api.post<{ migrated: number; skipped: number }>("/v1/media/backfill");
+      setMsg(`Backfill: ${r.migrated} media migrated to object storage, ${r.skipped} already there.`);
+    } catch (e) {
+      setMsg(String(e));
+    }
+  }
+  return (
+    <div className="card">
+      <h2>Storage engine</h2>
+      {eng ? (
+        <p className="muted">
+          Media storage: <strong>{eng.detail}</strong>
+          {eng.legacy
+            ? " — legacy inline store. Set CE_BLOB_ADAPTER_URL to move media to Apache OpenDAL object storage (fs/s3/gcs/azblob)."
+            : eng.reachable === false
+              ? " — adapter configured but unreachable."
+              : " — Apache OpenDAL object storage active."}
+        </p>
+      ) : (
+        <p className="muted">Loading…</p>
+      )}
+      {eng && !eng.legacy && <button onClick={() => void backfill()}>Backfill legacy media to object storage</button>}
+      {msg && <p className="muted">{msg}</p>}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { tenant, error } = useTenant();
   const [alertPhones, setAlertPhones] = useState("");
@@ -279,6 +323,8 @@ export default function Settings() {
         })} />{" "}
         <RunRetention />
       </div>
+
+      <StorageCard />
 
       <div className="card">
         <h2>Acquisition (pay-for-performance)</h2>

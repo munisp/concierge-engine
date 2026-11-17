@@ -35,6 +35,10 @@ type Config struct {
 	// PayoutCallbackSecret (CE_PAYOUT_CALLBACK_SECRET) authenticates Mojaloop
 	// adapter callbacks via X-Callback-Secret (Phase 48); empty = dev mode.
 	PayoutCallbackSecret string
+	// BlobAdapterURL (CE_BLOB_ADAPTER_URL) wires Apache OpenDAL media
+	// storage via the blob-adapter sidecar (Phase 49). Empty = legacy
+	// inline store (postgres bytea / memory).
+	BlobAdapterURL string
 	// CE_WEBHOOK_ROTATION_WINDOW_HOURS: dual-secret signing window after a
 	// webhook secret rotation; default 24 (domain.WebhookRotationWindow).
 	WebhookRotationWindowHours int
@@ -76,6 +80,7 @@ func Load() Config {
 		GeocodeKey:                 getenv("CE_GEOCODE_API_KEY", ""),
 		ConsoleBase:                getenv("CE_CONSOLE_BASE", ""),
 		PayoutCallbackSecret:       getenv("CE_PAYOUT_CALLBACK_SECRET", ""),
+		BlobAdapterURL:             getenv("CE_BLOB_ADAPTER_URL", ""),
 		WebhookRotationWindowHours: getenvInt("CE_WEBHOOK_ROTATION_WINDOW_HOURS", 24),
 	}
 }

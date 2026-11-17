@@ -62,3 +62,19 @@ func (s *memMedia) Delete(_ context.Context, tenantID, id string) error {
 	delete(s.m.media, key)
 	return nil
 }
+
+// MarkExternal (Phase 49): flip a legacy inline row to object storage —
+// record the key/engine and drop the inline bytes.
+func (s *memMedia) MarkExternal(_ context.Context, tenantID, id, storageKey, engine string) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	md, ok := s.m.media[tenantID+"/"+id]
+	if !ok {
+		return httpx.ErrNotFound
+	}
+	md.StorageKey = storageKey
+	md.StorageEngine = engine
+	md.SizeBytes = len(md.Data)
+	md.Data = nil
+	return nil
+}

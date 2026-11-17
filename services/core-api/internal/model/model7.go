@@ -19,6 +19,13 @@ type Media struct {
 	Data        []byte    `json:"-"` // never API-serialized
 	SizeBytes   int       `json:"size_bytes"`
 	CreatedAt   time.Time `json:"created_at"`
+	// Phase 49 (OpenDAL): when StorageKey is set the bytes live in object
+	// storage via the blob-adapter (storage key "media/{id}"); Data is then
+	// empty in the row and hydrated on read. StorageEngine records the
+	// provenance ("opendal"); legacy rows have both fields empty and carry
+	// inline bytes (postgres-bytea / memory).
+	StorageKey    string `json:"storage_key,omitempty"`
+	StorageEngine string `json:"storage_engine,omitempty"`
 }
 
 const (

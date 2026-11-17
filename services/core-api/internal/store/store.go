@@ -190,11 +190,20 @@ type ReviewStore interface {
 // List returns metadata only (no Data) for the console picker. Delete is
 // idempotent-scoped to the tenant — a dangling catalog image_id falls back
 // to the monogram tile rather than erroring.
+//
+// Phase 49 (OpenDAL): WithBlobMedia decorates this store so bytes land in
+// the blob-adapter (Apache OpenDAL) and the row keeps only metadata +
+// storage_key. MarkExternal is the backfill primitive: after the object's
+// bytes are written to the adapter it records key/engine/size and clears
+// the inline data.
 type MediaStore interface {
 	Put(ctx context.Context, m *model.Media) error
 	Get(ctx context.Context, tenantID, id string) (*model.Media, error)
 	List(ctx context.Context, tenantID string) ([]model.Media, error)
 	Delete(ctx context.Context, tenantID, id string) error
+	// MarkExternal (Phase 49) flips a legacy inline row to object storage:
+	// sets storage_key/storage_engine/size_bytes and clears the bytea.
+	MarkExternal(ctx context.Context, tenantID, id, storageKey, engine string) error
 }
 
 type OutboxStore interface {

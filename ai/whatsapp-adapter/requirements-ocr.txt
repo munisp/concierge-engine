@@ -1,0 +1,21 @@
+# Optional OCR engine extras (Phase 51) — NOT installed in CI.
+#
+# The whatsapp-adapter OCR chain (whatsapp_adapter/ocr.py) lazy-imports
+# these engines; install only the ones a deployment enables via
+# CE_OCR_CHAIN (default: vlm,docling,paddleocr,rusto,tesseract).
+#
+#   vlm        — no package; external HTTP service at CE_OCR_URL
+#                (production target: MiniCPM-OCR deployment)
+#   docling    — pip install -r this file  (IBM Docling; PDFs/documents)
+#   paddleocr  — pip install -r this file  (needs paddlepaddle too)
+#   rusto      — pip install rusto  OR  cargo install rusto-rs (CLI)
+#   tesseract  — system package (apt install tesseract-ocr); baseline
+#
+# Deliberately excluded from the CI pip-audit loop: these are heavy,
+# deployment-time installs. Audit them in the environment that installs
+# them (pip-audit -r requirements-ocr.txt) before rollout.
+
+docling>=2.5
+paddleocr>=3.0
+paddlepaddle>=3.0
+rusto>=0.4

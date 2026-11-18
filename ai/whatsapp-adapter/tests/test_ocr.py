@@ -202,3 +202,151 @@ def test_meta_inbound_routes_image_messages():
     assert seen[0].media_mime == "image/jpeg"
     assert seen[0].text == "my booking confirmation"
     assert seen[0].tenant_id == "t1"
+
+
+# --- pluggable engine chain (Phase 51) -----------------------------------------
+
+def test_chain_order_env_and_unknown_engine(monkeypatch):
+    monkeypatch.setenv("CE_OCR_CHAIN", "bogus,tesseract")
+    monkeypatch.setattr(ocr, "ENGINES", {
+        "tesseract": lambda d, m: {"text": "ok", "engine": "tesseract", "detail": "fake"},
+    })
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "tesseract"
+
+
+def test_chain_fallback_provenance(monkeypatch):
+    """A failing engine falls through; the detail names every attempt."""
+
+    def boom(data, mime):
+        raise RuntimeError("model weights missing")
+
+    def ok(data, mime):
+        return {"text": "hello", "engine": "rusto", "detail": "local"}
+
+    monkeypatch.setenv("CE_OCR_CHAIN", "paddleocr,rusto")
+    monkeypatch.setattr(ocr, "ENGINES", {"paddleocr": boom, "rusto": ok})
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "rusto"
+    assert out["text"] == "hello"
+
+    monkeypatch.setattr(ocr, "ENGINES", {"paddleocr": boom, "rusto": boom})
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "none"
+    assert "paddleocr failed" in out["detail"]
+    assert "rusto failed" in out["detail"]
+
+
+def test_chain_all_engines_unavailable_honest_none(monkeypatch):
+    monkeypatch.setenv("CE_OCR_CHAIN", "vlm,docling,paddleocr,rusto,tesseract")
+
+    def unavail(name):
+        def fn(data, mime):
+            raise ocr.EngineUnavailable(f"{name} not installed")
+        return fn
+
+    monkeypatch.setattr(ocr, "ENGINES", {
+        n: unavail(n) for n in ("vlm", "docling", "paddleocr", "rusto", "tesseract")})
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "none"
+    assert "paddleocr not installed" in out["detail"]
+
+
+def test_chain_unsupported_media_labeled(monkeypatch):
+    def unsup(data, mime):
+        raise ocr.UnsupportedMedia(f"unsupported media type {mime}")
+
+    monkeypatch.setenv("CE_OCR_CHAIN", "tesseract")
+    monkeypatch.setattr(ocr, "ENGINES", {"tesseract": unsup})
+    out = ocr.ocr_image(b"%PDF-1.4 fake", "application/pdf")
+    assert out["engine"] == "none"
+    assert "unsupported media type application/pdf" in out["detail"]
+
+
+def test_rusto_cli_engine(monkeypatch, tmp_path):
+    """rusto CLI path: score-suffixed lines are normalized to plain text."""
+    import whatsapp_adapter.ocr as m
+
+    class _Proc:
+        returncode = 0
+        stdout = b"REFUND REQUEST 1400 AED (97.3%)\nTOTAL 1400 (88.12%)\n"
+        stderr = b""
+
+    monkeypatch.setattr(m.shutil, "which", lambda b: "/usr/bin/rusto")
+    monkeypatch.setattr(m.subprocess, "run", lambda *a, **kw: _Proc())
+    monkeypatch.setenv("CE_OCR_CHAIN", "rusto")
+    monkeypatch.setattr(ocr, "ENGINES", {"rusto": ocr._ocr_rusto})
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "rusto"
+    assert out["detail"] == "local-cli"
+    assert "REFUND REQUEST 1400 AED" in out["text"]
+    assert "(97.3%)" not in out["text"]
+
+
+def test_rusto_unavailable_is_skipped(monkeypatch):
+    import whatsapp_adapter.ocr as m
+    monkeypatch.setattr(m.shutil, "which", lambda b: None)
+    monkeypatch.setenv("CE_OCR_CHAIN", "rusto")
+    monkeypatch.setattr(ocr, "ENGINES", {"rusto": ocr._ocr_rusto})
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "none"
+    assert "rusto not installed" in out["detail"]
+
+
+def test_paddle_engine_via_fake_module(monkeypatch):
+    """PaddleOCR 2.x-shaped result is normalized without the real dependency."""
+    import sys
+    import types
+
+    class _FakePaddle:
+        def __init__(self, lang="en"):
+            self.lang = lang
+
+        def ocr(self, path):
+            return [[[None, ("REFUND REQUEST", 0.99)], [None, ("1400 AED", 0.95)]]]
+
+    fake = types.ModuleType("paddleocr")
+    fake.PaddleOCR = _FakePaddle
+    monkeypatch.setitem(sys.modules, "paddleocr", fake)
+    monkeypatch.setattr(ocr, "_paddle_engine", None)
+    monkeypatch.setenv("CE_OCR_CHAIN", "paddleocr")
+    monkeypatch.setattr(ocr, "ENGINES", {"paddleocr": ocr._ocr_paddle})
+    out = ocr.ocr_image(b"\x89PNG-fake", "image/png")
+    assert out["engine"] == "paddleocr"
+    assert "REFUND REQUEST" in out["text"]
+    assert "1400 AED" in out["text"]
+
+
+def test_docling_engine_via_fake_module(monkeypatch):
+    import sys
+    import types
+
+    class _Doc:
+        def export_to_markdown(self):
+            return "# Invoice\nPNR ABC123 confirmed"
+
+    class _Result:
+        document = _Doc()
+
+    class _FakeConverter:
+        def convert(self, path):
+            return _Result()
+
+    fake_dc = types.ModuleType("docling.document_converter")
+    fake_dc.DocumentConverter = _FakeConverter
+    fake_pkg = types.ModuleType("docling")
+    fake_pkg.document_converter = fake_dc
+    monkeypatch.setitem(sys.modules, "docling", fake_pkg)
+    monkeypatch.setitem(sys.modules, "docling.document_converter", fake_dc)
+    monkeypatch.setattr(ocr, "_docling_converter", None)
+    monkeypatch.setenv("CE_OCR_CHAIN", "docling")
+    monkeypatch.setattr(ocr, "ENGINES", {"docling": ocr._ocr_docling})
+    out = ocr.ocr_image(b"%PDF-1.4 fake", "application/pdf")
+    assert out["engine"] == "docling"
+    assert "PNR ABC123" in out["text"]
+
+
+def test_paddle_texts_v3_shape():
+    assert ocr._paddle_texts({"rec_texts": ["a", "b"]}) == ["a", "b"]
+    assert ocr._paddle_texts([[{"rec_texts": ["x"]}]]) == ["x"]
+    assert ocr._paddle_texts([[[None, ("legacy", 0.9)]]]) == ["legacy"]

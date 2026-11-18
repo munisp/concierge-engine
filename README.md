@@ -759,6 +759,19 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 51 — pluggable OCR engine chain.** The WhatsApp media OCR chain
+generalizes from two providers into an env-ordered engine registry
+(`CE_OCR_CHAIN`, default `vlm,docling,paddleocr,rusto,tesseract`): the
+`vlm` slot is the external MiniCPM-OCR-compatible HTTP service; `docling`
+(IBM) handles PDFs/structured documents; `paddleocr` covers general
+image/PDF OCR (2.x/3.x result shapes normalized); `rusto` integrates
+RustO! (github.com/byrizki/rusto-rs — pure-Rust PP-OCRv6, Apache-2.0)
+via its Python binding or CLI; tesseract remains the baseline. Engines
+lazy-load, unsupported media and missing installs skip honestly, every
+attempt is recorded in the result detail, and heavy extras live in
+`requirements-ocr.txt` outside the CI install/audit set. See
+docs/phase51.md.
+
 **Phase 50 — security hardening wave.** Response to the 2025–26 attack
 cycle (Shai-Hulud npm worm, TanStack pipeline hijack, Megalodon CI commits,
 OAuth token cascades): every GitHub Action is SHA-pinned with default-deny

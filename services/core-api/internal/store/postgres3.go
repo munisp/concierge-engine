@@ -48,13 +48,15 @@ func scanApiKey(row interface{ Scan(...any) error }) (*model.ApiKey, error) {
 	var k model.ApiKey
 	var scopes []byte
 	var partnerID sql.NullString
+	var lastUsed sql.NullTime
 	err := row.Scan(&k.ID, &k.TenantID, &k.Name, &k.Prefix, &k.SecretHash,
-		&scopes, &k.Revoked, &k.CreatedAt, &k.LastUsedAt, &partnerID)
+		&scopes, &k.Revoked, &k.CreatedAt, &lastUsed, &partnerID)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(scopes, &k.Scopes)
 	k.PartnerID = partnerID.String
+	k.LastUsedAt = lastUsed.Time
 	return &k, nil
 }
 

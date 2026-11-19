@@ -123,6 +123,51 @@ var SiteContentBlocks = map[string]bool{
 // MaxContentBlockLen keeps a block a headline, not a page (280 chars).
 const MaxContentBlockLen = 280
 
+// Pack limits (Phase 55): a pack is a curated bundle, not a catalog dump.
+const (
+	MaxPacks          = 12
+	MaxPackServices   = 12
+	MaxPackPitchRunes = 600
+)
+
+var packSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,59}$`)
+
+// ValidatePacks enforces the Phase 55 pack contract on every site_config
+// write: slug grammar + uniqueness, name present, service count cap,
+// per-locale plain-text pitch. Service ids are NOT existence-checked here
+// — catalog rows can be deleted later, so membership resolves at render
+// (dangling ids drop out; an empty pack has no page).
+func ValidatePacks(packs []model.IndustryPack) error {
+	if len(packs) > MaxPacks {
+		return httpx.ErrValidation
+	}
+	seen := map[string]bool{}
+	for _, pk := range packs {
+		if !packSlug.MatchString(pk.Slug) || strings.TrimSpace(pk.Name) == "" {
+			return httpx.ErrValidation
+		}
+		if seen[pk.Slug] {
+			return httpx.ErrValidation
+		}
+		seen[pk.Slug] = true
+		if len(pk.ServiceIDs) == 0 || len(pk.ServiceIDs) > MaxPackServices {
+			return httpx.ErrValidation
+		}
+		for loc, text := range pk.Pitch {
+			if !blockLocale.MatchString(loc) {
+				return httpx.ErrValidation
+			}
+			if len([]rune(text)) > MaxPackPitchRunes || strings.ContainsAny(text, "<>") {
+				return httpx.ErrValidation
+			}
+		}
+		if len(pk.PromoID) > 80 {
+			return httpx.ErrValidation
+		}
+	}
+	return nil
+}
+
 var blockLocale = regexp.MustCompile(`^[a-z]{2}(-[A-Z]{2})?$`)
 
 // ValidateContentBlocks enforces the Phase 54 contract: known slots,
@@ -200,6 +245,10 @@ func ValidateSiteConfig(sc *model.SiteConfig) error {
 		return err
 	}
 	sc.ContentBlocks = blocks
+	// Phase 55: industry packs.
+	if err := ValidatePacks(sc.Packs); err != nil {
+		return err
+	}
 	return nil
 }
 

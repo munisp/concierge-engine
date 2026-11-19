@@ -17,6 +17,9 @@ type clientStats struct {
 	Bookings     int
 	LastBooking  time.Time
 	FirstBooking time.Time
+	// Verticals (Phase 55): the verticals of items on the client's booked
+	// requests — proven demand for the industry-pack segment axis.
+	Verticals map[string]bool
 }
 
 // SegmentClients returns the clients matching the rules. Erased clients
@@ -36,7 +39,7 @@ func (svc *Services) SegmentClients(ctx context.Context, tenantID string, r mode
 	// every unconverted corporate lead" or "call list of B2B-sourced
 	// leads" become declarative rules instead of hand-maintained lists.
 	var leadClients map[string]bool
-	if r.LeadKind != "" || r.ContactBasis != "" {
+	if r.LeadKind != "" || r.ContactBasis != "" || r.LeadVertical != "" {
 		leads, err := svc.Store.Leads().List(ctx, tenantID, 5000)
 		if err != nil {
 			return nil, err
@@ -51,6 +54,18 @@ func (svc *Services) SegmentClients(ctx context.Context, tenantID string, r mode
 			}
 			if r.ContactBasis != "" && l.ContactBasis != r.ContactBasis {
 				continue
+			}
+			if r.LeadVertical != "" {
+				found := false
+				for _, v := range l.Verticals {
+					if v == r.LeadVertical {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
 			}
 			leadClients[l.ClientID] = true
 		}
@@ -79,6 +94,7 @@ func (svc *Services) clientBookingStats(ctx context.Context, tenantID string) (m
 		return nil, err
 	}
 	reqClient := map[string]string{}
+	reqVerticals := map[string][]string{}
 	out := map[string]clientStats{}
 	for _, b := range bookings {
 		cid, ok := reqClient[b.RequestID]
@@ -89,9 +105,20 @@ func (svc *Services) clientBookingStats(ctx context.Context, tenantID string) (m
 			}
 			cid = sr.ClientID
 			reqClient[b.RequestID] = cid
+			for _, it := range sr.Items {
+				if it.Vertical != "" {
+					reqVerticals[b.RequestID] = append(reqVerticals[b.RequestID], it.Vertical)
+				}
+			}
 		}
 		st := out[cid]
 		st.Bookings++
+		for _, v := range reqVerticals[b.RequestID] {
+			if st.Verticals == nil {
+				st.Verticals = map[string]bool{}
+			}
+			st.Verticals[v] = true
+		}
 		if b.CreatedAt.After(st.LastBooking) {
 			st.LastBooking = b.CreatedAt
 		}
@@ -111,6 +138,9 @@ func matchSegment(c model.Client, st clientStats, r model.SegmentRules, now time
 		return false
 	}
 	if r.OrgID != "" && c.OrgID != r.OrgID {
+		return false
+	}
+	if r.Vertical != "" && !st.Verticals[r.Vertical] {
 		return false
 	}
 	if r.VIPFlag != "" {

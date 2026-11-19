@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "../api";
 
 // Phase 14 growth board: acquisition funnel (first-touch attributed),
@@ -954,6 +954,177 @@ export default function Growth() {
           </table>
         )}
       </div>
+          <IndustryPacks />
+</div>
+  );
+}
+
+// ------------------------------------------------------------ Phase 55: industry packs
+
+type Pack = {
+  slug: string;
+  name: string;
+  service_ids: string[];
+  pitch?: Record<string, string>;
+  promo_id?: string;
+  active: boolean;
+};
+
+type CatalogSvc = { id: string; name: string; vertical: string; active: boolean };
+
+type LaunchResult = {
+  campaign: string;
+  notice?: string;
+  pack_url: string;
+  segment: Record<string, unknown>;
+  result: { matched: number; sent: number; scheduled: number; held: number; failed: number };
+};
+
+function IndustryPacks() {
+  const [tenantSlug, setTenantSlug] = useState("");
+  const [siteCfg, setSiteCfg] = useState<Record<string, unknown>>({});
+  const [packs, setPacks] = useState<Pack[]>([]);
+  const [catalog, setCatalog] = useState<CatalogSvc[]>([]);
+  const [name, setName] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [pitch, setPitch] = useState("");
+  const [launchBody, setLaunchBody] = useState<Record<string, string>>({});
+  const [launchChannel, setLaunchChannel] = useState<Record<string, string>>({});
+  const [launchOut, setLaunchOut] = useState<Record<string, LaunchResult>>({});
+  const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
+
+  const load = useCallback(() => {
+    api.get<{ slug: string; site_config?: Record<string, unknown> }>("/v1/tenant")
+      .then((t) => {
+        setTenantSlug(t.slug);
+        setSiteCfg(t.site_config ?? {});
+        setPacks(((t.site_config ?? {}).packs as Pack[]) ?? []);
+      })
+      .catch((e) => setErr(String(e)));
+    api.get<CatalogSvc[]>("/v1/catalog").then(setCatalog).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+
+  const savePacks = async (next: Pack[]) => {
+    setErr("");
+    try {
+      await api.put("/v1/tenant", { site_config: { ...siteCfg, packs: next } });
+      setNote("Packs saved — live on your public site.");
+      load();
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const slugify = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+
+  const create = async () => {
+    const slug = slugify(name);
+    if (!slug || picked.length === 0) { setErr("Name and at least one service required."); return; }
+    if (packs.some((p) => p.slug === slug)) { setErr("A pack with that slug already exists."); return; }
+    await savePacks([...packs, {
+      slug, name: name.trim(), service_ids: picked,
+      pitch: pitch.trim() ? { en: pitch.trim() } : undefined, active: true,
+    }]);
+    setName(""); setPicked([]); setPitch("");
+  };
+
+  const toggleActive = (slug: string) =>
+    void savePacks(packs.map((p) => (p.slug === slug ? { ...p, active: !p.active } : p)));
+
+  const removePack = (slug: string) => {
+    if (!window.confirm(`Delete pack "${slug}"? Campaign history stays in the ledger.`)) return;
+    void savePacks(packs.filter((p) => p.slug !== slug));
+  };
+
+  const launch = async (slug: string) => {
+    setErr("");
+    try {
+      const body: Record<string, unknown> = { body: launchBody[slug] ?? "" };
+      if (launchChannel[slug]) body.channel = launchChannel[slug];
+      const r = await api.post<LaunchResult>(`/v1/packs/${encodeURIComponent(slug)}/launch`, body);
+      setLaunchOut((m) => ({ ...m, [slug]: r }));
+    } catch (e) { setErr(String(e)); }
+  };
+
+  return (
+    <div className="card">
+      <h2>Industry packs</h2>
+      <p className="muted">
+        Curated, campaignable service bundles — each pack gets a public landing page
+        (real catalog services and prices only) and a one-click campaign pre-segmented
+        to the pack's vertical. A pack with nothing bookable has no page.
+      </p>
+      {err && <p className="error">{err}</p>}
+      {note && <p className="notice">{note}</p>}
+
+      {packs.map((p) => (
+        <div key={p.slug} style={{ borderTop: "1px solid #eee", padding: "10px 0" }}>
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong>{p.name}</strong>
+            <span className="badge">{p.active ? "active" : "off"}</span>
+            <span className="muted">{p.service_ids.length} services</span>
+            {tenantSlug && (
+              <a href={`/site/${tenantSlug}/packs/${p.slug}`} target="_blank" rel="noreferrer">
+                /packs/{p.slug}
+              </a>
+            )}
+            <span style={{ flex: 1 }} />
+            <button className="secondary" onClick={() => toggleActive(p.slug)}>
+              {p.active ? "Deactivate" : "Activate"}
+            </button>
+            <button className="secondary" onClick={() => removePack(p.slug)}>Delete</button>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            <input
+              style={{ flex: 1, minWidth: 220 }}
+              placeholder="Campaign message (body)"
+              value={launchBody[p.slug] ?? ""}
+              onChange={(e) => setLaunchBody((m) => ({ ...m, [p.slug]: e.target.value }))}
+            />
+            <select
+              value={launchChannel[p.slug] ?? ""}
+              onChange={(e) => setLaunchChannel((m) => ({ ...m, [p.slug]: e.target.value }))}
+            >
+              <option value="">whatsapp</option>
+              <option value="email">email</option>
+            </select>
+            <button onClick={() => void launch(p.slug)} disabled={!(launchBody[p.slug] ?? "").trim()}>
+              Launch campaign
+            </button>
+          </div>
+          {launchOut[p.slug] && (
+            <p className="muted" style={{ marginTop: 6 }}>
+              campaign <code>{launchOut[p.slug].campaign}</code> — matched {launchOut[p.slug].result.matched},
+              sent {launchOut[p.slug].result.sent}, held {launchOut[p.slug].result.held}
+              {launchOut[p.slug].notice ? ` · ${launchOut[p.slug].notice}` : ""}
+            </p>
+          )}
+        </div>
+      ))}
+
+      <h3 style={{ margin: "14px 0 4px" }}>New pack</h3>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <input style={{ minWidth: 220 }} placeholder="Pack name (e.g. F1 Race Weekend)"
+          value={name} onChange={(e) => setName(e.target.value)} />
+        <input style={{ flex: 1, minWidth: 220 }} placeholder="Pitch (plain text, shown on the pack page)"
+          value={pitch} onChange={(e) => setPitch(e.target.value)} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, margin: "8px 0" }}>
+        {catalog.map((s) => (
+          <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox"
+              checked={picked.includes(s.id)}
+              onChange={() =>
+                setPicked((cur) => cur.includes(s.id) ? cur.filter((x) => x !== s.id) : [...cur, s.id])
+              } />
+            {s.name} <span className="muted">{s.vertical}</span>
+          </label>
+        ))}
+      </div>
+      <button onClick={() => void create()} disabled={!name.trim() || picked.length === 0}>
+        Create pack
+      </button>
     </div>
   );
 }

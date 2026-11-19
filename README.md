@@ -759,6 +759,19 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 55 — industry packs & vertical campaigns.** Marketing automation is
+now industry-aware (docs/phase55.md): segments gain two vertical axes —
+`vertical` (proven: booked a request containing that vertical) and
+`lead_vertical` (declared: open-lead interest) — and `site_config.packs`
+defines curated industry packs (slug, ≤12 services, per-locale pitch, promo
+link, active flag; validated on every write, no migration). Each active pack
+gets a public landing page (`/site/{tenant}/packs/{slug}`) with catalog-
+resolved service cards, UTM-tagged CTA, sitemap gating, and honest 404s for
+inactive or empty packs. `POST /v1/packs/{slug}/launch` runs a broadcast with
+a vertical-derived default segment — multi-vertical packs say so explicitly
+instead of pretending precision. Growth console section for create / toggle /
+launch.
+
 **Phase 54 — marketer content blocks.** Final feature-borrow from the
 Mautic assessment (docs/phase54.md): four curated, plain-text copy slots
 (`site_config.content_blocks` — hero tagline, CTA label, footer note,

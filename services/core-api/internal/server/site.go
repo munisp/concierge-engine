@@ -88,6 +88,7 @@ var siteReserved = map[string]bool{
 	"media": true, // Phase 31: public media serving
 	// Phase 35: acquisition pages
 	"airport": true, "routes": true, "gift": true,
+	"packs": true, // Phase 55: industry pack landing pages
 }
 
 // siteDispatch routes /site/{slug}/... manually: optional {locale} prefix,
@@ -131,6 +132,9 @@ func (h *handlers) siteDispatch(w http.ResponseWriter, r *http.Request) {
 	case len(segs) == 3 && segs[0] == "book" && segs[2] == "og.png":
 		r.SetPathValue("serviceID", segs[1])
 		h.siteOGService(w, r)
+	case len(segs) == 2 && segs[0] == "packs":
+		r.SetPathValue("packSlug", segs[1])
+		h.sitePack(w, r)
 	case len(segs) == 2 && segs[0] == "areas":
 		r.SetPathValue("areaID", segs[1])
 		h.siteArea(w, r)
@@ -1156,6 +1160,18 @@ func (h *handlers) siteSitemap(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, a := range areas {
 			writeURL(fmt.Sprintf("%s/areas/%s", base, a.ID), "0.8")
+		}
+		// Phase 55: pack pages — only packs that actually resolve (active
+		// AND at least one live service), same honesty gate as the
+		// acquisition pages below.
+		for i := range t.SiteConfig.Packs {
+			pk := &t.SiteConfig.Packs[i]
+			if !pk.Active {
+				continue
+			}
+			if _, resolved := resolvePack(t, services, pk.Slug); len(resolved) > 0 {
+				writeURL(fmt.Sprintf("%s/packs/%s", base, pk.Slug), "0.8")
+			}
 		}
 	}
 	// Phase 35 (A15): acquisition pages — but only URLs that actually

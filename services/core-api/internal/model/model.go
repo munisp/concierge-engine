@@ -320,6 +320,26 @@ type SiteConfig struct {
 	// only; meta/OG/JSON-LD stay engine-derived (SEO consistency is not a
 	// marketer variable). Empty = engine copy renders.
 	ContentBlocks map[string]map[string]string `json:"content_blocks,omitempty"`
+	// Packs (Phase 55): industry packs — curated, campaignable bundles of
+	// catalog services with their own public landing page
+	// (/site/{slug}/packs/{slug}) and one-click vertical-segment campaign
+	// wiring (POST /v1/packs/{slug}/launch). Validated in
+	// ValidateSiteConfig on every write path.
+	Packs []IndustryPack `json:"packs,omitempty"`
+}
+
+// IndustryPack (Phase 55): a named, campaignable bundle of catalog
+// services for one industry/vertical story (e.g. "Formula 1 race weekend",
+// "Art Basel collectors"). Copy is per-locale plain text; services are
+// resolved at render — dangling/inactive ids drop out honestly, and a pack
+// with nothing bookable has no page.
+type IndustryPack struct {
+	Slug       string            `json:"slug"` // [a-z0-9-], unique per tenant
+	Name       string            `json:"name"`
+	ServiceIDs []string          `json:"service_ids"`
+	Pitch      map[string]string `json:"pitch,omitempty"`    // locale → plain text (≤600)
+	PromoID    string            `json:"promo_id,omitempty"` // optional linked promo code
+	Active     bool              `json:"active"`
 }
 
 // SiteTheme (Phase 30): the design tokens the public site template

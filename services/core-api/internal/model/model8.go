@@ -76,6 +76,12 @@ type SequenceStep struct {
 // must match (AND). Used by broadcast campaigns (O1) and the segment
 // preview endpoint. Booking-derived fields are evaluated against the
 // tenant's booking ledger at query time.
+//
+// Phase 55 vertical axes (industry packs): Vertical = PROVEN demand — the
+// client holds at least one booking whose request carries an item in this
+// vertical; LeadVertical = DECLARED interest — the client is linked to an
+// open lead listing the vertical (Lead.Verticals, captured at first
+// touch). Proven and declared stay separate axes on purpose.
 type SegmentRules struct {
 	Locale             string `json:"locale,omitempty"`
 	LoyaltyTier        string `json:"loyalty_tier,omitempty"`
@@ -86,6 +92,8 @@ type SegmentRules struct {
 	MinBookings        int    `json:"min_bookings,omitempty"`
 	NoBookingSinceDays int    `json:"no_booking_since_days,omitempty"` // dormant: last booking older than this (never-booked counts)
 	CreatedBeforeDays  int    `json:"created_before_days,omitempty"`   // client created at least N days ago
+	Vertical           string `json:"vertical,omitempty"`              // proven: booked the vertical
+	LeadVertical       string `json:"lead_vertical,omitempty"`         // declared: open-lead interest
 	// LeadKind (Phase 36): only clients linked to an OPEN lead of this kind
 	// match. Wires the lead engine into broadcasts and drip sequences.
 	LeadKind string `json:"lead_kind,omitempty"`

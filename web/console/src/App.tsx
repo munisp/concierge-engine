@@ -14,6 +14,7 @@ import Leads from "./pages/Leads";
 import Partners from "./pages/Partners";
 import Receipts from "./pages/Receipts";
 import Growth from "./pages/Growth";
+import Sequences from "./pages/Sequences";
 import Clients from "./pages/Clients";
 import Referrals from "./pages/Referrals";
 import Settings from "./pages/Settings";
@@ -37,6 +38,7 @@ export default function App() {
         <Link to="/geo">Geo</Link>
         <Link to="/receipts">Receipts &amp; SLA</Link>
         <Link to="/growth">Growth</Link>
+        <Link to="/sequences">Campaigns</Link>
         <Link to="/leads">Leads</Link>
         <Link to="/insights">Insights</Link>
         <Link to="/studio">Site Studio</Link>
@@ -61,6 +63,7 @@ export default function App() {
           <Route path="/geo" element={<Geo />} />
           <Route path="/receipts" element={<Receipts />} />
           <Route path="/growth" element={<Growth />} />
+          <Route path="/sequences" element={<Sequences />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/insights" element={<Insights />} />
           <Route path="/studio" element={<Studio />} />

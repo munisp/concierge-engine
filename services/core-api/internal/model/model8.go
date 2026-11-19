@@ -56,6 +56,20 @@ type Sequence struct {
 type SequenceStep struct {
 	AfterHours int    `json:"after_hours"` // delay after previous step / enrollment
 	Body       string `json:"body"`        // {{client_name}} / {{tenant_name}} render
+	// Phase 53 (visual campaign builder): steps are typed nodes.
+	Label      string `json:"label,omitempty"`       // builder display name
+	TemplateID string `json:"template_id,omitempty"` // Phase 21 template; body renders server-side
+	Channel    string `json:"channel,omitempty"`     // whatsapp (default) | email
+	Subject    string `json:"subject,omitempty"`     // required on email steps
+	// RequireEngagement (Mautic "decision" node): the step fires only once
+	// the PREVIOUS step's send shows real engagement (email_opened /
+	// email_clicked / client_replied attribution after that send). While
+	// waiting the sequence stalls honestly — nothing is sent or recorded.
+	// EngagementTimeoutHours > 0 bounds the wait: on expiry a terminal
+	// halt marker is recorded on the ledger and the sequence stops for
+	// that client (never a silent drop — the hold is visible).
+	RequireEngagement      bool `json:"require_engagement,omitempty"`
+	EngagementTimeoutHours int  `json:"engagement_timeout_hours,omitempty"`
 }
 
 // SegmentRules (O2): a declarative client segment — every present field

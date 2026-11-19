@@ -62,6 +62,15 @@ func (svc *SequenceService) Run(ctx context.Context, tenantID string) (*Sequence
 	}
 	res.Scanned = len(clients)
 	now := svc.s.Now()
+	// Phase 53: index ledger records by key — engagement gates need the
+	// previous step's send (its CreatedAt anchors the engagement window)
+	// and halt markers block downstream progression.
+	byKey := make(map[string]*model.OutreachSend, len(sends))
+	for i := range sends {
+		o := sends[i]
+		oo := o
+		byKey[oo.IdempotencyKey] = &oo
+	}
 	for _, seq := range t.OutreachConfig.Sequences {
 		if seq.Name == "" || len(seq.Steps) == 0 {
 			continue
@@ -98,21 +107,60 @@ func (svc *SequenceService) Run(ctx context.Context, tenantID string) (*Sequence
 				if done[key] {
 					continue // step already recorded — any status
 				}
-				if i > 0 && !done[fmt.Sprintf("seq:%s:%d:%s", seq.Name, i-1, c.ID)] {
+				prevKey := fmt.Sprintf("seq:%s:%d:%s", seq.Name, i-1, c.ID)
+				if i > 0 && !done[prevKey] {
 					break // sequential: wait for the previous step
+				}
+				if i > 0 && isSeqHalt(byKey[prevKey]) {
+					break // Phase 53: a halted step ends the sequence here
 				}
 				if now.Before(fireAt) {
 					break // not due yet; later steps are even further out
 				}
+				// Phase 53 engagement gate (Mautic decision node): hold the
+				// step until the previous send earned real engagement. No
+				// record is written while waiting — the stall is honest.
+				if step.RequireEngagement && i > 0 {
+					prev := byKey[prevKey]
+					if prev == nil {
+						break
+					}
+					engaged, err := svc.engagedSince(ctx, tenantID, c.ID, prev.CreatedAt)
+					if err != nil {
+						break
+					}
+					if !engaged {
+						if step.EngagementTimeoutHours > 0 &&
+							!now.Before(prev.CreatedAt.Add(time.Duration(step.EngagementTimeoutHours)*time.Hour)) {
+							halt := &model.OutreachSend{
+								ID: NewID(), TenantID: tenantID, ClientID: c.ID,
+								Channel: seqStepChannel(step), Purpose: purpose,
+								Status: "held",
+								Detail: fmt.Sprintf("%sno engagement within %dh of previous step",
+									seqHaltPrefix, step.EngagementTimeoutHours),
+								IdempotencyKey: key, CreatedAt: now,
+							}
+							if err := svc.s.Store.Outreach().AddSend(ctx, halt); err != nil {
+								break
+							}
+							done[key] = true
+							byKey[key] = halt
+							res.Held++
+						}
+						break // waiting on engagement — or just halted
+					}
+				}
 				body := renderSequenceBody(step.Body, &c, t.Name)
 				o, err := svc.s.Outreach.Send(ctx, tenantID, SendOutreachInput{
 					ClientID: c.ID, Purpose: purpose, Body: body,
-					IdempotencyKey: key,
+					TemplateID: step.TemplateID, Channel: step.Channel,
+					Subject: step.Subject, IdempotencyKey: key,
 				})
 				if err != nil {
 					break
 				}
 				done[key] = true
+				byKey[key] = o
 				switch o.Status {
 				case "sent", "scheduled":
 					res.Sent++

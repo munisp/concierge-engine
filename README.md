@@ -759,6 +759,16 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 53 — visual campaign builder.** Second feature-borrow from the
+Mautic assessment (docs/phase53.md): a console canvas (`/sequences`) over
+the drip engine — typed nodes (label, template, channel, subject),
+Mautic-style engagement decision gates (a step waits for a real
+open/click/reply before firing; waiting writes nothing; on timeout a
+terminal halt marker on the ledger stops the sequence visibly, never
+silently), and live per-node counters derived from the same sends ledger
+the sweep acts on. CRUD + run-now API (`/v1/outreach/sequences`), no
+migration, zero extra state.
+
 **Phase 52 — engagement-driven send-time optimization.** First
 feature-borrow from the Mautic assessment (docs/phase52.md): the Phase 35
 optimizer inferred best send hour from booking patterns; it now prefers the

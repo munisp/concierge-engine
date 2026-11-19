@@ -33,8 +33,14 @@ func pgSoundscapeBooking(t *testing.T, s Store, tenant, suffix string) (clientID
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatal(err)
 	}
+	q := &model.Quote{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
+		Version: 1, Origin: "INSTANT", TotalMinor: 12000, Currency: "EUR",
+		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now()}
+	if err := s.Quotes().Create(ctx, q); err != nil {
+		t.Fatal(err)
+	}
 	b := &model.Booking{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
-		State: "CONFIRMED", CreatedAt: time.Now()}
+		QuoteID: q.ID, State: "CONFIRMED", CreatedAt: time.Now()}
 	if err := s.Bookings().Create(ctx, b); err != nil {
 		t.Fatal(err)
 	}

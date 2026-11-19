@@ -33,6 +33,7 @@ var siteTmpl = template.Must(template.New("site").Parse(`<!doctype html>
 {{.ThemeCSS}}
 *{box-sizing:border-box}
 body{font-family:var(--font-main);margin:0;color:var(--ink);background:var(--bg)}
+.announce{background:var(--accent);color:#fff;text-align:center;padding:9px 16px;font-size:.92rem;font-family:system-ui,sans-serif;letter-spacing:.01em}
 .nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px;background:color-mix(in srgb,var(--ink) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#fff;font-family:system-ui,sans-serif}
 .nav .brand{font-family:var(--font-main);font-size:1.25rem;letter-spacing:.08em;color:#fff;text-decoration:none}
 .nav .links{display:flex;gap:22px;align-items:center}
@@ -120,6 +121,7 @@ footer a{color:#8a8f98}
 {{if .DesignCSS}}<style>{{.DesignCSS}}</style>{{end}}
 </head>
 <body class="design-{{.Design}}">
+{{if .Announcement}}<div class="announce">{{.Announcement}}</div>{{end}}
 <nav class="nav">
 <a class="brand" href="{{.HomeURL}}">{{.TenantName}}</a>
 <div class="links">
@@ -134,7 +136,7 @@ footer a{color:#8a8f98}
 {{if .HeroImageURL}}<img class="hero-bg" src="{{.HeroImageURL}}" alt="" fetchpriority="high">{{end}}
 <div class="hero-inner">
 <h1 class="brand">{{.Heading}}</h1>
-<p class="tag">{{.Description}}</p>
+<p class="tag">{{.HeroTag}}</p>
 {{if .ReviewCount}}<span class="rating">★ {{.ReviewAvg}} · {{.ReviewCount}} {{.D.ClientReviews}}</span>{{end}}
 <div class="cta-row">
 <a class="btn btn-primary" href="{{.CTA}}">{{.CTALabel}}</a>

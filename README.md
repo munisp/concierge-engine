@@ -759,6 +759,14 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 54 — marketer content blocks.** Final feature-borrow from the
+Mautic assessment (docs/phase54.md): four curated, plain-text copy slots
+(`site_config.content_blocks` — hero tagline, CTA label, footer note,
+announcement bar) with per-locale overrides and default-locale fallback.
+Closed vocabulary + no markup + 280-char cap validated on every write
+path; meta/OG/JSON-LD stay engine-derived for SEO consistency; clearing a
+block restores the engine copy. Studio console card, no migration.
+
 **Phase 53 — visual campaign builder.** Second feature-borrow from the
 Mautic assessment (docs/phase53.md): a console canvas (`/sequences`) over
 the drip engine — typed nodes (label, template, channel, subject),

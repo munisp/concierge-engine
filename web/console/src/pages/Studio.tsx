@@ -31,6 +31,15 @@ const SECTIONS: [string, string][] = [
 ];
 const GALLERY_MAX = 8;
 
+// Phase 54: marketer content blocks — keep in sync with
+// domain.SiteContentBlocks (core-api). Plain text, 280 chars, per-locale.
+const CONTENT_BLOCKS: [string, string][] = [
+  ["hero_tagline", "Hero tagline — the big line under your name (search snippets stay automatic)"],
+  ["cta_label", "CTA button label — the primary landing button"],
+  ["footer_note", "Footer note — the closing line at the bottom of every page"],
+  ["announcement", "Announcement bar — a slim banner on top of the site; clear it to remove"],
+];
+
 type SiteConfig = NonNullable<Tenant["site_config"]>;
 
 export default function Studio() {
@@ -44,8 +53,16 @@ export default function Studio() {
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [media, setMedia] = useState<Media[]>([]);
   const [site, setSite] = useState<SiteConfig | null>(null);
+  const [blocks, setBlocks] = useState<Record<string, Record<string, string>>>({});
+  const [blocksDirty, setBlocksDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
   const tenant = getTenantId();
+
+  // Phase 54: local edit buffer for content blocks — text edits save on
+  // an explicit click, not per keystroke.
+  useEffect(() => {
+    if (site) setBlocks(site.content_blocks ?? {});
+  }, [site]);
 
   const load = useCallback(() => {
     if (!tenant) return;
@@ -153,6 +170,27 @@ export default function Studio() {
     }
   };
 
+  // --- Phase 54: content blocks ------------------------------------------
+  const setBlock = (slot: string, loc: string, val: string) => {
+    setBlocks((b) => ({ ...b, [slot]: { ...(b[slot] ?? {}), [loc]: val } }));
+    setBlocksDirty(true);
+  };
+
+  const saveBlocks = async () => {
+    if (!site) return;
+    // Drop empty values — clearing a block restores the engine copy.
+    const cleaned: Record<string, Record<string, string>> = {};
+    for (const [slot, perLoc] of Object.entries(blocks)) {
+      const kept = Object.fromEntries(Object.entries(perLoc).filter(([, v]) => v.trim() !== ""));
+      if (Object.keys(kept).length > 0) cleaned[slot] = kept;
+    }
+    await saveSite({ ...site, content_blocks: cleaned });
+    setBlocksDirty(false);
+    setSaved("Content blocks saved — live on your public site.");
+  };
+
+  const siteLocales = site?.locales?.length ? site.locales : [site?.locale || "en"];
+
   if (!tenant) return <p className="muted">Set a tenant ID first (Settings).</p>;
 
   return (
@@ -241,6 +279,34 @@ export default function Studio() {
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Content blocks</h2>
+        <p className="muted">
+          Marketer-editable copy slots on the public site — plain text only
+          (max 280 chars), per locale. Clearing a field restores the
+          engine-written copy. Search and social snippets stay automatic.
+        </p>
+        {CONTENT_BLOCKS.map(([slot, desc]) => (
+          <div key={slot} style={{ marginBottom: 14 }}>
+            <strong>{slot.replace(/_/g, " ")}</strong>{" "}
+            <span className="muted">— {desc}</span>
+            {siteLocales.map((loc) => (
+              <div className="row" key={loc} style={{ gap: 8, marginTop: 4, alignItems: "center" }}>
+                <span className="badge">{loc}</span>
+                <input
+                  style={{ flex: 1 }}
+                  maxLength={280}
+                  placeholder="engine copy"
+                  value={blocks[slot]?.[loc] ?? ""}
+                  onChange={(e) => setBlock(slot, loc, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        ))}
+        <button onClick={() => void saveBlocks()} disabled={!blocksDirty}>Save content blocks</button>
       </div>
 
       <div className="card">

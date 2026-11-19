@@ -321,6 +321,12 @@ type sitePage struct {
 	Hidden    map[string]bool
 	Gallery   []string     // resolved public media URLs (dangling ids skipped)
 	DesignCSS template.CSS // editorial layout re-flow, empty for classic
+	// Phase 54: marketer content blocks (site_config.content_blocks).
+	// HeroTag is the hero paragraph (defaults to Description — the block
+	// overrides DISPLAY only; meta/OG keep the engine copy). Announcement
+	// renders as a slim top bar when set; empty = no bar in the DOM.
+	HeroTag      string
+	Announcement string
 }
 
 // Show reports whether a landing section is visible (Phase 32).
@@ -657,6 +663,32 @@ func breadcrumbLD(base string, crumbs ...[2]string) map[string]any {
 
 // ---------------------------------------------------------- landing
 
+// contentBlock resolves a Phase 54 marketer copy override for the page
+// locale, falling back to the tenant's default locale, then to "" (engine
+// copy renders). The block vocabulary and plain-text rules are enforced
+// on write, so render-time is a pure lookup.
+func contentBlock(t *model.Tenant, locale, key string) string {
+	blocks := t.SiteConfig.ContentBlocks
+	if len(blocks) == 0 {
+		return ""
+	}
+	perLocale := blocks[key]
+	if perLocale == nil {
+		return ""
+	}
+	if v := perLocale[locale]; v != "" {
+		return v
+	}
+	def := t.SiteConfig.Locale
+	if len(t.SiteConfig.Locales) > 0 {
+		def = t.SiteConfig.Locales[0]
+	}
+	if def == "" {
+		def = "en"
+	}
+	return perLocale[def]
+}
+
 func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 	t, services, areas, err := h.siteData(r)
 	if err != nil {
@@ -677,6 +709,18 @@ func (h *handlers) siteLanding(w http.ResponseWriter, r *http.Request) {
 	p.Heading = t.Name
 	p.SubHead = "VIP concierge"
 	p.CTA, p.CTALabel = h.captureURL(t.ID, "landing"), p.D.BookYourConcierge
+	// Phase 54: marketer content blocks — render-time copy overrides.
+	p.HeroTag = p.Description
+	if v := contentBlock(t, locale, "hero_tagline"); v != "" {
+		p.HeroTag = v
+	}
+	if v := contentBlock(t, locale, "cta_label"); v != "" {
+		p.CTALabel = v
+	}
+	if v := contentBlock(t, locale, "footer_note"); v != "" {
+		p.D.FooterTagline = v
+	}
+	p.Announcement = contentBlock(t, locale, "announcement")
 	if sum, err := h.svc.ReviewSummary(r.Context(), t.ID); err == nil && sum.Count > 0 {
 		p.ReviewCount = sum.Count
 		p.ReviewAvg = fmt.Sprintf("%.1f", sum.Average)
@@ -1334,6 +1378,11 @@ func renderSite(w http.ResponseWriter, r *http.Request, p sitePage) {
 	}
 	if p.Lang == "" {
 		p.Lang = "en"
+	}
+	// Phase 54: the hero paragraph binds HeroTag (landing may override it
+	// with a content block); every other page falls back to Description.
+	if p.HeroTag == "" {
+		p.HeroTag = p.Description
 	}
 	var buf bytes.Buffer
 	if err := siteTmpl.Execute(&buf, p); err != nil {

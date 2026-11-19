@@ -19,6 +19,7 @@ export interface Tenant {
     design?: string; // classic | editorial
     hidden_sections?: string[];
     gallery_ids?: string[];
+    content_blocks?: Record<string, Record<string, string>>; // Phase 54: slot -> locale -> text
   };
   outreach_config?: { marketing_cap_7d?: number };
   operator_config?: { alert_phones?: string[] };

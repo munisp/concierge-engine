@@ -109,6 +109,59 @@ var SiteSections = map[string]bool{
 // MaxGalleryImages caps the landing gallery strip (Phase 32).
 const MaxGalleryImages = 8
 
+// SiteContentBlocks (Phase 54): the closed vocabulary of marketer-editable
+// copy slots — Mautic "content blocks" borrowed onto the SSR engine.
+// Curated slots, never freeform HTML: the page structure stays
+// engine-owned (the Phase 32 curated-beats-freeform rule).
+var SiteContentBlocks = map[string]bool{
+	"hero_tagline": true, // hero paragraph — display only, meta/OG stay engine-derived
+	"cta_label":    true, // primary landing CTA button
+	"footer_note":  true, // footer tagline line
+	"announcement": true, // slim top bar; empty = not rendered at all
+}
+
+// MaxContentBlockLen keeps a block a headline, not a page (280 chars).
+const MaxContentBlockLen = 280
+
+var blockLocale = regexp.MustCompile(`^[a-z]{2}(-[A-Z]{2})?$`)
+
+// ValidateContentBlocks enforces the Phase 54 contract: known slots,
+// well-formed locale keys, plain text (no markup — the template would
+// escape it anyway, and silent literal `<b>` output would confuse
+// marketers), length cap, and empty values dropped (clearing a block
+// restores the engine copy).
+func ValidateContentBlocks(blocks map[string]map[string]string) (map[string]map[string]string, error) {
+	if len(blocks) == 0 {
+		return nil, nil
+	}
+	out := map[string]map[string]string{}
+	for key, perLocale := range blocks {
+		if !SiteContentBlocks[key] {
+			return nil, httpx.ErrValidation
+		}
+		for loc, text := range perLocale {
+			if !blockLocale.MatchString(loc) {
+				return nil, httpx.ErrValidation
+			}
+			text = strings.TrimSpace(text)
+			if text == "" {
+				continue
+			}
+			if len([]rune(text)) > MaxContentBlockLen || strings.ContainsAny(text, "<>") {
+				return nil, httpx.ErrValidation
+			}
+			if out[key] == nil {
+				out[key] = map[string]string{}
+			}
+			out[key][loc] = text
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
 // ValidateSiteConfig (Phase 32) validates every design-bearing site_config
 // field on EVERY write path. PUT /v1/tenant patches site_config wholesale
 // and used to bypass ValidateTheme entirely — an invalid preset posted
@@ -141,6 +194,12 @@ func ValidateSiteConfig(sc *model.SiteConfig) error {
 	if len(sc.GalleryIDs) > MaxGalleryImages {
 		return httpx.ErrValidation
 	}
+	// Phase 54: marketer content blocks — validated on every write path.
+	blocks, err := ValidateContentBlocks(sc.ContentBlocks)
+	if err != nil {
+		return err
+	}
+	sc.ContentBlocks = blocks
 	return nil
 }
 

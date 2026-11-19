@@ -313,6 +313,13 @@ type SiteConfig struct {
 	// between the services grid and how-it-works. Dangling ids are skipped
 	// at render (never a broken img); max 8 enforced on write.
 	GalleryIDs []string `json:"gallery_ids,omitempty"`
+	// ContentBlocks (Phase 54): marketer-editable copy overrides — block
+	// key → locale → plain text. Closed vocabulary + plain-text-only +
+	// per-locale with default-locale fallback, all enforced by
+	// ValidateSiteConfig on every write path. Overrides RENDER-TIME copy
+	// only; meta/OG/JSON-LD stay engine-derived (SEO consistency is not a
+	// marketer variable). Empty = engine copy renders.
+	ContentBlocks map[string]map[string]string `json:"content_blocks,omitempty"`
 }
 
 // SiteTheme (Phase 30): the design tokens the public site template

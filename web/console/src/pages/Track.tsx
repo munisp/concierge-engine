@@ -195,8 +195,114 @@ export default function Track() {
           </div>
 
           {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} submitted={view.review_submitted} />}
+          <RidePreferences token={token} />
         </>
       )}
+    </div>
+  );
+}
+
+// Phase 58: self-serve rider preferences on the tracking link. The client
+// edits their own comfort profile (music, temperature, conversation…);
+// curated values only — the server validates the vocabulary.
+type RideProfile = {
+  music?: string;
+  music_volume?: string;
+  temperature_c?: string;
+  conversation?: string;
+  route?: string;
+  seat?: string;
+  child_seat?: string;
+  luggage?: string;
+  mobility?: string;
+  language?: string;
+};
+
+const RIDE_PREF_FIELDS: { key: keyof RideProfile; label: string; options: string[] }[] = [
+  { key: "conversation", label: "Conversation", options: ["quiet", "light", "chatty"] },
+  { key: "route", label: "Route", options: ["fastest", "scenic", "no_tolls"] },
+  { key: "seat", label: "Seat", options: ["front_passenger", "rear_left", "rear_right"] },
+  { key: "child_seat", label: "Child seat", options: ["none", "infant", "toddler", "booster"] },
+  { key: "luggage", label: "Luggage", options: ["light", "standard", "heavy"] },
+  { key: "music_volume", label: "Music volume", options: ["low", "medium", "high"] },
+];
+
+const PREF_KEY_MAP: Record<string, string> = {
+  conversation: "ride.conversation",
+  route: "ride.route",
+  seat: "ride.seat",
+  child_seat: "ride.child_seat",
+  luggage: "ride.luggage",
+  music_volume: "ride.music_volume",
+  music: "ride.music",
+  temperature_c: "ride.temperature_c",
+};
+
+function RidePreferences({ token }: { token: string }) {
+  const [profile, setProfile] = useState<RideProfile>({});
+  const [saved, setSaved] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setProfile(await tokenCall<RideProfile>("GET", `/v1/track/${token}/preferences`));
+    } catch {
+      // preferences are optional — the journey view is the point
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function setPref(field: keyof RideProfile, value: string) {
+    try {
+      await tokenCall("PUT", `/v1/track/${token}/preferences/${PREF_KEY_MAP[field]}`, { value });
+      setProfile({ ...profile, [field]: value });
+      setSaved("Saved");
+      setErr("");
+      setTimeout(() => setSaved(""), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "save failed");
+    }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 480 }}>
+      <h3>Your ride preferences</h3>
+      <p className="muted">Set once — your chauffeur sees them on every trip.</p>
+      {RIDE_PREF_FIELDS.map((f) => (
+        <div key={f.key} className="row" style={{ justifyContent: "space-between" }}>
+          <span>{f.label}</span>
+          <select
+            value={profile[f.key] ?? ""}
+            onChange={(e) => void setPref(f.key, e.target.value)}
+          >
+            <option value="">—</option>
+            {f.options.map((o) => (
+              <option key={o} value={o}>{o.replace(/_/g, " ")}</option>
+            ))}
+          </select>
+        </div>
+      ))}
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <span>Music</span>
+        <input
+          placeholder="afrobeats, jazz, off…"
+          defaultValue={profile.music ?? ""}
+          onBlur={(e) => e.target.value && void setPref("music", e.target.value)}
+        />
+      </div>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <span>Temperature (°C)</span>
+        <input
+          type="number" min={16} max={26} style={{ width: 80 }}
+          defaultValue={profile.temperature_c ?? ""}
+          onBlur={(e) => e.target.value && void setPref("temperature_c", e.target.value)}
+        />
+      </div>
+      {saved && <p>{saved}</p>}
+      {err && <p className="error">{err}</p>}
     </div>
   );
 }

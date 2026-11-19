@@ -308,6 +308,7 @@ export default function Clients() {
                 ))}
               </tbody></table>
             )}
+            <RideProfileCard clientID={view.client.id} onSaved={() => open360(view.client.id)} />
             <h3>Preferences ({view.preferences.length})</h3>
             {view.preferences.length > 0 && (
               <table><tbody>
@@ -328,6 +329,75 @@ export default function Clients() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Phase 58: curated ride-profile quick-set. Values are validated
+// server-side against the curated vocabulary (422 on an invalid enum).
+const RIDE_QUICK_SET: { key: string; label: string; options: string[] }[] = [
+  { key: "ride.music", label: "Music", options: [] }, // free text
+  { key: "ride.temperature_c", label: "Temperature °C", options: [] }, // 16–26
+  { key: "ride.conversation", label: "Conversation", options: ["quiet", "light", "chatty"] },
+  { key: "ride.route", label: "Route", options: ["fastest", "scenic", "no_tolls"] },
+  { key: "ride.child_seat", label: "Child seat", options: ["none", "infant", "toddler", "booster"] },
+  { key: "ride.luggage", label: "Luggage", options: ["light", "standard", "heavy"] },
+  { key: "access.mobility", label: "Mobility", options: ["none", "assistance", "wheelchair"] },
+  { key: "dining.dietary", label: "Dietary", options: ["none", "vegetarian", "vegan", "halal", "kosher", "gluten_free"] },
+  { key: "dining.allergens", label: "Allergens", options: [] }, // free text
+  { key: "comms.language", label: "Language", options: [] }, // BCP-47
+];
+
+function RideProfileCard({ clientID, onSaved }: { clientID: string; onSaved: () => Promise<void> | void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  async function save(key: string, value: string) {
+    try {
+      await api.put(`/v1/clients/${clientID}/preferences/${key}`, {
+        value, consent_scope: "service", recorded_by: "console",
+      });
+      setValues({ ...values, [key]: value });
+      setMsg("Saved");
+      setErr("");
+      setTimeout(() => setMsg(""), 2000);
+      await onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "save failed");
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>Ride profile (curated)</h3>
+      <p className="muted">
+        Surfaces to the chauffeur trip view and — consent permitting — to partner offers.
+      </p>
+      {RIDE_QUICK_SET.map((f) => (
+        <div key={f.key} className="row" style={{ justifyContent: "space-between" }}>
+          <span>{f.label}</span>
+          {f.options.length > 0 ? (
+            <select
+              value={values[f.key] ?? ""}
+              onChange={(e) => e.target.value && void save(f.key, e.target.value)}
+            >
+              <option value="">—</option>
+              {f.options.map((o) => (
+                <option key={o} value={o}>{o.replace(/_/g, " ")}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              style={{ maxWidth: 180 }}
+              defaultValue={values[f.key] ?? ""}
+              onBlur={(e) => e.target.value && void save(f.key, e.target.value)}
+            />
+          )}
+        </div>
+      ))}
+      {msg && <p>{msg}</p>}
+      {err && <p className="error">{err}</p>}
     </div>
   );
 }

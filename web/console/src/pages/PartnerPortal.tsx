@@ -13,7 +13,33 @@ type Assignment = {
   start_at?: string;
   end_at?: string;
   created_at: string;
+  preferences?: Record<string, string>; // Phase 58: client comfort/dietary
 };
+
+const PREF_LABELS: Record<string, string> = {
+  "ride.music": "Music",
+  "ride.temperature_c": "Temp",
+  "ride.conversation": "Conversation",
+  "ride.child_seat": "Child seat",
+  "ride.luggage": "Luggage",
+  "access.mobility": "Mobility",
+  "comms.language": "Language",
+  "dining.dietary": "Dietary",
+  "dining.allergens": "Allergens",
+};
+
+function PrefChips({ prefs }: { prefs?: Record<string, string> }) {
+  if (!prefs || Object.keys(prefs).length === 0) return null;
+  return (
+    <span>
+      {Object.entries(prefs).map(([k, v]) => (
+        <span key={k} className="chip" style={{ marginLeft: 6 }}>
+          {(PREF_LABELS[k] ?? k) + ": " + v.replace(/_/g, " ")}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 type Portal = {
   partner_name: string;
@@ -119,6 +145,7 @@ export default function PartnerPortal() {
               <span>
                 Booking <code>{a.booking_id.slice(0, 8)}…</code>
                 {a.start_at && <> · {new Date(a.start_at).toLocaleString()}</>}
+                <PrefChips prefs={a.preferences} />
               </span>
               <span className="row" style={{ gap: 6 }}>
                 <button disabled={busy === a.id} onClick={() => void respond(a.id, "accept")}>

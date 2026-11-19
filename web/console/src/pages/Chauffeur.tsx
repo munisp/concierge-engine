@@ -15,7 +15,25 @@ type TripView = {
   vehicle_class?: string;
   client_name: string;
   notes?: string;
+  preferences?: Record<string, string>; // Phase 58 rider comfort block
 };
+
+const PREF_LABELS: Record<string, string> = {
+  "ride.music": "Music",
+  "ride.music_volume": "Volume",
+  "ride.temperature_c": "Temperature",
+  "ride.conversation": "Conversation",
+  "ride.route": "Route",
+  "ride.seat": "Seat",
+  "ride.child_seat": "Child seat",
+  "ride.luggage": "Luggage",
+  "access.mobility": "Mobility",
+  "comms.language": "Language",
+};
+
+function prefText(key: string, value: string): string {
+  return key === "ride.temperature_c" ? `${value}°C` : value.replace(/_/g, " ");
+}
 
 const STATUS_LABELS: Record<string, string> = {
   EN_ROUTE_TO_PICKUP: "En route to pickup",
@@ -114,6 +132,18 @@ export default function Chauffeur() {
           <>
             <dt>Notes</dt>
             <dd>{trip.notes}</dd>
+          </>
+        )}
+        {trip.preferences && Object.keys(trip.preferences).length > 0 && (
+          <>
+            <dt>Rider preferences</dt>
+            <dd>
+              {Object.entries(trip.preferences).map(([k, v]) => (
+                <span key={k} className="chip" style={{ marginRight: 6 }}>
+                  {(PREF_LABELS[k] ?? k) + ": " + prefText(k, v)}
+                </span>
+              ))}
+            </dd>
           </>
         )}
         <dt>Status</dt>

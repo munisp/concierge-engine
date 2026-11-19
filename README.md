@@ -768,6 +768,19 @@ link revocation, and WhatsApp offer nudges on partner-routed assignments —
 detached from the request path, honest degrade (`skipped:no-phone` /
 `skipped:no-adapter` / `failed:…`, never a fake "sent"). Migration 0037.
 
+**Phase 58 — rider preference profiles.** "The car feels like yours
+before you get in" (docs/phase58.md): a curated, validated preference
+vocabulary (conversation, music, temperature 16–26 °C, route, seat,
+child seat, luggage, dietary, allergens, mobility, language — enums 422
+on bad values, free text capped, `custom.*` open, legacy keys untouched)
+projected to every surface that needs it: typed `RideProfile` +
+quick-set card on the client 360, comfort chips on the chauffeur trip
+sheet, consent-filtered (`private` never leaves the house) preferences
+on the partner portal and `assignment.partner_offered` webhook payload,
+and client self-serve editing behind the tracking magic link
+(`GET/PUT /v1/track/{token}/preferences[/{key}]`). No migration — the
+phase adds vocabulary, validation, and projection, never inferred data.
+
 **Phase 56 — partner integration layer.** Tour operators (Mr Travel, The
 Little Orange, Younique Tailor Tours) integrate programmatically
 (docs/phase56.md): partner-scoped API keys (bound to one partner, confined

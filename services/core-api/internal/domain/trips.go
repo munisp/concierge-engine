@@ -44,6 +44,10 @@ type TripView struct {
 	VehicleClass string   `json:"vehicle_class,omitempty"`
 	ClientName   string   `json:"client_name"` // masked: "J. de V***"
 	Notes        string   `json:"notes,omitempty"`
+	// Phase 58: the rider comfort block — curated ride.* / access / language
+	// preferences surfaced to the person delivering the service. Absent
+	// when the client has set nothing (never an empty card).
+	Preferences map[string]string `json:"preferences,omitempty"`
 }
 
 // TokenFor mints the chauffeur magic-link token for an assignment.
@@ -134,6 +138,11 @@ func (svc *TripService) View(ctx context.Context, token string) (*TripView, erro
 			}
 			if c, err := svc.s.Store.Clients().Get(ctx, tenantID, sr.ClientID); err == nil {
 				view.ClientName = maskName(c.FullName)
+				// Phase 58: rider comfort block, best-effort like the rest
+				// of the join — the trip renders regardless.
+				if prefs, err := svc.s.Clients.RidePreferenceMap(ctx, tenantID, sr.ClientID); err == nil {
+					view.Preferences = prefs
+				}
 			}
 		}
 	}

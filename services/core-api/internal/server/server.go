@@ -162,6 +162,7 @@ func New(svc *domain.Services, optFns ...Option) http.Handler {
 	h.registerPhase53(mux)
 	h.registerPhase56(mux)
 	h.registerPhase57(mux)
+	h.registerPhase58(mux)
 	h.registerPhase55(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).

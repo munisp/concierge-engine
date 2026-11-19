@@ -35,6 +35,10 @@ type PartnerAssignmentView struct {
 	StartAt   string `json:"start_at,omitempty"`
 	EndAt     string `json:"end_at,omitempty"`
 	CreatedAt string `json:"created_at"`
+	// Phase 58: the client's operational preferences (music, temperature,
+	// dietary, mobility, language…), consent-filtered — "private"-scoped
+	// preferences never leave the tenant. Absent when none set.
+	Preferences map[string]string `json:"preferences,omitempty"`
 }
 
 // AssignmentsFor lists one partner's assignments, newest last (store order).
@@ -47,6 +51,7 @@ func (svc *PartnerOpsService) AssignmentsFor(ctx context.Context, tenantID, part
 		return nil, err
 	}
 	out := make([]PartnerAssignmentView, 0, len(list))
+	prefCache := map[string]map[string]string{} // clientID → consent-filtered prefs
 	for _, a := range list {
 		if a.PartnerID != partnerID {
 			continue
@@ -61,9 +66,47 @@ func (svc *PartnerOpsService) AssignmentsFor(ctx context.Context, tenantID, part
 		if !a.EndAt.IsZero() {
 			v.EndAt = a.EndAt.UTC().Format("2006-01-02T15:04:05Z")
 		}
+		// Phase 58: attach operational preferences (booking → request →
+		// client, memoized per client). Best-effort — a failed join never
+		// hides the assignment.
+		if cid := svc.bookingClientID(ctx, tenantID, a.BookingID); cid != "" {
+			if prefs, ok := prefCache[cid]; ok {
+				v.Preferences = prefs
+			} else if prefs, err := svc.s.Clients.PartnerPreferenceMap(ctx, tenantID, cid); err == nil {
+				prefCache[cid] = prefs
+				v.Preferences = prefs
+			}
+		}
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// bookingClientID resolves booking → request → client ("" on any miss).
+func (svc *PartnerOpsService) bookingClientID(ctx context.Context, tenantID, bookingID string) string {
+	b, err := svc.s.Store.Bookings().Get(ctx, tenantID, bookingID)
+	if err != nil {
+		return ""
+	}
+	sr, err := svc.s.Store.Requests().Get(ctx, tenantID, b.RequestID)
+	if err != nil {
+		return ""
+	}
+	return sr.ClientID
+}
+
+// BookingPreferenceMap exposes the consent-filtered preference map for a
+// booking's client — used for the webhook offer payload at assign time.
+func (svc *PartnerOpsService) BookingPreferenceMap(ctx context.Context, tenantID, bookingID string) map[string]string {
+	cid := svc.bookingClientID(ctx, tenantID, bookingID)
+	if cid == "" {
+		return nil
+	}
+	prefs, err := svc.s.Clients.PartnerPreferenceMap(ctx, tenantID, cid)
+	if err != nil {
+		return nil
+	}
+	return prefs
 }
 
 // Respond records a partner's accept/decline of an offered assignment. The

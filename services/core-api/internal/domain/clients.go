@@ -106,10 +106,15 @@ func (svc *ClientService) SavePreference(ctx context.Context, tenantID, clientID
 	if key == "" || value == "" {
 		return nil, httpx.ErrValidation
 	}
+	key = strings.ToLower(strings.TrimSpace(key))
+	// Phase 58: curated namespaces validated; custom.* capped; legacy keys
+	// pass through untouched.
+	if err := ValidatePreference(key, value); err != nil {
+		return nil, err
+	}
 	if consentScope == "" {
 		consentScope = "service"
 	}
-	key = strings.ToLower(strings.TrimSpace(key))
 	p := &model.Preference{
 		ID: NewID(), TenantID: tenantID, ClientID: clientID, Key: key, Value: value,
 		ConsentScope: consentScope, SourceQuote: sourceQuote, RecordedBy: recordedBy,

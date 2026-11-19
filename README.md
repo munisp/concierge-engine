@@ -759,6 +759,15 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 57 — partner PWA + WhatsApp offers.** Phase 56 gave partners the
+API; this gives them the product (docs/phase57.md): HMAC magic-link partner
+portal (`/partner` PWA — no login, no install) with one-tap accept/decline
+and commission totals, cross-token rejection both directions (partner links
+never drive trips, trip links never open the portal), suspension as instant
+link revocation, and WhatsApp offer nudges on partner-routed assignments —
+detached from the request path, honest degrade (`skipped:no-phone` /
+`skipped:no-adapter` / `failed:…`, never a fake "sent"). Migration 0037.
+
 **Phase 56 — partner integration layer.** Tour operators (Mr Travel, The
 Little Orange, Younique Tailor Tours) integrate programmatically
 (docs/phase56.md): partner-scoped API keys (bound to one partner, confined

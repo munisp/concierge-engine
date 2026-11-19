@@ -4,6 +4,7 @@ import Capture from "./pages/Capture";
 import Cases from "./pages/Cases";
 import Catalog from "./pages/Catalog";
 import Chauffeur from "./pages/Chauffeur";
+import PartnerPortal from "./pages/PartnerPortal";
 import Console from "./pages/Console";
 import Corporate from "./pages/Corporate";
 import Dispatch from "./pages/Dispatch";
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/chauffeur" element={<Chauffeur />} />
           <Route path="/track" element={<Track />} />
+          <Route path="/partner" element={<PartnerPortal />} />
         </Routes>
       </main>
     </div>

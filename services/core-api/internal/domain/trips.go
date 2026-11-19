@@ -63,7 +63,8 @@ func (svc *TripService) ParseToken(token string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	if strings.HasPrefix(payload, clientTokenPrefix) || strings.HasPrefix(payload, quoteTokenPrefix) {
+	if strings.HasPrefix(payload, clientTokenPrefix) || strings.HasPrefix(payload, quoteTokenPrefix) ||
+		strings.HasPrefix(payload, partnerTokenPrefix) {
 		return "", "", httpx.ErrForbidden
 	}
 	return splitPayload(payload)
@@ -190,6 +191,40 @@ func maskName(full string) string {
 // link can never advance status or stamp positions (ParseToken rejects it).
 
 const clientTokenPrefix = "track/"
+
+// ------------------------------------------------------------- partner portal (Phase 57)
+//
+// The partner side of the network: the same HMAC token discipline as the
+// chauffeur and client links, with a distinct "partner/" payload prefix —
+// a partner portal token can never drive a trip or monitor one, and
+// neither of those can open the partner portal (ParseToken/ParseClientToken
+// reject it below).
+
+const partnerTokenPrefix = "partner/"
+
+// PartnerTokenFor mints the partner portal magic-link token. Stateless HMAC,
+// no expiry — revocation is operational: suspending the partner closes the
+// portal (the portal view checks partner status on every request).
+func (svc *TripService) PartnerTokenFor(tenantID, partnerID string) string {
+	payload := partnerTokenPrefix + tenantID + "/" + partnerID
+	mac := hmac.New(sha256.New, svc.secret)
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + hex.EncodeToString(mac.Sum(nil))
+}
+
+// ParsePartnerToken verifies a portal token and extracts
+// (tenantID, partnerID). Chauffeur and client tokens are rejected here.
+func (svc *TripService) ParsePartnerToken(token string) (string, string, error) {
+	_, _, payload, err := svc.parseAny(token)
+	if err != nil {
+		return "", "", err
+	}
+	rest, ok := strings.CutPrefix(payload, partnerTokenPrefix)
+	if !ok {
+		return "", "", httpx.ErrForbidden
+	}
+	return splitPayload(rest)
+}
 
 // ClientTokenFor mints the client tracking token for an assignment.
 func (svc *TripService) ClientTokenFor(tenantID, assignmentID string) string {

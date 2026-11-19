@@ -128,6 +128,7 @@ func (svc *DispatchService) Assign(ctx context.Context, a *model.Assignment) (*m
 		svc.s.Events.Emit(ctx, a.TenantID, "assignment", a.ID, "assignment.partner_offered",
 			map[string]any{"booking_id": a.BookingID, "partner_id": a.PartnerID,
 				"start_at": a.StartAt, "end_at": a.EndAt})
+		svc.s.PartnerOps.OfferedOnAssign(ctx, a.TenantID, a.PartnerID)
 		if err := svc.s.PartnerOps.AccrueCommission(ctx, a.TenantID, a.BookingID, a.PartnerID); err != nil {
 			svc.s.Audit.Log(ctx, a.TenantID, "partner", "partner.commission_failed", "partner", a.PartnerID,
 				map[string]any{"booking_id": a.BookingID, "error": err.Error()})

@@ -20,6 +20,9 @@ type Partner struct {
 	// a PENDING payout (idempotent per booking+partner) that flows through
 	// the Phase 48 settlement batching like any other payout.
 	CommissionPct float64 `json:"commission_pct,omitempty"`
+	// Phase 57: WhatsApp number (E.164) for assignment offers. Empty = the
+	// partner is portal-link only; offers are shared by the operator.
+	Phone string `json:"phone,omitempty"`
 	Lat          float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
 	Lng          float64   `json:"lng,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`

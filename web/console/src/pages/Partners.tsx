@@ -13,6 +13,7 @@ type Partner = {
   payout_rail: string;
   payout_ref?: string;
   commission_pct?: number;
+  phone?: string;
 };
 
 type Metrics = {
@@ -61,6 +62,7 @@ export default function Partners() {
   const [verticals, setVerticals] = useState("CHAUFFEUR_POINT_TO_POINT");
   const [rail, setRail] = useState("MANUAL");
   const [payoutRef, setPayoutRef] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -84,9 +86,11 @@ export default function Partners() {
         verticals: verticals.split(",").map((v) => v.trim()).filter(Boolean),
         payout_rail: rail,
         payout_ref: payoutRef,
+        phone,
       });
       setName("");
       setPayoutRef("");
+      setPhone("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
@@ -125,6 +129,8 @@ export default function Partners() {
           </select>
           <input placeholder="Payout ref (FSPIOP id / bank)" value={payoutRef}
             onChange={(e) => setPayoutRef(e.target.value)} />
+          <input placeholder="WhatsApp (E.164, e.g. +234…)" value={phone}
+            onChange={(e) => setPhone(e.target.value)} />
           <button onClick={() => void create()} disabled={!name}>Add</button>
         </div>
       </div>
@@ -180,6 +186,7 @@ function IntegrationCard({ partners, onError }: { partners: Partner[]; onError: 
   const [hookURL, setHookURL] = useState("");
   const [hookEvents, setHookEvents] = useState("assignment.*,partner.*");
   const [secret, setSecret] = useState("");
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(async (pid: string) => {
     if (!pid) {
@@ -260,6 +267,7 @@ function IntegrationCard({ partners, onError }: { partners: Partner[]; onError: 
               Copy this key now — it is shown once: <code>{secret}</code>
             </p>
           )}
+          {notice && <p><code style={{ wordBreak: "break-all" }}>{notice}</code></p>}
           {info.keys.length > 0 && (
             <table>
               <thead><tr><th>Name</th><th>Prefix</th><th>State</th></tr></thead>
@@ -303,6 +311,26 @@ function IntegrationCard({ partners, onError }: { partners: Partner[]; onError: 
               </tbody>
             </table>
           )}
+          <h4>Portal &amp; WhatsApp</h4>
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            <button onClick={() => void act(async () => {
+              const res = await api.get<{ url: string }>(`/v1/partners/${partnerID}/portal-link`);
+              await navigator.clipboard.writeText(res.url);
+              setNotice(res.url);
+            })}>
+              Copy portal link
+            </button>
+            <button onClick={() => void act(async () => {
+              const res = await api.post<{ whatsapp: string }>(`/v1/partners/${partnerID}/notify`, {});
+              setNotice(`WhatsApp: ${res.whatsapp}`);
+            })}>
+              Send WhatsApp offer
+            </button>
+            <span className="muted">
+              The portal link is the partner&apos;s credential — share over a trusted channel.
+              WhatsApp needs the partner&apos;s E.164 number and the channel adapter.
+            </span>
+          </div>
           <h4>Lead capture snippet</h4>
           <p className="muted">
             Partner posts leads into your pipeline with attribution <code>{info.capture_source}</code>:

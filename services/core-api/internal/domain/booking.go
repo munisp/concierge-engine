@@ -246,6 +246,10 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 	}
 	svc.s.Events.Emit(ctx, tenantID, "booking", b.ID, "booking.confirmed",
 		map[string]any{"quote_id": q.ID, "total_minor": q.TotalMinor})
+	// Phase 59: pre-render the rider's signature soundscape off the request
+	// path — a provider render takes 30-90s, the confirm response never
+	// waits. Honest degrade inside (no provider → curated fallback row).
+	svc.s.Music.OnConfirmedDetached(ctx, tenantID, b.ID)
 	// Phase 14: referral conversion runs BEFORE the booking is tracked so
 	// first-booking detection doesn't count this booking itself; the booking
 	// event then inherits first-touch channel/campaign.

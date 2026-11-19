@@ -423,6 +423,20 @@ type KycCaseStore interface {
 	ScrubDocumentRefsForClient(ctx context.Context, tenantID, clientID string) (int, error)
 }
 
+// SoundscapeStore (Phase 59): one AI-composed track per booking.
+// Create is idempotent on (tenant, IdempotencyKey) — re-Create with the
+// same key returns ErrConflict so generation never double-renders.
+type SoundscapeStore interface {
+	Create(ctx context.Context, s *model.Soundscape) error
+	Get(ctx context.Context, tenantID, id string) (*model.Soundscape, error)
+	// ForBooking returns the newest soundscape for the booking, or
+	// ErrNotFound (booking has none yet — client-facing surfaces render
+	// "composing" rather than an error).
+	ForBooking(ctx context.Context, tenantID, bookingID string) (*model.Soundscape, error)
+	Update(ctx context.Context, s *model.Soundscape) error
+	ListForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.Soundscape, error)
+}
+
 // ------------------------------------------------------------- Phase 3 stores
 
 type ApiKeyStore interface {
@@ -519,5 +533,6 @@ type Store interface {
 	EmailSuppressions() EmailSuppressionStore
 	ConsentEvents() ConsentEventStore
 	KycCases() KycCaseStore
+	Soundscapes() SoundscapeStore
 	Close()
 }

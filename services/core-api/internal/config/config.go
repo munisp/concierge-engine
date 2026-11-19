@@ -39,6 +39,11 @@ type Config struct {
 	// storage via the blob-adapter sidecar (Phase 49). Empty = legacy
 	// inline store (postgres bytea / memory).
 	BlobAdapterURL string
+	// Phase 59: signature ride soundscapes provider. Empty URL = disabled;
+	// generation degrades honestly to curated playlists.
+	MusicProvider string // CE_MUSIC_PROVIDER: mubert | beatoven | musicgen
+	MusicURL      string // CE_MUSIC_ADAPTER_URL
+	MusicKey      string // CE_MUSIC_API_KEY
 	// CE_WEBHOOK_ROTATION_WINDOW_HOURS: dual-secret signing window after a
 	// webhook secret rotation; default 24 (domain.WebhookRotationWindow).
 	WebhookRotationWindowHours int
@@ -86,6 +91,9 @@ func Load() Config {
 		GeocodeURL:                 getenv("CE_GEOCODE_URL", ""),
 		GeocodeKey:                 getenv("CE_GEOCODE_API_KEY", ""),
 		ConsoleBase:                getenv("CE_CONSOLE_BASE", ""),
+		MusicProvider:              getenv("CE_MUSIC_PROVIDER", ""),
+		MusicURL:                   getenv("CE_MUSIC_ADAPTER_URL", ""),
+		MusicKey:                   getenv("CE_MUSIC_API_KEY", ""),
 		PayoutCallbackSecret:       getenv("CE_PAYOUT_CALLBACK_SECRET", ""),
 		BlobAdapterURL:             getenv("CE_BLOB_ADAPTER_URL", ""),
 		WebhookRotationWindowHours: getenvInt("CE_WEBHOOK_ROTATION_WINDOW_HOURS", 24),

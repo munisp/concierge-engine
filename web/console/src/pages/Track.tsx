@@ -195,6 +195,7 @@ export default function Track() {
           </div>
 
           {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} submitted={view.review_submitted} />}
+          <SoundscapeCard token={token} />
           <RidePreferences token={token} />
         </>
       )}
@@ -303,6 +304,68 @@ function RidePreferences({ token }: { token: string }) {
       </div>
       {saved && <p>{saved}</p>}
       {err && <p className="error">{err}</p>}
+    </div>
+  );
+}
+
+// Phase 59: the rider's signature soundscape. Provenance is explicit —
+// AI-composed tracks name the provider; a degraded render shows the
+// curated fallback it actually is, never dressed up as composed.
+type SoundscapeView = {
+  status: string;
+  title?: string;
+  genre?: string;
+  mood?: string;
+  duration_seconds?: number;
+  provider?: string;
+  ai_composed: boolean;
+  detail?: string;
+  fallback_id?: string;
+  has_audio: boolean;
+};
+
+function SoundscapeCard({ token }: { token: string }) {
+  const [view, setView] = useState<SoundscapeView | null>(null);
+  const [audioURL, setAudioURL] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await tokenCall<{ soundscape: SoundscapeView; audio_url: string }>(
+          "GET", `/v1/track/${token}/soundscape`);
+        setView(r.soundscape);
+        setAudioURL(r.audio_url);
+      } catch {
+        // soundscape is a gift, not a guarantee — the journey view is the point
+      }
+    })();
+  }, [token]);
+
+  if (!view || view.status === "NONE") return null;
+  return (
+    <div className="card" style={{ maxWidth: 480 }}>
+      <h3>Your ride soundtrack</h3>
+      {view.status === "RENDERED" && audioURL ? (
+        <>
+          <p>
+            <strong>{view.title || "Signature Ride"}</strong>
+            {view.genre ? ` — ${view.genre}` : ""}
+            {view.mood ? `, ${view.mood}` : ""}
+          </p>
+          <audio controls preload="none" src={audioURL} style={{ width: "100%" }} />
+          <p className="muted">
+            Composed by AI{view.provider ? ` (${view.provider})` : ""} from your
+            ride preferences, just for this journey.
+          </p>
+        </>
+      ) : view.status === "DEGRADED" ? (
+        <p className="muted">
+          Your personal composer is off duty today — your chauffeur has a
+          curated {view.genre || "lounge"} playlist ready instead.
+        </p>
+      ) : (
+        <p className="muted">Composing your soundtrack… check back shortly.</p>
+      )}
     </div>
   );
 }

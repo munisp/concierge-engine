@@ -45,6 +45,12 @@ type Deps struct {
 	GeocodeURL    string // CE_GEOCODE_URL: Nominatim-compatible endpoint; empty = built-in gazetteer
 	GeocodeKey    string // CE_GEOCODE_API_KEY when the provider needs one
 	ConsoleBase   string // CE_CONSOLE_BASE: public origin of the console SPA (SEO CTA target); empty = same-origin
+	// Phase 59: music provider for signature ride soundscapes. Empty URL =
+	// not configured; every generate degrades honestly to a curated
+	// playlist (never a fake render).
+	MusicProvider string // CE_MUSIC_PROVIDER: mubert | beatoven | musicgen
+	MusicURL      string // CE_MUSIC_ADAPTER_URL: render endpoint
+	MusicKey      string // CE_MUSIC_API_KEY
 	Now           func() time.Time
 }
 
@@ -79,6 +85,7 @@ type Services struct {
 	Acquisition   *AcquisitionService
 	Retention     *RetentionService
 	Kyc           *KycService
+	Music         *MusicService
 	// PayoutCallbackSecret authenticates adapter payout callbacks (Phase 48).
 	PayoutCallbackSecret string
 	// StorageEngine (Phase 49) labels the legacy inline media store for
@@ -164,6 +171,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Acquisition = &AcquisitionService{s: s, waURL: deps.WhatsAppURL, operatorPhone: deps.OperatorPhone}
 	s.Retention = &RetentionService{s: s}
 	s.Kyc = &KycService{s: s}
+	s.Music = NewMusicService(s, deps.MusicProvider, deps.MusicURL, deps.MusicKey)
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)

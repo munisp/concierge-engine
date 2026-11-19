@@ -759,14 +759,18 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
-**Phase 57 — partner PWA + WhatsApp offers.** Phase 56 gave partners the
-API; this gives them the product (docs/phase57.md): HMAC magic-link partner
-portal (`/partner` PWA — no login, no install) with one-tap accept/decline
-and commission totals, cross-token rejection both directions (partner links
-never drive trips, trip links never open the portal), suspension as instant
-link revocation, and WhatsApp offer nudges on partner-routed assignments —
-detached from the request path, honest degrade (`skipped:no-phone` /
-`skipped:no-adapter` / `failed:…`, never a fake "sent"). Migration 0037.
+**Phase 59 — signature ride soundscapes.** Every confirmed booking gets a
+track composed from the rider's own profile (docs/phase59.md): the LLM
+writes the composition spec (genre from `ride.music`, vocal language from
+`comms.language` — unset means instrumental, never guessed; mood/tempo
+from `ride.conversation`), a music provider renders the audio
+(`CE_MUSIC_ADAPTER_URL`; mubert / beatoven / self-hosted musicgen
+adapter), triggered detached on `booking.confirmed` (renders run 30–90s,
+the confirm never waits), one render per booking (idempotent unique key).
+Delivered on the Track page player + Dispatch preview/regenerate.
+Provenance is stored, never implied: `ai_composed` is a column, a
+degraded render names its curated fallback and verbatim failure detail —
+nothing is presented as composed when it was not. Migration 0038.
 
 **Phase 58 — rider preference profiles.** "The car feels like yours
 before you get in" (docs/phase58.md): a curated, validated preference
@@ -780,6 +784,15 @@ on the partner portal and `assignment.partner_offered` webhook payload,
 and client self-serve editing behind the tracking magic link
 (`GET/PUT /v1/track/{token}/preferences[/{key}]`). No migration — the
 phase adds vocabulary, validation, and projection, never inferred data.
+
+**Phase 57 — partner PWA + WhatsApp offers.** Phase 56 gave partners the
+API; this gives them the product (docs/phase57.md): HMAC magic-link partner
+portal (`/partner` PWA — no login, no install) with one-tap accept/decline
+and commission totals, cross-token rejection both directions (partner links
+never drive trips, trip links never open the portal), suspension as instant
+link revocation, and WhatsApp offer nudges on partner-routed assignments —
+detached from the request path, honest degrade (`skipped:no-phone` /
+`skipped:no-adapter` / `failed:…`, never a fake "sent"). Migration 0037.
 
 **Phase 56 — partner integration layer.** Tour operators (Mr Travel, The
 Little Orange, Younique Tailor Tours) integrate programmatically

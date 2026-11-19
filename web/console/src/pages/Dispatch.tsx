@@ -208,7 +208,8 @@ export default function Dispatch() {
                   Advance → {next[a.status].replaceAll("_", " ").toLowerCase()}
                 </button>
               )}{" "}
-              <button onClick={() => clientLink(a)}>Client link</button>
+              <button onClick={() => clientLink(a)}>Client link</button>{" "}
+              <SoundtrackButton bookingID={a.booking_id} onError={setError} />
               {trackLinks[a.id] && (
                 <p className="muted" style={{ wordBreak: "break-all" }}>
                   Tracking link (copied): {trackLinks[a.id]}
@@ -226,5 +227,84 @@ export default function Dispatch() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Phase 59: operator soundscape panel — preview the rider's composed track
+// or regenerate it after a preference change. Provenance is explicit:
+// provider named when AI-composed, curated fallback labeled when degraded.
+type SoundscapeView = {
+  status: string;
+  title?: string;
+  genre?: string;
+  provider?: string;
+  ai_composed: boolean;
+  detail?: string;
+  fallback_id?: string;
+  has_audio: boolean;
+};
+
+function SoundtrackButton({ bookingID, onError }: { bookingID: string; onError: (m: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<SoundscapeView | null>(null);
+  const [audioURL, setAudioURL] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try {
+      const r = await api.get<{ soundscape: SoundscapeView; audio_url: string }>(
+        `/v1/bookings/${bookingID}/soundscape`);
+      setView(r.soundscape);
+      setAudioURL(r.audio_url);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function toggle() {
+    if (!open) await load();
+    setOpen(!open);
+  }
+
+  async function regenerate() {
+    setBusy(true);
+    try {
+      await api.post(`/v1/bookings/${bookingID}/soundscape`, {});
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button onClick={toggle}>Soundtrack</button>
+      {open && view && (
+        <div className="card" style={{ marginTop: 8 }}>
+          {view.status === "RENDERED" ? (
+            <>
+              <p style={{ margin: "0 0 6px" }}>
+                <strong>{view.title || "Signature Ride"}</strong>
+                {view.genre ? ` — ${view.genre}` : ""}
+                {" · "}
+                <span className="badge">AI-composed{view.provider ? ` · ${view.provider}` : ""}</span>
+              </p>
+              {audioURL && <audio controls preload="none" src={audioURL} style={{ width: "100%" }} />}
+            </>
+          ) : view.status === "DEGRADED" ? (
+            <p className="muted" style={{ margin: 0 }}>
+              Degraded — {view.detail || "provider unavailable"}; fallback {view.fallback_id || "curated playlist"}.
+            </p>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>Status: {view.status}</p>
+          )}
+          <button onClick={regenerate} disabled={busy} style={{ marginTop: 6 }}>
+            {busy ? "Rendering…" : "Regenerate"}
+          </button>
+        </div>
+      )}
+    </>
   );
 }

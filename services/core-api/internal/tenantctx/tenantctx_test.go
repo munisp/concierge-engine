@@ -32,14 +32,16 @@ func TestMiddlewareTenantHeader(t *testing.T) {
 }
 
 func TestMiddlewareApiKeyAuthAndScopes(t *testing.T) {
-	SetKeyAuthenticator(func(_ context.Context, header string) (string, []string, error) {
+	SetKeyAuthenticator(func(_ context.Context, header string) (string, []string, string, error) {
 		switch header {
 		case "Bearer cek_readonly":
-			return "t-key", []string{"read"}, nil
+			return "t-key", []string{"read"}, "", nil
 		case "Bearer cek_writer":
-			return "t-2", []string{"write"}, nil
+			return "t-2", []string{"write"}, "", nil
+		case "Bearer cek_partner":
+			return "t-2", []string{"partner"}, "partner-1", nil
 		}
-		return "", nil, errors.New("nope")
+		return "", nil, "", errors.New("nope")
 	})
 	defer SetKeyAuthenticator(nil)
 
@@ -95,5 +97,52 @@ func TestMiddlewareApiKeyAuthAndScopes(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("platform route must not require tenant, got %d", rec.Code)
+	}
+}
+
+// Phase 56: partner-scoped keys reach only /v1/partner/* — the tenant API
+// rejects them, and the partner surface rejects non-partner credentials.
+func TestMiddlewarePartnerScopedKey(t *testing.T) {
+	SetKeyAuthenticator(func(_ context.Context, header string) (string, []string, string, error) {
+		if header == "Bearer cek_partner" {
+			return "t-2", []string{"partner"}, "partner-1", nil
+		}
+		if header == "Bearer cek_writer" {
+			return "t-2", []string{"write"}, "", nil
+		}
+		return "", nil, "", errors.New("nope")
+	})
+	defer SetKeyAuthenticator(nil)
+
+	h := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(PartnerFromContext(r.Context())))
+	}))
+
+	// Partner key on the tenant API: forbidden even for reads.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/catalog", nil)
+	req.Header.Set("Authorization", "Bearer cek_partner")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("partner key on tenant API must be 403, got %d", rec.Code)
+	}
+
+	// Partner key on /v1/partner/*: passes, partner id in context.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/partner/assignments", nil)
+	req.Header.Set("Authorization", "Bearer cek_partner")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "partner-1" {
+		t.Fatalf("partner key on partner surface: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// Tenant-wide key on the partner surface authenticates but carries no
+	// partner binding (the handlers reject it with 403).
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/partner/assignments", nil)
+	req.Header.Set("Authorization", "Bearer cek_writer")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "" {
+		t.Fatalf("tenant key must not carry partner binding: %d %q", rec.Code, rec.Body.String())
 	}
 }

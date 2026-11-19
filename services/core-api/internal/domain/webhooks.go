@@ -83,6 +83,28 @@ func (svc *WebhookService) CreateSubscription(ctx context.Context, tenantID, url
 	return sub, nil
 }
 
+// CreatePartnerSubscription creates a subscription that receives only events
+// carrying the given partner_id (Phase 56) — the feed a tour operator's own
+// systems subscribe to. Same signing/rotation/retry machinery as tenant
+// subscriptions.
+func (svc *WebhookService) CreatePartnerSubscription(ctx context.Context, tenantID, partnerID, url string, events []string) (*model.WebhookSubscription, error) {
+	if partnerID == "" {
+		return nil, httpx.ErrValidation
+	}
+	if _, err := svc.s.Store.Partners().Get(ctx, tenantID, partnerID); err != nil {
+		return nil, err
+	}
+	sub, err := svc.CreateSubscription(ctx, tenantID, url, events)
+	if err != nil {
+		return nil, err
+	}
+	sub.PartnerID = partnerID
+	if err := svc.s.Store.Webhooks().UpdateSubscription(ctx, sub); err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
 func (svc *WebhookService) ListSubscriptions(ctx context.Context, tenantID string) ([]model.WebhookSubscription, error) {
 	return svc.s.Store.Webhooks().ListSubscriptions(ctx, tenantID)
 }
@@ -118,6 +140,15 @@ func (svc *WebhookService) FanOut(ctx context.Context, tenantID, eventType, even
 		sub := subs[i]
 		if !sub.Active || !eventMatches(sub.Events, eventType) {
 			continue
+		}
+		// Phase 56: partner-scoped subscriptions receive only events whose
+		// payload carries their partner_id. Tenant-wide subscriptions
+		// (PartnerID == "") keep receiving everything.
+		if sub.PartnerID != "" {
+			pid, _ := payload["partner_id"].(string)
+			if pid != sub.PartnerID {
+				continue
+			}
 		}
 		body, err := json.Marshal(map[string]any{
 			"id": eventID, "type": eventType, "tenant_id": tenantID,

@@ -47,6 +47,12 @@ var EventCatalog = []EventSpec{
 
 	{"dispatch.assignment_created", "assignment", "Resource assigned to a booking", []string{"booking_id", "fleet_resource_id"}},
 	{"chauffeur.assigned", "assignment", "Chauffeur magic link issued", []string{"booking_id"}},
+	// Phase 56: partner integration events. partner_id in the payload scopes
+	// delivery to the partner's own webhook subscriptions.
+	{"assignment.partner_offered", "assignment", "Partner-routed assignment offered", []string{"booking_id", "partner_id"}},
+	{"assignment.partner_responded", "assignment", "Partner accepted or declined an assignment", []string{"partner_id", "booking_id", "action"}},
+	{"partner.commission_accrued", "payout", "Partner commission accrued as pending payout", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
+	{"partner.commission_cancelled", "payout", "Pending commission voided on partner decline", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
 	{"trip.status_changed", "trip", "Chauffeur trip advanced", []string{"status"}},
 
 	{"case.opened", "case", "Case opened (intake or manual)", []string{"kind", "priority", "engine"}},

@@ -160,10 +160,11 @@ func New(svc *domain.Services, optFns ...Option) http.Handler {
 	h.registerPhase48(mux)
 	h.registerPhase49(mux)
 	h.registerPhase53(mux)
+	h.registerPhase56(mux)
 	h.registerPhase55(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
-	tenantctx.SetKeyAuthenticator(svc.ApiKeys.Authenticate)
+	tenantctx.SetKeyAuthenticator(svc.ApiKeys.AuthenticateTenant)
 
 	// Phase 28: custom-domain resolution sits outermost so host-rewritten
 	// paths route through the mux (and tenantctx) exactly like native ones.

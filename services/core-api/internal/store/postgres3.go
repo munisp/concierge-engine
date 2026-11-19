@@ -35,9 +35,9 @@ func (s pgApiKeys) Create(ctx context.Context, k *model.ApiKey) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO api_keys (id, tenant_id, name, prefix, secret_hash, scopes, revoked)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		k.ID, k.TenantID, k.Name, k.Prefix, k.SecretHash, scopes, k.Revoked)
+		`INSERT INTO api_keys (id, tenant_id, name, prefix, secret_hash, scopes, revoked, partner_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,nullif($8,'')::uuid)`,
+		k.ID, k.TenantID, k.Name, k.Prefix, k.SecretHash, scopes, k.Revoked, k.PartnerID)
 	if err != nil {
 		return err
 	}
@@ -47,16 +47,18 @@ func (s pgApiKeys) Create(ctx context.Context, k *model.ApiKey) error {
 func scanApiKey(row interface{ Scan(...any) error }) (*model.ApiKey, error) {
 	var k model.ApiKey
 	var scopes []byte
+	var partnerID sql.NullString
 	err := row.Scan(&k.ID, &k.TenantID, &k.Name, &k.Prefix, &k.SecretHash,
-		&scopes, &k.Revoked, &k.CreatedAt, &k.LastUsedAt)
+		&scopes, &k.Revoked, &k.CreatedAt, &k.LastUsedAt, &partnerID)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(scopes, &k.Scopes)
+	k.PartnerID = partnerID.String
 	return &k, nil
 }
 
-const apiKeyCols = `id, tenant_id, name, prefix, secret_hash, scopes, revoked, created_at, last_used_at`
+const apiKeyCols = `id, tenant_id, name, prefix, secret_hash, scopes, revoked, created_at, last_used_at, partner_id`
 
 func (s pgApiKeys) GetByPrefix(ctx context.Context, prefix string) (*model.ApiKey, error) {
 	// No tenantTx: the prefix lookup resolves the tenant (see file header).
@@ -120,10 +122,10 @@ func (s pgWebhooks) CreateSubscription(ctx context.Context, sub *model.WebhookSu
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO webhook_subscriptions (id, tenant_id, url, events, secret, active, prev_secret, secret_rotated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		`INSERT INTO webhook_subscriptions (id, tenant_id, url, events, secret, active, prev_secret, secret_rotated_at, partner_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,'')::uuid)`,
 		sub.ID, sub.TenantID, sub.URL, events, sub.Secret, sub.Active,
-		sub.PrevSecret, nilIfZero(sub.SecretRotatedAt))
+		sub.PrevSecret, nilIfZero(sub.SecretRotatedAt), sub.PartnerID)
 	if err != nil {
 		return err
 	}
@@ -134,17 +136,19 @@ func scanSubscription(row interface{ Scan(...any) error }) (*model.WebhookSubscr
 	var sub model.WebhookSubscription
 	var events []byte
 	var rotatedAt sql.NullTime
+	var partnerID sql.NullString
 	err := row.Scan(&sub.ID, &sub.TenantID, &sub.URL, &events, &sub.Secret, &sub.Active,
-		&sub.CreatedAt, &sub.PrevSecret, &rotatedAt)
+		&sub.CreatedAt, &sub.PrevSecret, &rotatedAt, &partnerID)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(events, &sub.Events)
 	sub.SecretRotatedAt = rotatedAt.Time
+	sub.PartnerID = partnerID.String
 	return &sub, nil
 }
 
-const webhookSubCols = `id, tenant_id, url, events, secret, active, created_at, prev_secret, secret_rotated_at`
+const webhookSubCols = `id, tenant_id, url, events, secret, active, created_at, prev_secret, secret_rotated_at, partner_id`
 
 func (s pgWebhooks) GetSubscription(ctx context.Context, tenantID, id string) (*model.WebhookSubscription, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -191,8 +195,8 @@ func (s pgWebhooks) UpdateSubscription(ctx context.Context, sub *model.WebhookSu
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`UPDATE webhook_subscriptions SET url=$2, events=$3, active=$4, secret=$5, prev_secret=$6, secret_rotated_at=$7 WHERE id=$1`,
-		sub.ID, sub.URL, events, sub.Active, sub.Secret, sub.PrevSecret, nilIfZero(sub.SecretRotatedAt))
+		`UPDATE webhook_subscriptions SET url=$2, events=$3, active=$4, secret=$5, prev_secret=$6, secret_rotated_at=$7, partner_id=nullif($8,'')::uuid WHERE id=$1`,
+		sub.ID, sub.URL, events, sub.Active, sub.Secret, sub.PrevSecret, nilIfZero(sub.SecretRotatedAt), sub.PartnerID)
 	if err != nil {
 		return err
 	}

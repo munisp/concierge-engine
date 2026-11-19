@@ -16,6 +16,10 @@ type Partner struct {
 	QualityScore float64   `json:"quality_score"`
 	PayoutRail   string    `json:"payout_rail"` // MOJALOOP | MANUAL
 	PayoutRef    string    `json:"payout_ref,omitempty"`
+	// Phase 56: commission on partner-routed confirmed bookings. Accrues as
+	// a PENDING payout (idempotent per booking+partner) that flows through
+	// the Phase 48 settlement batching like any other payout.
+	CommissionPct float64 `json:"commission_pct,omitempty"`
 	Lat          float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
 	Lng          float64   `json:"lng,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`

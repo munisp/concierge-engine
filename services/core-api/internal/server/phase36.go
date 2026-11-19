@@ -19,6 +19,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"concierge-engine/services/core-api/internal/domain"
 	"concierge-engine/services/core-api/internal/httpx"
@@ -141,6 +142,13 @@ func (h *handlers) siteCaptureLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Source = "site"
+	// Phase 56: partner embeds attribute the lead to the operator that
+	// referred it ("partner:the-little-orange" query param). Only the
+	// partner: prefix survives; any other caller-claimed source collapses
+	// to "site".
+	if s := strings.TrimSpace(r.URL.Query().Get("source")); strings.HasPrefix(s, "partner:") {
+		in.Source = s
+	}
 	// Phase 38: the public form is the prospect speaking for themselves —
 	// the basis is asserted by the surface, never by the caller's payload.
 	in.ContactBasis = model.ContactBasisSelfReported

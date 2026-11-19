@@ -15,6 +15,7 @@ import (
 
 type ctxKey struct{}
 type ctxScopesKey struct{}
+type ctxPartnerKey struct{}
 
 func FromContext(ctx context.Context) string {
 	v, _ := ctx.Value(ctxKey{}).(string)
@@ -32,9 +33,18 @@ func ScopesFromContext(ctx context.Context) []string {
 	return v
 }
 
-// KeyAuthenticator resolves a "Bearer cek_..." header to (tenantID, scopes).
-// Set once at startup by the server package (avoids an import cycle).
-type KeyAuthenticator func(ctx context.Context, authHeader string) (tenantID string, scopes []string, err error)
+// PartnerFromContext returns the partner a partner-scoped API key is bound
+// to (Phase 56), "" for tenant-header and tenant-wide key requests.
+func PartnerFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxPartnerKey{}).(string)
+	return v
+}
+
+// KeyAuthenticator resolves a "Bearer cek_..." header to
+// (tenantID, scopes, partnerID). partnerID is non-empty only for
+// partner-scoped keys (Phase 56). Set once at startup by the server
+// package (avoids an import cycle).
+type KeyAuthenticator func(ctx context.Context, authHeader string) (tenantID string, scopes []string, partnerID string, err error)
 
 var keyAuth KeyAuthenticator
 
@@ -58,21 +68,24 @@ func tenantScoped(path string) bool {
 // scopeOK enforces API-key scopes: reads need "read" ("write" implies it),
 // mutations need "write", webhook administration needs "webhooks:manage".
 func scopeOK(r *http.Request, scopes []string) bool {
-	has := func(need string) bool {
-		for _, s := range scopes {
-			if s == need || (need == "read" && s == "write") {
-				return true
-			}
-		}
-		return false
-	}
+	has := scopeListHas
 	if strings.HasPrefix(r.URL.Path, "/v1/webhooks") && r.Method != http.MethodGet {
-		return has("webhooks:manage")
+		return has(scopes, "webhooks:manage")
 	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		return has("read")
+		return has(scopes, "read")
 	}
-	return has("write")
+	return has(scopes, "write")
+}
+
+// scopeListHas reports whether scopes cover need ("write" implies "read").
+func scopeListHas(scopes []string, need string) bool {
+	for _, s := range scopes {
+		if s == need || (need == "read" && s == "write") {
+			return true
+		}
+	}
+	return false
 }
 
 // Middleware enforces presence of a tenant on all /v1/ routes except
@@ -85,12 +98,20 @@ func Middleware(next http.Handler) http.Handler {
 			id := r.Header.Get("X-Tenant-ID")
 			if id == "" && keyAuth != nil {
 				// Public-API path: resolve "Bearer cek_..." to tenant + scopes.
-				if tid, scopes, err := keyAuth(r.Context(), r.Header.Get("Authorization")); err == nil {
-					if !scopeOK(r, scopes) {
+				if tid, scopes, partnerID, err := keyAuth(r.Context(), r.Header.Get("Authorization")); err == nil {
+					if partnerID != "" {
+						// Phase 56: partner-scoped keys reach ONLY the
+						// /v1/partner/* surface — never the tenant API.
+						if !strings.HasPrefix(r.URL.Path, "/v1/partner/") || !scopeListHas(scopes, "partner") {
+							httpx.WriteError(w, httpx.ErrForbidden)
+							return
+						}
+					} else if !scopeOK(r, scopes) {
 						httpx.WriteError(w, httpx.ErrForbidden)
 						return
 					}
 					ctx := context.WithValue(WithTenant(r.Context(), tid), ctxScopesKey{}, scopes)
+					ctx = context.WithValue(ctx, ctxPartnerKey{}, partnerID)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}

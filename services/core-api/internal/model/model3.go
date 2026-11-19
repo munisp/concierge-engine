@@ -16,6 +16,9 @@ type ApiKey struct {
 	SecretHash string    `json:"-"`
 	Scopes     []string  `json:"scopes"`
 	Revoked    bool      `json:"revoked"`
+	// Phase 56: when set, the key is partner-scoped — it authenticates only
+	// the /v1/partner/* surface for this partner, never the tenant API.
+	PartnerID  string    `json:"partner_id,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	LastUsedAt time.Time `json:"last_used_at,omitempty"`
 }
@@ -29,6 +32,9 @@ type WebhookSubscription struct {
 	Events    []string  `json:"events"` // e.g. ["booking.*", "quote.created"]; "*" = all
 	Secret    string    `json:"-"`      // returned once at creation, never re-exposed
 	Active    bool      `json:"active"`
+	// Phase 56: when set, this subscription receives only events whose
+	// payload carries a matching partner_id — the partner-facing feed.
+	PartnerID string    `json:"partner_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	// Phase 21: dual-secret rotation window. RotateSecret keeps the previous
 	// secret here; while SecretRotatedAt is within WebhookRotationWindow the

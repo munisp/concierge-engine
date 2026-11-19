@@ -16,7 +16,8 @@ import (
 )
 
 var tripStatusFlow = map[string][]string{
-	"ASSIGNED":           {"EN_ROUTE_TO_PICKUP", "CANCELLED_TRIP"},
+	"ASSIGNED":           {"EN_ROUTE_TO_PICKUP", "CANCELLED_TRIP", "PARTNER_ACCEPTED", "PARTNER_DECLINED"},
+	"PARTNER_ACCEPTED":   {"EN_ROUTE_TO_PICKUP", "CANCELLED_TRIP"},
 	"EN_ROUTE_TO_PICKUP": {"ARRIVED", "CANCELLED_TRIP"},
 	"ARRIVED":            {"PASSENGER_ON_BOARD", "NO_SHOW", "CANCELLED_TRIP"},
 	"PASSENGER_ON_BOARD": {"IN_TRIP"},
@@ -79,6 +80,8 @@ func (svc *DispatchService) ListCrew(ctx context.Context, tenantID string) ([]mo
 // Terminal assignment states free the resource for further scheduling.
 var terminalAssignmentStatuses = map[string]bool{
 	"COMPLETED_TRIP": true, "CANCELLED_TRIP": true, "NO_SHOW": true,
+	// Phase 56: a declined partner assignment frees the slot for reassignment.
+	"PARTNER_DECLINED": true,
 }
 
 // Assign assigns a booking to a fleet resource / crew member (tenant's own
@@ -117,6 +120,19 @@ func (svc *DispatchService) Assign(ctx context.Context, a *model.Assignment) (*m
 	}
 	svc.s.Events.Emit(ctx, a.TenantID, "assignment", a.ID, "chauffeur.assigned",
 		map[string]any{"booking_id": a.BookingID, "resource": a.FleetResourceID})
+	if a.PartnerID != "" {
+		// Phase 56: partner-routed work is offered over the partner's
+		// webhook feed and accrues the partner's commission into the
+		// payout saga. Commission failure never blocks the assignment —
+		// it is audit-logged for ops follow-up instead.
+		svc.s.Events.Emit(ctx, a.TenantID, "assignment", a.ID, "assignment.partner_offered",
+			map[string]any{"booking_id": a.BookingID, "partner_id": a.PartnerID,
+				"start_at": a.StartAt, "end_at": a.EndAt})
+		if err := svc.s.PartnerOps.AccrueCommission(ctx, a.TenantID, a.BookingID, a.PartnerID); err != nil {
+			svc.s.Audit.Log(ctx, a.TenantID, "partner", "partner.commission_failed", "partner", a.PartnerID,
+				map[string]any{"booking_id": a.BookingID, "error": err.Error()})
+		}
+	}
 	svc.broadcast(a.TenantID, "assignment", a)
 	return a, nil
 }

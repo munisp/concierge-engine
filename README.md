@@ -759,6 +759,18 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 56 — partner integration layer.** Tour operators (Mr Travel, The
+Little Orange, Younique Tailor Tours) integrate programmatically
+(docs/phase56.md): partner-scoped API keys (bound to one partner, confined
+to /v1/partner/* by middleware), a partner portal API (assignments,
+accept/decline over the trip state machine, settlement view), commission on
+partner-routed confirmed bookings accruing as PENDING payouts into the
+existing Phase 2/48 settlement saga (idempotent per booking+partner;
+decline voids, money in flight never silently rewritten), partner-scoped
+webhook feeds (payload partner_id filter on the standard signed/retried
+delivery), and embeddable lead capture with partner: source attribution.
+Console Partners page gains the integration panel. Migration 0036.
+
 **Phase 55 — industry packs & vertical campaigns.** Marketing automation is
 now industry-aware (docs/phase55.md): segments gain two vertical axes —
 `vertical` (proven: booked a request containing that vertical) and

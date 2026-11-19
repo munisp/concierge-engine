@@ -12,6 +12,7 @@ type Partner = {
   quality_score: number;
   payout_rail: string;
   payout_ref?: string;
+  commission_pct?: number;
 };
 
 type Metrics = {
@@ -129,7 +130,7 @@ export default function Partners() {
       </div>
       <table>
         <thead>
-          <tr><th>Name</th><th>Verticals</th><th>Status</th><th>Quality</th><th>Rail</th><th /></tr>
+          <tr><th>Name</th><th>Verticals</th><th>Status</th><th>Quality</th><th>Rail</th><th>Comm.</th><th /></tr>
         </thead>
         <tbody>
           {partners.map((p) => (
@@ -139,6 +140,7 @@ export default function Partners() {
               <td><strong>{p.status}</strong></td>
               <td>{p.quality_score.toFixed(2)}</td>
               <td>{p.payout_rail}</td>
+              <td>{p.commission_pct ? `${p.commission_pct}%` : "—"}</td>
               <td className="row" style={{ gap: 6 }}>
                 {p.status !== "VETTED" && (
                   <button onClick={() => void setStatus(p.id, "VETTED")}>Vet</button>
@@ -154,7 +156,161 @@ export default function Partners() {
         </tbody>
       </table>
       <SettlementsCard partners={partners} onError={setError} />
+      <IntegrationCard partners={partners} onError={setError} />
     </section>
+  );
+}
+
+// Phase 56: partner integration — commission rate, partner-scoped API keys
+// (secret shown once), partner webhook feeds, and the embeddable lead
+// capture snippet for the partner's own website.
+type Integration = {
+  partner: Partner;
+  keys: { id: string; name: string; prefix: string; revoked: boolean }[];
+  webhooks: { id: string; url: string; events: string[]; active: boolean }[];
+  capture_endpoint: string;
+  capture_source: string;
+};
+
+function IntegrationCard({ partners, onError }: { partners: Partner[]; onError: (m: string) => void }) {
+  const [partnerID, setPartnerID] = useState("");
+  const [info, setInfo] = useState<Integration | null>(null);
+  const [pct, setPct] = useState("");
+  const [keyName, setKeyName] = useState("");
+  const [hookURL, setHookURL] = useState("");
+  const [hookEvents, setHookEvents] = useState("assignment.*,partner.*");
+  const [secret, setSecret] = useState("");
+
+  const load = useCallback(async (pid: string) => {
+    if (!pid) {
+      setInfo(null);
+      return;
+    }
+    try {
+      const res = await api.get<Integration>(`/v1/partners/${pid}/integration`);
+      setInfo(res);
+      setPct(res.partner.commission_pct ? String(res.partner.commission_pct) : "");
+      setSecret("");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "integration load failed");
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    void load(partnerID);
+  }, [partnerID, load]);
+
+  async function act(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+      await load(partnerID);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "integration action failed");
+    }
+  }
+
+  const snippet = info
+    ? `<script>\n` +
+      `fetch("${window.location.origin}${info.capture_endpoint}", {\n` +
+      `  method: "POST", headers: { "Content-Type": "application/json" },\n` +
+      `  body: JSON.stringify({ kind: "person", name, email, phone }),\n` +
+      `});\n` +
+      `</script>`
+    : "";
+
+  return (
+    <div className="card">
+      <h3>Partner integration (API &amp; webhooks)</h3>
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <select value={partnerID} onChange={(e) => setPartnerID(e.target.value)}>
+          <option value="">Select partner…</option>
+          {partners.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
+      {info && (
+        <>
+          <h4>Commission</h4>
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              type="number" min="0" max="50" step="0.5" style={{ width: 110 }}
+              placeholder="%" value={pct} onChange={(e) => setPct(e.target.value)}
+            />
+            <button disabled={pct === ""} onClick={() => void act(() =>
+              api.put(`/v1/partners/${partnerID}/commission`, { commission_pct: Number(pct) }))}>
+              Save rate
+            </button>
+            <span className="muted">0–50%; accrues as a payout on every partner-routed confirmed booking.</span>
+          </div>
+          <h4>API keys</h4>
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            <input placeholder="Key name (e.g. partner portal)" value={keyName}
+              onChange={(e) => setKeyName(e.target.value)} />
+            <button disabled={!keyName} onClick={() => void act(async () => {
+              const res = await api.post<{ secret: string }>(`/v1/partners/${partnerID}/keys`, { name: keyName });
+              setSecret(res.secret);
+              setKeyName("");
+            })}>
+              Create key
+            </button>
+          </div>
+          {secret && (
+            <p className="error">
+              Copy this key now — it is shown once: <code>{secret}</code>
+            </p>
+          )}
+          {info.keys.length > 0 && (
+            <table>
+              <thead><tr><th>Name</th><th>Prefix</th><th>State</th></tr></thead>
+              <tbody>
+                {info.keys.map((k) => (
+                  <tr key={k.id}>
+                    <td>{k.name}</td><td><code>{k.prefix}…</code></td>
+                    <td>{k.revoked ? "REVOKED" : "ACTIVE"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <h4>Webhook feed</h4>
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            <input placeholder="https://partner.example.com/hook" value={hookURL}
+              onChange={(e) => setHookURL(e.target.value)} style={{ minWidth: 280 }} />
+            <input placeholder="assignment.*,partner.*" value={hookEvents}
+              onChange={(e) => setHookEvents(e.target.value)} />
+            <button disabled={!hookURL} onClick={() => void act(async () => {
+              const res = await api.post<{ secret: string }>(`/v1/partners/${partnerID}/webhooks`, {
+                url: hookURL,
+                events: hookEvents.split(",").map((v) => v.trim()).filter(Boolean),
+              });
+              setSecret(res.secret);
+              setHookURL("");
+            })}>
+              Add feed
+            </button>
+          </div>
+          {info.webhooks.length > 0 && (
+            <table>
+              <thead><tr><th>URL</th><th>Events</th><th>State</th></tr></thead>
+              <tbody>
+                {info.webhooks.map((wh) => (
+                  <tr key={wh.id}>
+                    <td>{wh.url}</td><td>{wh.events.join(", ")}</td>
+                    <td>{wh.active ? "ACTIVE" : "PAUSED"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <h4>Lead capture snippet</h4>
+          <p className="muted">
+            Partner posts leads into your pipeline with attribution <code>{info.capture_source}</code>:
+          </p>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{snippet}</pre>
+        </>
+      )}
+    </div>
   );
 }
 

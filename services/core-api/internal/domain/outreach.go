@@ -113,6 +113,11 @@ type OutreachVerdict struct {
 	// channel. The console flags it so the operator knows this send is the
 	// rare touch, not the lane reopening.
 	ReengagementTouch bool `json:"reengagement_touch,omitempty"`
+	// Phase 52: when OptimizeSendTime or quiet hours would defer this
+	// marketing send, the console composer previews the computed delivery
+	// time instead of letting the operator assume "now". Advisory — the
+	// send path recomputes it authoritatively.
+	OptimizedSendAt *time.Time `json:"optimized_send_at,omitempty"`
 }
 
 // Phase 40 deliverability guard: below the minimum volume there is no
@@ -163,6 +168,11 @@ func (svc *OutreachService) verdict(ctx context.Context, tenantID, clientID, pur
 	v.MarketingConsent = cl.Consent["marketing"] == true
 	if purpose != model.OutreachMarketing {
 		return v, nil // service: always allowed
+	}
+	// Phase 52: preview the optimizer/quiet-hours delivery time for the
+	// composer (advisory; the send path recomputes authoritatively).
+	if w, _ := svc.deferral(ctx, tenantID, clientID); w != nil {
+		v.OptimizedSendAt = w
 	}
 	since := svc.s.Now().Add(-7 * 24 * time.Hour)
 	sends, err := svc.s.Store.Outreach().SendsForClient(ctx, tenantID, clientID, since)
@@ -433,13 +443,17 @@ func (svc *OutreachService) Send(ctx context.Context, tenantID string, in SendOu
 	// the client's optimized send hour. Service sends never defer —
 	// a safety message at 02:00 still goes at 02:00.
 	when := in.ScheduledFor
+	var why string
 	if when == nil && in.Purpose == model.OutreachMarketing {
-		when = svc.deferral(ctx, tenantID, in.ClientID)
+		when, why = svc.deferral(ctx, tenantID, in.ClientID)
 	}
 	if when != nil && when.After(svc.s.Now()) {
 		o.Status, o.ScheduledFor = "scheduled", when
 		if o.Detail == "" {
 			o.Detail = "scheduled for " + when.UTC().Format(time.RFC3339)
+			if why != "" {
+				o.Detail += " (" + why + ")"
+			}
 		}
 		return svc.record(ctx, o)
 	}
@@ -593,25 +607,33 @@ func (svc *OutreachService) Sends(ctx context.Context, tenantID string, limit in
 // ---------------------------------------------------------- Phase 35: scheduling
 
 // deferral computes a marketing send's delivery time under the tenant's
-// quiet hours (O7) and send-time optimization (O6). Nil = send now.
-func (svc *OutreachService) deferral(ctx context.Context, tenantID, clientID string) *time.Time {
+// quiet hours (O7) and send-time optimization (O6/Phase 52), plus the
+// provenance of that choice for the send's audit detail. Nil = send now.
+func (svc *OutreachService) deferral(ctx context.Context, tenantID, clientID string) (*time.Time, string) {
 	t, err := svc.s.Store.Tenants().Get(ctx, tenantID)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 	cfg := t.OutreachConfig
 	now := svc.s.Now()
 	var when time.Time
+	var why string
 	if cfg.OptimizeSendTime {
-		when = svc.preferredHour(ctx, tenantID, clientID, now)
+		// Phase 52: engagement evidence first (the client's real
+		// opens/clicks/replies), booking pattern as the weaker fallback.
+		if w, n := svc.engagementHour(ctx, tenantID, clientID, now); !w.IsZero() {
+			when, why = w, fmt.Sprintf("smart send time: peak engagement hour from %d opens/clicks/replies", n)
+		} else if w = svc.preferredHour(ctx, tenantID, clientID, now); !w.IsZero() {
+			when, why = w, "send time from booking pattern (insufficient engagement data)"
+		}
 	}
 	if q := quietDefer(cfg, now); q.After(when) {
-		when = q
+		when, why = q, "quiet hours until window end"
 	}
 	if when.IsZero() || !when.After(now) {
-		return nil
+		return nil, ""
 	}
-	return &when
+	return &when, why
 }
 
 // quietDefer returns the end of the tenant's quiet-hours window when now

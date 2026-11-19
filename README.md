@@ -759,6 +759,16 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 52 — engagement-driven send-time optimization.** First
+feature-borrow from the Mautic assessment (docs/phase52.md): the Phase 35
+optimizer inferred best send hour from booking patterns; it now prefers the
+client's own engagement evidence (email opens/clicks, inbound replies from
+the attribution spine, min 3 samples) and falls back to the booking pattern
+with an honest detail line. Quiet hours still override; every deferral
+records its evidence in the send's audit detail; marketing verdicts preview
+`optimized_send_at` for the composer. No config change required — tenants
+with `OptimizeSendTime` get the better signal automatically.
+
 **Phase 51 — pluggable OCR engine chain.** The WhatsApp media OCR chain
 generalizes from two providers into an env-ordered engine registry
 (`CE_OCR_CHAIN`, default `vlm,docling,paddleocr,rusto,tesseract`): the

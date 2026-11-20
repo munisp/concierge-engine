@@ -759,6 +759,19 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 61 — journey orchestration (flight-to-curb).** The trip, not
+just the ride (docs/phase61.md): typed `itinerary_legs` (flight / hotel
+/ ground / partner, migration 0040) chain a booking's airport transfer
+to the flight it meets (`linked_leg_id`); adding a flight leg resolves
+the schedule through the GDS chain live-first (provenance `live` /
+`scheduled`, never an invented ETA). The flight watch re-polls watchable
+legs and a changed delay **cascades**: `adjusted pickup = flight ETA +
+profile-weighted buffer` (base 45 min, +15 heavy luggage, +15 mobility,
+cap 90), the rider is notified over WhatsApp (honest degrade), and the
+chauffeur trip view carries the journey context — flight status, landing
+ETA, adjusted pickup. Rider timeline on the Track page, add-leg journey
+card on the client 360.
+
 **Phase 60 — ride modes & cabin pre-conditioning.** One-tap ambiance
 presets (docs/phase60.md): Focus / Relax / Family / Celebrate expand into
 validated preference bundles through the normal SavePreference path

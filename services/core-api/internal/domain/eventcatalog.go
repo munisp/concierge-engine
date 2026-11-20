@@ -81,6 +81,10 @@ var EventCatalog = []EventSpec{
 	{"tenant.instant_on", "tenant", "Instant-on provisioning completed", nil},
 
 	{"partner.registered", "partner", "Supply partner registered", []string{"name"}},
+	{"journey.leg_added", "itinerary", "Itinerary leg recorded", []string{"kind", "client_id", "source"}},
+	{"journey.flight_updated", "itinerary", "Flight status refreshed", []string{"flight", "status", "delay_minutes", "source"}},
+	{"journey.ground_adjusted", "itinerary", "Ground pickup re-timed after flight update", []string{"booking_id", "flight", "old_pickup", "new_pickup", "delay_minutes"}},
+	{"journey.rider_notified", "itinerary", "Rider notified of journey change", []string{"channel", "status", "detail"}},
 	{"partner.status_changed", "partner", "Partner vetting status changed", []string{"status"}},
 	{"payout.created", "payout", "Partner payout created", []string{"amount_minor", "rail"}},
 	{"payout.quoted", "payout", "Mojaloop quote received", nil},

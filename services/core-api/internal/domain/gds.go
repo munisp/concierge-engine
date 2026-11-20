@@ -24,6 +24,10 @@ import (
 type GDSPort interface {
 	SearchFlights(ctx context.Context, origin, dest, date string, adults int) ([]model.FlightOffer, error)
 	SearchHotels(ctx context.Context, cityCode, checkIn, checkOut string, adults int) ([]model.HotelOffer, error)
+	// FlightStatus (Phase 61): live status for one flight on one date.
+	// Providers without a status feed return a SCHEDULED report with
+	// Source "scheduled" — never a fabricated ETA.
+	FlightStatus(ctx context.Context, flightNumber, date string) (*model.FlightStatusReport, error)
 	Name() string
 }
 
@@ -242,6 +246,88 @@ func (a *AmadeusAdapter) SearchHotels(ctx context.Context, cityCode, checkIn, ch
 	return out, nil
 }
 
+// FlightStatus queries the Amadeus schedule/status feed. Without live
+// credentials the adapter reports timetable-only (SCHEDULED, source
+// "scheduled") — honest degrade, no invented delays or ETAs.
+func (a *AmadeusAdapter) FlightStatus(ctx context.Context, flightNumber, date string) (*model.FlightStatusReport, error) {
+	if !a.Live() {
+		return &model.FlightStatusReport{
+			FlightNumber: flightNumber, Date: date,
+			Status: model.LegScheduled, Source: "scheduled",
+		}, nil
+	}
+	// Amadeus On-Demand Flight Status: GET /v2/schedule/flights
+	// (carrierCode + flightNumber + scheduledDepartureDate).
+	carrier, number := flightNumber[:2], flightNumber[2:]
+	q := url.Values{}
+	q.Set("carrierCode", carrier)
+	q.Set("flightNumber", number)
+	q.Set("scheduledDepartureDate", date)
+	var out struct {
+		Data []struct {
+			FlightPoints []struct {
+				Departure *struct {
+					Timings []struct {
+						Value string `json:"value"`
+						Delay string `json:"delay"`
+					} `json:"timings"`
+					Terminal string `json:"terminal"`
+				} `json:"departure"`
+				Arrival *struct {
+					Timings []struct {
+						Value string `json:"value"`
+						Delay string `json:"delay"`
+					} `json:"timings"`
+					Terminal string `json:"terminal"`
+				} `json:"arrival"`
+			} `json:"flightPoints"`
+		} `json:"data"`
+	}
+	if err := a.get(ctx, "/v2/schedule/flights", q, &out); err != nil {
+		return nil, err
+	}
+	rep := &model.FlightStatusReport{
+		FlightNumber: flightNumber, Date: date,
+		Status: model.LegScheduled, Source: "live",
+	}
+	if len(out.Data) > 0 && len(out.Data[0].FlightPoints) > 0 {
+		fp := out.Data[0].FlightPoints
+		if arr := fp[len(fp)-1].Arrival; arr != nil {
+			rep.Terminal = arr.Terminal
+			for _, tm := range arr.Timings {
+				if tm.Value != "" {
+					rep.ETALocal = tm.Value
+				}
+				if tm.Delay != "" {
+					rep.DelayMinutes = parseISO8601Minutes(tm.Delay)
+					if rep.DelayMinutes > 0 {
+						rep.Status = model.LegDelayed
+					}
+				}
+			}
+		}
+	}
+	return rep, nil
+}
+
+// parseISO8601Minutes converts "PT1H40M"/"PT40M" delays to minutes.
+func parseISO8601Minutes(d string) int {
+	d = strings.TrimPrefix(d, "PT")
+	total := 0
+	if i := strings.Index(d, "H"); i >= 0 {
+		var h int
+		fmt.Sscanf(d[:i], "%d", &h)
+		total += h * 60
+		d = d[i+1:]
+	}
+	if i := strings.Index(d, "M"); i >= 0 {
+		var m int
+		fmt.Sscanf(d[:i], "%d", &m)
+		total += m
+	}
+	return total
+}
+
 // ------------------------------------------------------------- mock (dev/CI)
 
 type MockGDS struct{}
@@ -258,6 +344,14 @@ func (m *MockGDS) SearchFlights(_ context.Context, origin, dest, date string, ad
 			DepartureAt: date + "T13:40:00", ArrivalAt: date + "T15:30:00",
 			Carrier: "BA", FlightNo: "BA441", Cabin: "BUSINESS",
 			TotalMinor: int64(54200 * adults), Currency: "EUR", OfferRef: "mock-offer-2"},
+	}, nil
+}
+
+// FlightStatus — mock is always on time, clearly labeled scheduled.
+func (m *MockGDS) FlightStatus(_ context.Context, flightNumber, date string) (*model.FlightStatusReport, error) {
+	return &model.FlightStatusReport{
+		FlightNumber: flightNumber, Date: date,
+		Status: model.LegScheduled, Source: "scheduled",
 	}, nil
 }
 
@@ -345,6 +439,21 @@ func (svc *GDSService) SearchHotels(ctx context.Context, tenantID, cityCode, che
 	svc.s.Events.Emit(ctx, tenantID, "supply", "gds", "supply.hotels_searched",
 		map[string]any{"city": cityCode, "results": len(offers), "source": source})
 	return offers, source, nil
+}
+
+// FlightStatus (Phase 61): live-first like search — a credentialed
+// adapter answers directly; anything else reports timetable-only
+// (SCHEDULED, source "scheduled"). Never a fabricated ETA.
+func (svc *GDSService) FlightStatus(ctx context.Context, flightNumber, date string) (*model.FlightStatusReport, error) {
+	if flightNumber == "" || date == "" {
+		return nil, fmt.Errorf("validation")
+	}
+	if svc.liveEnabled() {
+		if rep, err := svc.live.FlightStatus(ctx, flightNumber, date); err == nil {
+			return rep, nil
+		}
+	}
+	return svc.mock.FlightStatus(ctx, flightNumber, date)
 }
 
 // AttachOffer links a GDS offer to a booking — the attach-rate proof point

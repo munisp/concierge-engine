@@ -17,6 +17,13 @@ type TripView = {
   notes?: string;
   preferences?: Record<string, string>; // Phase 58 rider comfort block
   prep_tasks?: string[]; // Phase 60 pre-pickup checklist
+  journey?: { // Phase 61 flight-to-curb context
+    flight_number: string;
+    flight_status: string;
+    delay_minutes?: number;
+    eta?: string;
+    adjusted_pickup?: string;
+  };
 };
 
 const PREF_LABELS: Record<string, string> = {
@@ -145,6 +152,25 @@ export default function Chauffeur() {
                   {(PREF_LABELS[k] ?? k) + ": " + prefText(k, v)}
                 </span>
               ))}
+            </dd>
+          </>
+        )}
+        {trip.journey && (
+          <>
+            <dt>Journey</dt>
+            <dd>
+              <strong>{trip.journey.flight_number}</strong>{" "}
+              {trip.journey.flight_status}
+              {trip.journey.delay_minutes ? ` (+${trip.journey.delay_minutes} min)` : ""}
+              {trip.journey.eta && (
+                <div className="muted">Lands {new Date(trip.journey.eta).toLocaleTimeString()}</div>
+              )}
+              {trip.journey.adjusted_pickup && (
+                <div className="muted">
+                  Pickup adjusted to {new Date(trip.journey.adjusted_pickup).toLocaleTimeString()}
+                  {" "}— delay cascaded automatically
+                </div>
+              )}
             </dd>
           </>
         )}

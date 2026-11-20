@@ -195,6 +195,7 @@ export default function Track() {
           </div>
 
           {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} submitted={view.review_submitted} />}
+          <JourneyTimeline token={token} />
           <SoundscapeCard token={token} />
           <RidePreferences token={token} />
         </>
@@ -404,6 +405,81 @@ function SoundscapeCard({ token }: { token: string }) {
       ) : (
         <p className="muted">Composing your soundtrack… check back shortly.</p>
       )}
+    </div>
+  );
+}
+
+// Phase 61: the rider's end-to-end journey — flight, ground transfer,
+// hotel — as one honest timeline. Statuses and delays come from the GDS
+// chain (labeled live / scheduled); we never invent an ETA.
+type JourneyLeg = {
+  id: string;
+  kind: string;
+  title: string;
+  origin?: string;
+  destination?: string;
+  sched_start: string;
+  sched_end?: string;
+  actual_start?: string;
+  status: string;
+  delay_minutes?: number;
+  source?: string;
+};
+
+const LEG_KIND_LABELS: Record<string, string> = {
+  flight: "Flight",
+  hotel: "Stay",
+  ground: "Transfer",
+  partner: "Partner",
+};
+
+function legTime(l: JourneyLeg): string {
+  const t = l.actual_start || l.sched_start;
+  return t ? new Date(t).toLocaleString() : "";
+}
+
+function JourneyTimeline({ token }: { token: string }) {
+  const [legs, setLegs] = useState<JourneyLeg[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await tokenCall<{ legs: JourneyLeg[] }>("GET", `/v1/track/${token}/journey`);
+        if (alive) setLegs(r.legs ?? []);
+      } catch {
+        // journey context is additive — the tracking view stands alone
+      }
+    };
+    load();
+    const iv = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [token]);
+
+  if (legs.length === 0) return null;
+  return (
+    <div className="card" style={{ maxWidth: 480 }}>
+      <h3>Your journey</h3>
+      <ol style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {legs.map((l) => (
+          <li key={l.id} style={{ marginBottom: 10 }}>
+            <span className="badge">{LEG_KIND_LABELS[l.kind] ?? l.kind}</span>{" "}
+            <strong>{l.title}</strong>
+            <br />
+            <span className="muted">
+              {legTime(l)}
+              {l.delay_minutes ? ` · ${l.delay_minutes} min delay` : ""}
+              {l.status === "DELAYED" ? " · rescheduled" : ""}
+              {l.status === "ARRIVED" || l.status === "COMPLETED" ? " · done" : ""}
+            </span>
+            {l.kind === "flight" && l.source && (
+              <span className="muted">
+                {" "}· {l.source === "live" ? "live flight data" : "scheduled times"}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

@@ -51,6 +51,7 @@ type memory struct {
 	kycIdem       map[string]string                  // tenant/key → case id
 	soundscapes   map[string]*model.Soundscape       // tenantID/id (Phase 59)
 	soundIdem     map[string]string                  // tenant/key → soundscape id
+	legs          map[string]*model.ItineraryLeg     // tenantID/id (Phase 61)
 	batches       map[string]*model.SettlementBatch  // tenantID/id (Phase 48)
 	batchIdem     map[string]string                  // tenant/key → batch id
 	outbox        []model.OutboxEvent
@@ -132,6 +133,7 @@ func NewMemory() Store {
 		kycIdem:       map[string]string{},
 		soundscapes:   map[string]*model.Soundscape{},
 		soundIdem:     map[string]string{},
+		legs:          map[string]*model.ItineraryLeg{},
 		batches:       map[string]*model.SettlementBatch{},
 		batchIdem:     map[string]string{},
 	}

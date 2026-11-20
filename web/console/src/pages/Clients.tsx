@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 
 // Phase 15 CRM console: client search, profile enrichment, consent
@@ -309,6 +309,7 @@ export default function Clients() {
               </tbody></table>
             )}
             <RideProfileCard clientID={view.client.id} onSaved={() => open360(view.client.id)} />
+            <JourneyCard clientID={view.client.id} />
             <h3>Preferences ({view.preferences.length})</h3>
             {view.preferences.length > 0 && (
               <table><tbody>
@@ -418,5 +419,106 @@ function RideProfileCard({ clientID, onSaved }: { clientID: string; onSaved: () 
       {msg && <p>{msg}</p>}
       {err && <p className="error">{err}</p>}
     </div>
+  );
+}
+
+// Phase 61: the client's end-to-end journey — flights, stays, transfers —
+// plus the add-leg form. Flight legs resolve through the GDS chain;
+// provenance ("live" / "scheduled" / "manual") is shown verbatim.
+type JourneyLeg = {
+  id: string;
+  kind: string;
+  title: string;
+  flight_number?: string;
+  origin?: string;
+  destination?: string;
+  sched_start: string;
+  actual_start?: string;
+  status: string;
+  delay_minutes?: number;
+  source?: string;
+};
+
+const JOURNEY_KINDS = ["flight", "hotel", "ground", "partner"];
+
+function JourneyCard({ clientID }: { clientID: string }) {
+  const [legs, setLegs] = useState<JourneyLeg[]>([]);
+  const [err, setErr] = useState("");
+  const [kind, setKind] = useState("flight");
+  const [flightNo, setFlightNo] = useState("");
+  const [title, setTitle] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+
+  const load = async () => {
+    try {
+      const r = await api.get<{ legs: JourneyLeg[] }>(`/v1/clients/${clientID}/journey`);
+      setLegs(r.legs ?? []);
+    } catch (e) { setErr(String(e)); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [clientID]);
+
+  async function addLeg() {
+    setErr("");
+    try {
+      const body: Record<string, unknown> = {
+        kind,
+        sched_start: new Date(start).toISOString(),
+      };
+      if (end) body.sched_end = new Date(end).toISOString();
+      if (kind === "flight") {
+        body.flight_number = flightNo;
+        body.origin = origin;
+        body.destination = destination;
+      } else {
+        body.title = title;
+        if (origin) body.origin = origin;
+        if (destination) body.destination = destination;
+      }
+      await api.post(`/v1/clients/${clientID}/journey/legs`, body);
+      setFlightNo(""); setTitle(""); setOrigin(""); setDestination(""); setStart(""); setEnd("");
+      await load();
+    } catch (e) { setErr(String(e)); }
+  }
+
+  return (
+    <>
+      <h3>Journey ({legs.length})</h3>
+      {legs.length > 0 && (
+        <table><tbody>
+          {legs.map((l) => (
+            <tr key={l.id}>
+              <td><span className="badge">{l.kind}</span></td>
+              <td>{l.title}</td>
+              <td>{new Date(l.actual_start || l.sched_start).toLocaleString()}</td>
+              <td>{l.status}{l.delay_minutes ? ` +${l.delay_minutes}m` : ""}</td>
+              <td className="muted">{l.source || ""}</td>
+            </tr>
+          ))}
+        </tbody></table>
+      )}
+      <div className="row">
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          {JOURNEY_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+        {kind === "flight" ? (
+          <input placeholder="flight no (BA75)" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} />
+        ) : (
+          <input placeholder="title (Eko Hotel)" value={title} onChange={(e) => setTitle(e.target.value)} />
+        )}
+        <input placeholder="origin" value={origin} onChange={(e) => setOrigin(e.target.value)} />
+        <input placeholder="destination" value={destination} onChange={(e) => setDestination(e.target.value)} />
+      </div>
+      <div className="row">
+        <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+        <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+        <button onClick={addLeg} disabled={!start || (kind === "flight" ? !flightNo : !title)}>
+          Add leg
+        </button>
+      </div>
+      {err && <p className="error">{err}</p>}
+    </>
   );
 }

@@ -423,6 +423,22 @@ type KycCaseStore interface {
 	ScrubDocumentRefsForClient(ctx context.Context, tenantID, clientID string) (int, error)
 }
 
+// ItineraryStore (Phase 61): typed journey legs — flight / hotel /
+// ground / partner — with scheduled and actual times.
+type ItineraryStore interface {
+	Create(ctx context.Context, l *model.ItineraryLeg) error
+	Get(ctx context.Context, tenantID, id string) (*model.ItineraryLeg, error)
+	Update(ctx context.Context, l *model.ItineraryLeg) error
+	// ListForClient: the journey timeline, soonest first.
+	ListForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.ItineraryLeg, error)
+	// ForBooking: the ground leg(s) linked to a platform booking.
+	ForBooking(ctx context.Context, tenantID, bookingID string) ([]model.ItineraryLeg, error)
+	// FlightLegsDue: flight legs whose scheduled departure falls in
+	// [from, to] and whose status is still watchable (not ARRIVED /
+	// COMPLETED / CANCELLED) — the flight-watch scan set.
+	FlightLegsDue(ctx context.Context, tenantID string, from, to time.Time) ([]model.ItineraryLeg, error)
+}
+
 // SoundscapeStore (Phase 59): one AI-composed track per booking.
 // Create is idempotent on (tenant, IdempotencyKey) — re-Create with the
 // same key returns ErrConflict so generation never double-renders.
@@ -534,5 +550,6 @@ type Store interface {
 	ConsentEvents() ConsentEventStore
 	KycCases() KycCaseStore
 	Soundscapes() SoundscapeStore
+	Itineraries() ItineraryStore
 	Close()
 }

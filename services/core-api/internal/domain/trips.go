@@ -51,6 +51,18 @@ type TripView struct {
 	// Phase 60: the chauffeur's pre-pickup checklist derived from the
 	// comfort block (set cabin to 21°C, install toddler seat…).
 	PrepTasks []string `json:"prep_tasks,omitempty"`
+	// Phase 61: journey context — the flight this trip meets, when linked.
+	Journey *JourneyContext `json:"journey,omitempty"`
+}
+
+// JourneyContext (Phase 61): the flight leg chained to this ground trip —
+// status, delay, ETA, and the adjusted pickup after a cascade.
+type JourneyContext struct {
+	FlightNumber   string `json:"flight_number"`
+	FlightStatus   string `json:"flight_status"`
+	DelayMinutes   int    `json:"delay_minutes,omitempty"`
+	ETA            string `json:"eta,omitempty"`
+	AdjustedPickup string `json:"adjusted_pickup,omitempty"`
 }
 
 // TokenFor mints the chauffeur magic-link token for an assignment.
@@ -146,6 +158,25 @@ func (svc *TripService) View(ctx context.Context, token string) (*TripView, erro
 				if prefs, err := svc.s.Clients.RidePreferenceMap(ctx, tenantID, sr.ClientID); err == nil {
 					view.Preferences = prefs
 					view.PrepTasks = PrepTasks(prefs)
+				}
+				// Phase 61: journey context — the flight this trip meets.
+				if legs, err := svc.s.Store.Itineraries().ForBooking(ctx, tenantID, b.ID); err == nil {
+					for _, gl := range legs {
+						if gl.LinkedLegID == "" {
+							continue
+						}
+						if fl, err := svc.s.Store.Itineraries().Get(ctx, tenantID, gl.LinkedLegID); err == nil {
+							jc := &JourneyContext{FlightNumber: fl.FlightNumber, FlightStatus: fl.Status,
+								DelayMinutes: fl.DelayMinutes}
+							if !fl.ActualStart.IsZero() {
+								jc.ETA = fl.ActualStart.UTC().Format("2006-01-02T15:04:05Z")
+							}
+							if !gl.ActualStart.IsZero() {
+								jc.AdjustedPickup = gl.ActualStart.UTC().Format("2006-01-02T15:04:05Z")
+							}
+							view.Journey = jc
+						}
+					}
 				}
 			}
 		}

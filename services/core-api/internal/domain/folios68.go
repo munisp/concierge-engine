@@ -22,17 +22,22 @@ import (
 // total and lines, the derived due date and days past due when issued,
 // and every reminder the folio has accrued — verbatim.
 type PortalFolio struct {
-	ID          string                `json:"id"`
-	Period      string                `json:"period"`
-	Currency    string                `json:"currency"`
-	State       string                `json:"state"` // OPEN (accruing) | ISSUED (payable) | SETTLED (paid)
-	TotalMinor  int64                 `json:"total_minor"`
-	Lines       []model.FolioLine     `json:"lines,omitempty"`
-	IssuedAt    *time.Time            `json:"issued_at,omitempty"`
-	SettledAt   *time.Time            `json:"settled_at,omitempty"`
-	DueAt       *time.Time            `json:"due_at,omitempty"` // ISSUED only — derived, not stored
-	OverdueDays int                   `json:"overdue_days"`     // ISSUED only; <= 0 means inside terms
-	Reminders   []model.FolioReminder `json:"reminders,omitempty"`
+	ID         string `json:"id"`
+	Period     string `json:"period"`
+	Currency   string `json:"currency"`
+	State      string `json:"state"` // OPEN (accruing) | ISSUED (payable) | SETTLED (paid)
+	TotalMinor int64  `json:"total_minor"`
+	// Phase 70: derived from the payment ledger — what the partner has
+	// already paid and what is still owed on this statement.
+	PaidMinor        int64                 `json:"paid_minor"`
+	OutstandingMinor int64                 `json:"outstanding_minor"`
+	Payments         []model.FolioPayment  `json:"payments,omitempty"`
+	Lines            []model.FolioLine     `json:"lines,omitempty"`
+	IssuedAt         *time.Time            `json:"issued_at,omitempty"`
+	SettledAt        *time.Time            `json:"settled_at,omitempty"`
+	DueAt            *time.Time            `json:"due_at,omitempty"` // ISSUED only — derived, not stored
+	OverdueDays      int                   `json:"overdue_days"`     // ISSUED only; <= 0 means inside terms
+	Reminders        []model.FolioReminder `json:"reminders,omitempty"`
 }
 
 // PortalFolios builds the partner's statement list for the portal,
@@ -55,6 +60,8 @@ func (svc *FolioService) PortalFolios(ctx context.Context, tenantID, partnerID s
 		pf := PortalFolio{
 			ID: f.ID, Period: f.Period, Currency: f.Currency, State: f.State,
 			TotalMinor: f.TotalMinor, Lines: f.Lines, Reminders: f.Reminders,
+			PaidMinor: f.PaidMinor(), OutstandingMinor: f.OutstandingMinor(),
+			Payments: f.Payments,
 		}
 		if !f.IssuedAt.IsZero() {
 			t := f.IssuedAt

@@ -64,6 +64,8 @@ type PortalFolio = {
   currency: string;
   state: string; // OPEN | ISSUED | SETTLED
   total_minor: number;
+  paid_minor: number; // Phase 70: derived from the payment ledger
+  outstanding_minor: number;
   lines?: { booking_id: string; guest_name?: string; amount_minor: number }[];
   issued_at?: string;
   settled_at?: string;
@@ -102,7 +104,15 @@ function FolioRow({ f }: { f: PortalFolio }) {
     <>
       <tr onClick={() => setOpen(!open)} style={{ cursor: "pointer" }}>
         <td><strong>{f.period}</strong></td>
-        <td>{minor(f.total_minor)} {f.currency}</td>
+        <td>
+          {minor(f.total_minor)} {f.currency}
+          {f.paid_minor > 0 && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              paid {minor(f.paid_minor)}
+              {f.state === "ISSUED" && f.outstanding_minor > 0 && <> · owed {minor(f.outstanding_minor)}</>}
+            </div>
+          )}
+        </td>
         <td>
           <strong>{f.state === "OPEN" ? "Accruing" : f.state}</strong>
           {f.state === "ISSUED" && f.due_at && (

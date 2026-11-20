@@ -139,6 +139,11 @@ func (svc *FolioService) Issue(ctx context.Context, tenantID, partnerID, period,
 // partner's payment clears into tenant revenue net of the platform fee —
 // the same split as a card capture, keyed folio:{id} so a retry can never
 // double-post. SETTLED is terminal and idempotent.
+//
+// Phase 70: after partial payments, Settle records only the OUTSTANDING
+// remainder as the final payment (method "settle") and posts only that
+// remainder's split — both collection paths converge on a folio whose
+// payment ledger always sums to the frozen total.
 func (svc *FolioService) Settle(ctx context.Context, tenantID, folioID string) (*model.Folio, error) {
 	f, err := svc.s.Store.Folios().Get(ctx, tenantID, folioID)
 	if err != nil {
@@ -154,26 +159,29 @@ func (svc *FolioService) Settle(ctx context.Context, tenantID, folioID string) (
 	if err != nil {
 		return nil, err
 	}
-	fee := PlatformFeeMinor(tenant.PricingRules, f.TotalMinor)
-	net := f.TotalMinor - fee
-	if err := svc.s.Payments.post(ctx, tenantID, "",
-		"PARTNER_CLEARING", "TENANT_REVENUE", net, f.Currency, "folio:net:"+f.ID); err != nil {
-		return nil, err
-	}
-	if err := svc.s.Payments.post(ctx, tenantID, "",
-		"PARTNER_CLEARING", "PLATFORM_FEES", fee, f.Currency, "folio:fee:"+f.ID); err != nil {
-		return nil, err
+	outstanding := f.OutstandingMinor()
+	if outstanding > 0 {
+		fee := PlatformFeeMinor(tenant.PricingRules, outstanding)
+		net := outstanding - fee
+		if err := svc.s.Payments.post(ctx, tenantID, "",
+			"PARTNER_CLEARING", "TENANT_REVENUE", net, f.Currency, "folio:net:"+f.ID); err != nil {
+			return nil, err
+		}
+		if err := svc.s.Payments.post(ctx, tenantID, "",
+			"PARTNER_CLEARING", "PLATFORM_FEES", fee, f.Currency, "folio:fee:"+f.ID); err != nil {
+			return nil, err
+		}
+		f.Payments = append(f.Payments, model.FolioPayment{
+			ID: NewID(), AmountMinor: outstanding, Method: "settle",
+			ReceivedAt: svc.s.Now(), RecordedBy: "operator",
+		})
 	}
 	f.State = model.FolioSettled
 	f.SettledAt = svc.s.Now()
 	if err := svc.s.Store.Folios().Update(ctx, f); err != nil {
 		return nil, err
 	}
-	svc.s.Events.Emit(ctx, tenantID, "partner", f.PartnerID, "channel.folio_settled",
-		map[string]any{"folio_id": f.ID, "period": f.Period, "currency": f.Currency,
-			"total_minor": f.TotalMinor, "net_minor": net, "fee_minor": fee})
-	svc.s.Audit.Log(ctx, tenantID, "operator", "channel.folio_settled", "partner", f.PartnerID,
-		map[string]any{"folio_id": f.ID, "total_minor": f.TotalMinor})
+	svc.emitSettled(ctx, tenantID, tenant.PricingRules, f)
 	return f, nil
 }
 

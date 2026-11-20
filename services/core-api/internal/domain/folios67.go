@@ -63,17 +63,19 @@ func (svc *FolioService) Aging(ctx context.Context, tenantID string) (*model.Fol
 			rows[key] = row
 		}
 		overdue := f.OverdueDays(now, terms)
+		outstanding := f.OutstandingMinor() // Phase 70: chase the balance, not the face value
 		row.OpenFolios++
-		row.TotalMinor += f.TotalMinor
+		row.TotalMinor += outstanding
+		row.CollectedMinor += f.PaidMinor()
 		switch model.FolioAgingBucket(overdue) {
 		case "1_7":
-			row.Overdue1To7Minor += f.TotalMinor
+			row.Overdue1To7Minor += outstanding
 		case "8_30":
-			row.Overdue8To30Minor += f.TotalMinor
+			row.Overdue8To30Minor += outstanding
 		case "30_plus":
-			row.Overdue30PlusMinor += f.TotalMinor
+			row.Overdue30PlusMinor += outstanding
 		default:
-			row.CurrentMinor += f.TotalMinor
+			row.CurrentMinor += outstanding
 		}
 		if overdue > row.OldestOverdueDays {
 			row.OldestOverdueDays = overdue
@@ -159,8 +161,9 @@ func (svc *FolioService) sendReminder(ctx context.Context, tenantID string, f *m
 	case svc.s.waURL == "":
 		r.Status = "skipped:no-adapter"
 	default:
+		outstanding := f.OutstandingMinor() // Phase 70: remind for the balance still owed
 		body := fmt.Sprintf("Payment reminder %d — the %s statement for %d.%02d %s was issued on %s and is now %d days past due (terms %d days). Details in your portal: %s",
-			r.N, f.Period, f.TotalMinor/100, abs64(f.TotalMinor)%100, f.Currency,
+			r.N, f.Period, outstanding/100, abs64(outstanding)%100, f.Currency,
 			f.IssuedAt.Format("2006-01-02"), overdue, terms,
 			svc.s.PartnerOps.PortalURL(tenantID, f.PartnerID))
 		status, detail, _ := postToAdapter(ctx, svc.s.waURL, []byte(fmt.Sprintf(

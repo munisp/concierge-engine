@@ -87,7 +87,12 @@ type FolioAgingRow struct {
 	Overdue1To7Minor   int64  `json:"overdue_1_7_minor"`
 	Overdue8To30Minor  int64  `json:"overdue_8_30_minor"`
 	Overdue30PlusMinor int64  `json:"overdue_30_plus_minor"`
-	TotalMinor         int64  `json:"total_minor"`
+	// TotalMinor is the OUTSTANDING receivable (Phase 70: after partial
+	// payments, aging chases the balance, not the face value);
+	// CollectedMinor is what the partner has already paid against the
+	// row's open folios.
+	TotalMinor     int64 `json:"total_minor"`
+	CollectedMinor int64 `json:"collected_minor"`
 	// OldestOverdueDays is the worst-case age across the row's folios —
 	// the sort key for the operator's collection queue.
 	OldestOverdueDays int `json:"oldest_overdue_days"`

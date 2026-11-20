@@ -50,4 +50,8 @@ type Folio struct {
 	// sent or attempted against this statement, recorded verbatim. The
 	// cadence is DERIVED from this slice, never stored separately.
 	Reminders []FolioReminder `json:"reminders,omitempty"`
+	// Payments (Phase 70): the collection ledger — every amount received
+	// against this statement, recorded verbatim. Paid and outstanding
+	// are DERIVED from this slice (PaidMinor / OutstandingMinor).
+	Payments []FolioPayment `json:"payments,omitempty"`
 }

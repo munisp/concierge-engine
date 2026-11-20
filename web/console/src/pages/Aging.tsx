@@ -18,7 +18,8 @@ type AgingRow = {
   overdue_1_7_minor: number;
   overdue_8_30_minor: number;
   overdue_30_plus_minor: number;
-  total_minor: number;
+  total_minor: number; // outstanding receivable (after partial payments)
+  collected_minor: number; // already paid against the row's open folios
   oldest_overdue_days: number;
 };
 
@@ -74,12 +75,13 @@ export default function Aging() {
 
   const rows = report.rows ?? [];
   // Per-currency totals — never blended across currencies.
-  const byCurrency = new Map<string, { total: number; overdue: number; worst: number }>();
+  const byCurrency = new Map<string, { total: number; overdue: number; worst: number; collected: number }>();
   for (const r of rows) {
     const overdue = r.overdue_1_7_minor + r.overdue_8_30_minor + r.overdue_30_plus_minor;
-    const agg = byCurrency.get(r.currency) ?? { total: 0, overdue: 0, worst: 0 };
+    const agg = byCurrency.get(r.currency) ?? { total: 0, overdue: 0, worst: 0, collected: 0 };
     agg.total += r.total_minor;
     agg.overdue += overdue;
+    agg.collected += r.collected_minor;
     if (r.overdue_30_plus_minor > 0) agg.worst += r.overdue_30_plus_minor;
     byCurrency.set(r.currency, agg);
   }
@@ -109,6 +111,7 @@ export default function Aging() {
           {[...byCurrency.entries()].map(([cur, agg]) => (
             <span key={cur}>
               {cur}: <strong>{minor(agg.total)}</strong> outstanding
+              {agg.collected > 0 && <span className="muted"> · {minor(agg.collected)} collected</span>}
               {agg.overdue > 0 && <> · <span className="error">{minor(agg.overdue)} overdue</span></>}
               {agg.worst > 0 && <> · <span className="error">{minor(agg.worst)} 30+ days</span></>}
             </span>

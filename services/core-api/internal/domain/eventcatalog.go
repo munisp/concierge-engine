@@ -65,6 +65,7 @@ var EventCatalog = []EventSpec{
 	{"channel.folio_settled", "partner", "Partner folio settled — ledger posted", []string{"folio_id", "period", "currency", "total_minor", "net_minor", "fee_minor"}},
 	{"channel.folio_reminder_sent", "partner", "Folio payment reminder delivered to the partner", []string{"folio_id", "n", "channel", "status", "period", "currency", "total_minor", "overdue_days"}},
 	{"channel.folio_reminder_skipped", "partner", "Folio reminder not deliverable — reason recorded verbatim on the folio", []string{"folio_id", "n", "channel", "status", "period", "currency", "total_minor", "overdue_days"}},
+	{"channel.folio_payment_recorded", "partner", "Partial payment recorded against an issued folio — proportional net/fee split posted", []string{"folio_id", "payment_id", "amount_minor", "method", "currency", "outstanding_minor", "settled"}},
 	{"partner.commission_cancelled", "payout", "Pending commission voided on partner decline", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
 	{"trip.status_changed", "trip", "Chauffeur trip advanced", []string{"status"}},
 

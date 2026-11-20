@@ -817,6 +817,24 @@ the full bucket table (partner, open folios, current / 1–7 / 8–30 /
 sweep" action whose receipt is shown verbatim — sent vs skipped/failed,
 never assumed. Console-only; the API surface is unchanged.
 
+**Phase 70 — partial payments against folios.** Collection is no longer
+all-or-nothing (docs/phase70.md). `POST /v1/folios/{id}/payments`
+records each amount received against an ISSUED statement — ISSUED-only,
+positive amounts, overpayment rejected (409) so recorded money never
+exceeds the statement. Every payment is a verbatim row on the folio's
+own payments ledger (migration 0046); paid and outstanding are DERIVED
+from it, never stored twice. Each payment posts its proportional
+net/fee split (same shape as a card capture, keyed
+folio:{id}:{paymentID} — a retry can never double-post), and the folio
+settles itself when the balance reaches zero; Settle now records only
+the outstanding remainder as the final payment, so SETTLED always
+means paid == total. Aging and dunning chase the outstanding balance,
+not the face value — a half-paid statement is half as overdue and the
+reminder quotes what is still owed. Console folio card records
+payments with paid/owed display and full payment history; the aging
+page shows collected per currency; the partner portal shows paid/owed
+on every statement.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

@@ -77,15 +77,16 @@ func (s pgFolios) AccrueLine(ctx context.Context, f *model.Folio, line model.Fol
 
 func scanFolio(row interface{ Scan(...any) error }) (*model.Folio, error) {
 	var f model.Folio
-	var lines, reminders []byte
+	var lines, reminders, payments []byte
 	var issuedAt, settledAt *time.Time
 	err := row.Scan(&f.ID, &f.TenantID, &f.PartnerID, &f.Period, &f.Currency,
-		&f.State, &f.TotalMinor, &lines, &f.CreatedAt, &issuedAt, &settledAt, &reminders)
+		&f.State, &f.TotalMinor, &lines, &f.CreatedAt, &issuedAt, &settledAt, &reminders, &payments)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(lines, &f.Lines)
 	_ = json.Unmarshal(reminders, &f.Reminders)
+	_ = json.Unmarshal(payments, &f.Payments)
 	if issuedAt != nil {
 		f.IssuedAt = *issuedAt
 	}
@@ -95,7 +96,7 @@ func scanFolio(row interface{ Scan(...any) error }) (*model.Folio, error) {
 	return &f, nil
 }
 
-const folioCols = `id, tenant_id, partner_id, period, currency, state, total_minor, lines, created_at, issued_at, settled_at, reminders`
+const folioCols = `id, tenant_id, partner_id, period, currency, state, total_minor, lines, created_at, issued_at, settled_at, reminders, payments`
 
 func (s pgFolios) ListForPartner(ctx context.Context, tenantID, partnerID string) ([]model.Folio, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -181,11 +182,19 @@ func (s pgFolios) Update(ctx context.Context, f *model.Folio) error {
 	if err != nil {
 		return err
 	}
+	payments := f.Payments
+	if payments == nil {
+		payments = []model.FolioPayment{} // jsonb NOT NULL — never write NULL
+	}
+	paymentsJSON, err := json.Marshal(payments)
+	if err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx,
-		`UPDATE partner_folios SET state=$3, total_minor=$4, issued_at=$5, settled_at=$6, reminders=$7
+		`UPDATE partner_folios SET state=$3, total_minor=$4, issued_at=$5, settled_at=$6, reminders=$7, payments=$8
 		 WHERE tenant_id=$1 AND id=$2`,
 		f.TenantID, f.ID, f.State, f.TotalMinor,
-		nullTime(f.IssuedAt), nullTime(f.SettledAt), string(remindersJSON))
+		nullTime(f.IssuedAt), nullTime(f.SettledAt), string(remindersJSON), string(paymentsJSON))
 	if err != nil {
 		return err
 	}

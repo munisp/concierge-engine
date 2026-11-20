@@ -347,7 +347,7 @@ type FolioStore interface {
 	ListIssued(ctx context.Context, tenantID string) ([]model.Folio, error)
 	Get(ctx context.Context, tenantID, id string) (*model.Folio, error)
 	// Update writes state transitions (issue/settle), the frozen total,
-	// and the Phase 67 reminders ledger.
+	// the Phase 67 reminders ledger, and the Phase 70 payments ledger.
 	Update(ctx context.Context, f *model.Folio) error
 }
 

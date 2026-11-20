@@ -665,6 +665,15 @@ type FolioReminder = {
   status: string; // sent | skipped:… | failed:… (verbatim)
   created_at: string;
 };
+// Phase 70: every amount received against the statement, verbatim.
+type FolioPayment = {
+  id: string;
+  amount_minor: number;
+  method: string;
+  reference?: string;
+  received_at: string;
+  recorded_by: string;
+};
 type Folio = {
   id: string;
   partner_id: string;
@@ -674,6 +683,7 @@ type Folio = {
   total_minor: number;
   lines?: FolioLine[];
   reminders?: FolioReminder[];
+  payments?: FolioPayment[];
   issued_at?: string;
   settled_at?: string;
 };
@@ -722,6 +732,25 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
     } catch (e) { onError(String(e)); }
   }
 
+  // Phase 70: record an amount received. Overpayment is a server-side
+  // 409 — the recorded money can never exceed the statement.
+  async function recordPayment(f: Folio) {
+    const outstanding = f.total_minor - (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0);
+    const raw = window.prompt(
+      `Amount received against ${f.period} (${minor(outstanding)} ${f.currency} outstanding), in ${f.currency} — e.g. 40.00`);
+    if (raw === null) return;
+    const amount = Math.round(parseFloat(raw) * 100);
+    if (!Number.isFinite(amount) || amount <= 0) { onError("invalid amount"); return; }
+    const method = window.prompt("Method (bank_transfer | cash | card | other)", "bank_transfer") ?? "bank_transfer";
+    const reference = window.prompt("Reference (optional — bank ref, receipt no.)", "") ?? "";
+    try {
+      await api.post(`/v1/folios/${f.id}/payments`, {
+        amount_minor: amount, method, reference,
+      });
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
   // Phase 67: whole days since issue — the operator's at-a-glance age.
   const ageDays = (f: Folio) =>
     f.issued_at ? Math.max(0, Math.floor((Date.now() - Date.parse(f.issued_at)) / 86400000)) : 0;
@@ -755,7 +784,17 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
               <tr>
                 <td><strong>{f.period}</strong></td>
                 <td>{f.currency}</td>
-                <td>{minor(f.total_minor)}</td>
+                <td>
+                  {minor(f.total_minor)}
+                  {(f.payments ?? []).length > 0 && (
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      paid {minor((f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0))}
+                      {f.state === "ISSUED" && (
+                        <> · owed {minor(f.total_minor - (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0))}</>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td>
                   <strong>{f.state}</strong>
                   {f.state === "ISSUED" && (
@@ -769,6 +808,9 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                   {f.state === "OPEN" && <button onClick={() => void issue(f)}>Issue</button>}
                   {f.state === "ISSUED" && (
                     <>
+                      <button className="secondary" onClick={() => void recordPayment(f)}>
+                        Payment{(f.payments ?? []).length > 0 ? ` (${(f.payments ?? []).length})` : ""}
+                      </button>
                       <button className="secondary" onClick={() => void remind(f)}>
                         Remind{(f.reminders ?? []).length > 0 ? ` (${(f.reminders ?? []).length})` : ""}
                       </button>
@@ -781,6 +823,14 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                 <tr key={l.booking_id}>
                   <td colSpan={5} className="muted">
                     {l.guest_name || l.booking_id.slice(0, 8)} — {minor(l.amount_minor)} {f.currency}
+                  </td>
+                </tr>
+              ))}
+              {openID === f.id && (f.payments ?? []).map((p) => (
+                <tr key={`pay-${p.id}`}>
+                  <td colSpan={5} className="muted">
+                    payment {minor(p.amount_minor)} {f.currency} via {p.method}
+                    {p.reference ? ` — ref ${p.reference}` : ""} — {new Date(p.received_at).toLocaleString()}
                   </td>
                 </tr>
               ))}

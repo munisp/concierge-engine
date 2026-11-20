@@ -108,15 +108,17 @@ func (s pgItineraries) Update(ctx context.Context, l *model.ItineraryLeg) error 
 	return tx.Commit()
 }
 
-func (s pgItineraries) list(ctx context.Context, tenantID, where string, args ...any) ([]model.ItineraryLeg, error) {
+// list runs a `WHERE tenant_id=$1 AND {tail}` query — the tail owns its
+// own ORDER BY / LIMIT so clause order stays legal SQL.
+func (s pgItineraries) list(ctx context.Context, tenantID, tail string, args ...any) ([]model.ItineraryLeg, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT `+itineraryCols+` FROM itinerary_legs WHERE tenant_id=$1 AND `+where+
-			` ORDER BY sched_start`, append([]any{tenantID}, args...)...)
+		`SELECT `+itineraryCols+` FROM itinerary_legs WHERE tenant_id=$1 AND `+tail,
+		append([]any{tenantID}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,15 +141,15 @@ func (s pgItineraries) ListForClient(ctx context.Context, tenantID, clientID str
 	if limit <= 0 {
 		limit = 100
 	}
-	return s.list(ctx, tenantID, `client_id=$2 LIMIT $3`, clientID, limit)
+	return s.list(ctx, tenantID, `client_id=$2 ORDER BY sched_start LIMIT $3`, clientID, limit)
 }
 
 func (s pgItineraries) ForBooking(ctx context.Context, tenantID, bookingID string) ([]model.ItineraryLeg, error) {
-	return s.list(ctx, tenantID, `booking_id=$2`, bookingID)
+	return s.list(ctx, tenantID, `booking_id=$2 ORDER BY sched_start`, bookingID)
 }
 
 func (s pgItineraries) FlightLegsDue(ctx context.Context, tenantID string, from, to time.Time) ([]model.ItineraryLeg, error) {
 	return s.list(ctx, tenantID,
 		`kind='flight' AND status NOT IN ('ARRIVED','COMPLETED','CANCELLED')
-		 AND sched_start >= $2 AND sched_start <= $3`, from, to)
+		 AND sched_start >= $2 AND sched_start <= $3 ORDER BY sched_start`, from, to)
 }

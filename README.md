@@ -759,6 +759,19 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 62 — chauffeur matching.** Dispatch becomes a scored,
+explainable decision (docs/phase62.md): crew declare capabilities
+(languages, conversation styles; migration 0041), riders mark
+chauffeurs favorite/blocked post-trip on the Track page (hard exclusion
+vs +100 signal), and the matcher adds language (+30) and
+conversation-style (+20) fits from the validated preference vocabulary
+plus capped familiarity (+10/trip, max 30) and a weak quality tiebreak.
+Every assignment records `match_score` + human-readable `match_reasons`
+— a manual pick overriding a block is recorded as exactly that, never
+laundered. Endpoints: crew-suggestions + assign-matched on bookings,
+chauffeur-links on clients and the track token; Dispatch board shows
+ranked candidates with reasons and the recorded decision per trip.
+
 **Phase 61 — journey orchestration (flight-to-curb).** The trip, not
 just the ride (docs/phase61.md): typed `itinerary_legs` (flight / hotel
 / ground / partner, migration 0040) chain a booking's airport transfer

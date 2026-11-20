@@ -24,6 +24,9 @@ export default function Dispatch() {
   const [fLabel, setFLabel] = useState("");
   const [cName, setCName] = useState("");
   const [cCerts, setCCerts] = useState("");
+  // Phase 62: declared match capabilities.
+  const [cLangs, setCLangs] = useState("");
+  const [cStyles, setCStyles] = useState("");
   // Phase 22: scheduling — availability query across the fleet.
   const [availFrom, setAvailFrom] = useState("");
   const [availTo, setAvailTo] = useState("");
@@ -67,8 +70,10 @@ export default function Dispatch() {
       await api.post("/v1/dispatch/crew", {
         full_name: cName.trim(),
         certificates: cCerts.split(",").map((s) => s.trim()).filter(Boolean),
+        languages: cLangs.split(",").map((s) => s.trim()).filter(Boolean),
+        styles: cStyles.split(",").map((s) => s.trim()).filter(Boolean),
       });
-      setCName(""); setCCerts("");
+      setCName(""); setCCerts(""); setCLangs(""); setCStyles("");
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -175,6 +180,8 @@ export default function Dispatch() {
               <p key={c.id} className="muted" style={{ margin: "2px 0" }}>
                 <strong>{c.full_name}</strong>
                 {c.certificates?.length > 0 && ` · ${c.certificates.join(", ")}`}
+                {c.languages?.length ? ` · speaks ${c.languages.join(", ")}` : ""}
+                {c.styles?.length ? ` · ${c.styles.join("/")} style` : ""}
                 {!c.active && " · inactive"}
               </p>
             ))}
@@ -183,6 +190,12 @@ export default function Dispatch() {
                 onChange={(e) => setCName(e.target.value)} />
               <input placeholder="Certificates (comma-sep, optional)" value={cCerts}
                 onChange={(e) => setCCerts(e.target.value)} />
+            </div>
+            <div className="row">
+              <input placeholder="Languages (fr, en — optional)" value={cLangs}
+                onChange={(e) => setCLangs(e.target.value)} />
+              <input placeholder="Styles (quiet, light, chatty)" value={cStyles}
+                onChange={(e) => setCStyles(e.target.value)} />
               <button onClick={addCrew} disabled={!cName.trim()}>Add crew</button>
             </div>
           </div>
@@ -203,6 +216,11 @@ export default function Dispatch() {
                   </>
                 )}
               </p>
+              {a.match_reasons && a.match_reasons.length > 0 && (
+                <p className="muted">
+                  Match {a.match_score}: {a.match_reasons.join(" · ")}
+                </p>
+              )}
               {next[a.status] && (
                 <button onClick={() => advance(a, next[a.status])}>
                   Advance → {next[a.status].replaceAll("_", " ").toLowerCase()}
@@ -210,6 +228,9 @@ export default function Dispatch() {
               )}{" "}
               <button onClick={() => clientLink(a)}>Client link</button>{" "}
               <SoundtrackButton bookingID={a.booking_id} onError={setError} />
+              {!a.crew_member_id && (
+                <MatchPanel bookingID={a.booking_id} onDone={refresh} onError={setError} />
+              )}
               {trackLinks[a.id] && (
                 <p className="muted" style={{ wordBreak: "break-all" }}>
                   Tracking link (copied): {trackLinks[a.id]}
@@ -306,5 +327,64 @@ function SoundtrackButton({ bookingID, onError }: { bookingID: string; onError: 
         </div>
       )}
     </>
+  );
+}
+
+// Phase 62: chauffeur matching — ranked, explained candidates from the
+// rider's own signals (favorites, language, conversation style, prior
+// trips). Every score ships its reasons; no opaque rankings.
+type ScoredCrew = {
+  crew: { id: string; full_name: string };
+  score: number;
+  reasons: string[];
+};
+
+function MatchPanel({ bookingID, onDone, onError }: {
+  bookingID: string;
+  onDone: () => Promise<void>;
+  onError: (m: string) => void;
+}) {
+  const [candidates, setCandidates] = useState<ScoredCrew[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function suggest() {
+    onError("");
+    try {
+      const r = await api.get<{ candidates: ScoredCrew[] }>(
+        `/v1/bookings/${bookingID}/crew-suggestions`);
+      setCandidates(r.candidates ?? []);
+    } catch (e) { onError(e instanceof Error ? e.message : String(e)); }
+  }
+
+  async function assignTop() {
+    setBusy(true); onError("");
+    try {
+      await api.post(`/v1/bookings/${bookingID}/assign-matched`, {});
+      setCandidates(null);
+      await onDone();
+    } catch (e) { onError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <span style={{ marginLeft: 8 }}>
+      {!candidates && <button className="secondary" onClick={suggest}>Match chauffeur</button>}
+      {candidates && (
+        <div style={{ marginTop: 8 }}>
+          {candidates.length === 0 && <p className="muted">No available chauffeurs.</p>}
+          {candidates.map((c, i) => (
+            <p key={c.crew.id} className="muted" style={{ margin: "2px 0" }}>
+              {i + 1}. <strong>{c.crew.full_name}</strong> — {c.score} pts
+              <br /><span style={{ fontSize: "0.9em" }}>{c.reasons.join(" · ")}</span>
+            </p>
+          ))}
+          {candidates.length > 0 && (
+            <button onClick={assignTop} disabled={busy}>
+              Assign top match ({candidates[0].crew.full_name})
+            </button>
+          )}
+        </div>
+      )}
+    </span>
   );
 }

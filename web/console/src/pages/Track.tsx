@@ -23,6 +23,9 @@ type TrackView = {
   // Phase 35 (A11): review deep link + already-reviewed flag.
   review_url?: string;
   review_submitted?: boolean;
+  // Phase 62: the rider's mark on this chauffeur (favorite / blocked).
+  crew_member_id?: string;
+  chauffeur_link?: string;
 };
 
 const STEPS = [
@@ -195,6 +198,9 @@ export default function Track() {
           </div>
 
           {view.status === "COMPLETED_TRIP" && <ReviewForm token={token} submitted={view.review_submitted} />}
+          {view.crew_member_id && view.driver_name && (
+            <ChauffeurMark token={token} driverName={view.driver_name} current={view.chauffeur_link} />
+          )}
           <JourneyTimeline token={token} />
           <SoundscapeCard token={token} />
           <RidePreferences token={token} />
@@ -480,6 +486,43 @@ function JourneyTimeline({ token }: { token: string }) {
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+// Phase 62: the rider marks this chauffeur for future matching — a
+// favorite is a strong signal, a block is a hard exclusion. The mark
+// lands on the rider's profile, never just on this trip.
+function ChauffeurMark({ token, driverName, current }: {
+  token: string; driverName: string; current?: string;
+}) {
+  const [mark, setMark] = useState(current ?? "");
+  const [msg, setMsg] = useState("");
+
+  async function set(kind: string) {
+    setMsg("");
+    try {
+      await tokenCall("PUT", `/v1/track/${token}/chauffeur`, { kind });
+      setMark(kind === "none" ? "" : kind);
+      setMsg(kind === "favorite" ? `${driverName} is now your preferred chauffeur`
+        : kind === "blocked" ? "Noted — you won't be matched again"
+        : "Preference cleared");
+    } catch { setMsg("Couldn't save right now — please try again later"); }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 480 }}>
+      <h3>Your chauffeur, {driverName}</h3>
+      <div className="row">
+        <button className={mark === "favorite" ? "" : "secondary"} onClick={() => set("favorite")}>
+          {mark === "favorite" ? "★ Preferred chauffeur" : "Ride together again"}
+        </button>
+        <button className={mark === "blocked" ? "danger" : "secondary"} onClick={() => set("blocked")}>
+          {mark === "blocked" ? "Blocked" : "Don't match us again"}
+        </button>
+        {mark && <button className="secondary" onClick={() => set("none")}>Clear</button>}
+      </div>
+      {msg && <p className="muted">{msg}</p>}
     </div>
   );
 }

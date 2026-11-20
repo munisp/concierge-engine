@@ -92,6 +92,9 @@ type DispatchStore interface {
 	CreateAssignment(ctx context.Context, a *model.Assignment) error // idempotent on IdempotencyKey (BookingID+resource)
 	UpdateAssignmentStatus(ctx context.Context, tenantID, id, status string) error
 	ListAssignments(ctx context.Context, tenantID string) ([]model.Assignment, error)
+	// CountClientTrips (Phase 62): completed trips this client took with
+	// this crew member — the matcher's familiarity signal.
+	CountClientTrips(ctx context.Context, tenantID, clientID, crewMemberID string) (int, error)
 	AddGeoStamp(ctx context.Context, g *model.GeoStamp) error
 	// LatestGeoStamp returns the newest stamp for an assignment (Phase 25
 	// client tracking); ErrNotFound when the trip has no positions yet.
@@ -101,6 +104,15 @@ type DispatchStore interface {
 	// sensitive data we hold — it has no retention justification once the
 	// trip is complete. Returns rows removed.
 	PurgeGeoStampsBefore(ctx context.Context, tenantID string, before time.Time) (int, error)
+}
+
+// ChauffeurLinkStore (Phase 62): rider↔chauffeur relationships —
+// favorite is a strong positive match signal, blocked is a hard
+// exclusion. One row per (tenant, client, crew member).
+type ChauffeurLinkStore interface {
+	Set(ctx context.Context, l *model.ChauffeurLink) error // upsert
+	Clear(ctx context.Context, tenantID, clientID, crewMemberID string) error
+	ListForClient(ctx context.Context, tenantID, clientID string) ([]model.ChauffeurLink, error)
 }
 
 type PaymentStore interface {
@@ -551,5 +563,6 @@ type Store interface {
 	KycCases() KycCaseStore
 	Soundscapes() SoundscapeStore
 	Itineraries() ItineraryStore
+	ChauffeurLinks() ChauffeurLinkStore
 	Close()
 }

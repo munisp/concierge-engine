@@ -216,6 +216,16 @@ func marshalModePresets(m map[string]model.ModePreset) []byte {
 	return b
 }
 
+// marshalStringSlice guards NOT NULL jsonb columns: json.Marshal of a
+// nil slice is "null", which the column rejects.
+func marshalStringSlice(s []string) []byte {
+	if s == nil {
+		return []byte("[]")
+	}
+	b, _ := json.Marshal(s)
+	return b
+}
+
 // ------------------------------------------------------------- clients
 type pgClients struct{ p *postgres }
 
@@ -793,10 +803,12 @@ func (s pgDispatch) AddCrewMember(ctx context.Context, c *model.CrewMember) erro
 	}
 	defer tx.Rollback()
 	certs, _ := json.Marshal(c.Certificates)
+	langs := marshalStringSlice(c.Languages)
+	styles := marshalStringSlice(c.Styles)
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO crew_members (id, tenant_id, full_name, certificates, quality_score, active)
-		 VALUES ($1,$2,$3,$4,$5,$6)`,
-		c.ID, c.TenantID, c.FullName, certs, c.QualityScore, c.Active)
+		`INSERT INTO crew_members (id, tenant_id, full_name, certificates, languages, styles, quality_score, active)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		c.ID, c.TenantID, c.FullName, certs, langs, styles, c.QualityScore, c.Active)
 	if err != nil {
 		return err
 	}
@@ -810,7 +822,7 @@ func (s pgDispatch) ListCrew(ctx context.Context, tenantID string) ([]model.Crew
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, full_name, certificates, quality_score, active FROM crew_members ORDER BY full_name`)
+		`SELECT id, tenant_id, full_name, certificates, languages, styles, quality_score, active FROM crew_members ORDER BY full_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -818,11 +830,13 @@ func (s pgDispatch) ListCrew(ctx context.Context, tenantID string) ([]model.Crew
 	out := []model.CrewMember{}
 	for rows.Next() {
 		var c model.CrewMember
-		var certs []byte
-		if err := rows.Scan(&c.ID, &c.TenantID, &c.FullName, &certs, &c.QualityScore, &c.Active); err != nil {
+		var certs, langs, styles []byte
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.FullName, &certs, &langs, &styles, &c.QualityScore, &c.Active); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(certs, &c.Certificates)
+		_ = json.Unmarshal(langs, &c.Languages)
+		_ = json.Unmarshal(styles, &c.Styles)
 		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -838,10 +852,11 @@ func (s pgDispatch) CreateAssignment(ctx context.Context, a *model.Assignment) e
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO assignments (id, tenant_id, booking_id, fleet_resource_id, crew_member_id, partner_id, status, sla_deadline, start_at, end_at)
-		 VALUES ($1,$2,$3,nullif($4,'')::uuid,nullif($5,'')::uuid,nullif($6,'')::uuid,$7,$8,$9,$10)`,
+		`INSERT INTO assignments (id, tenant_id, booking_id, fleet_resource_id, crew_member_id, partner_id, status, sla_deadline, start_at, end_at, match_score, match_reasons)
+		 VALUES ($1,$2,$3,nullif($4,'')::uuid,nullif($5,'')::uuid,nullif($6,'')::uuid,$7,$8,$9,$10,$11,$12)`,
 		a.ID, a.TenantID, a.BookingID, a.FleetResourceID, a.CrewMemberID, a.PartnerID, a.Status,
-		nilIfZero(a.SLADeadline), nilIfZero(a.StartAt), nilIfZero(a.EndAt))
+		nilIfZero(a.SLADeadline), nilIfZero(a.StartAt), nilIfZero(a.EndAt),
+		a.MatchScore, marshalStringSlice(a.MatchReasons))
 	if err != nil {
 		return err
 	}
@@ -872,7 +887,7 @@ func (s pgDispatch) ListAssignments(ctx context.Context, tenantID string) ([]mod
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, tenant_id, booking_id, coalesce(fleet_resource_id::text,''), coalesce(crew_member_id::text,''),
-		        coalesce(partner_id::text,''), status, sla_deadline, start_at, end_at, created_at
+		        coalesce(partner_id::text,''), status, sla_deadline, start_at, end_at, match_score, match_reasons, created_at
 		 FROM assignments ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -882,13 +897,15 @@ func (s pgDispatch) ListAssignments(ctx context.Context, tenantID string) ([]mod
 	for rows.Next() {
 		var a model.Assignment
 		var sla, startAt, endAt sql.NullTime
+		var reasons []byte
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.BookingID, &a.FleetResourceID, &a.CrewMemberID,
-			&a.PartnerID, &a.Status, &sla, &startAt, &endAt, &a.CreatedAt); err != nil {
+			&a.PartnerID, &a.Status, &sla, &startAt, &endAt, &a.MatchScore, &reasons, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.SLADeadline = sla.Time
 		a.StartAt = startAt.Time
 		a.EndAt = endAt.Time
+		_ = json.Unmarshal(reasons, &a.MatchReasons)
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {

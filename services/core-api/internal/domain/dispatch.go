@@ -100,7 +100,8 @@ func (svc *DispatchService) Assign(ctx context.Context, a *model.Assignment) (*m
 	if a.BookingID == "" {
 		return nil, httpx.ErrValidation
 	}
-	if a.FleetResourceID == "" && a.PartnerID == "" {
+	// Phase 62: a crew-only assignment is legal (AssignMatched).
+	if a.FleetResourceID == "" && a.PartnerID == "" && a.CrewMemberID == "" {
 		return nil, httpx.ErrValidation
 	}
 	if a.ID == "" {
@@ -115,6 +116,8 @@ func (svc *DispatchService) Assign(ctx context.Context, a *model.Assignment) (*m
 	if err := svc.gateConflicts(ctx, a); err != nil {
 		return nil, err
 	}
+	// Phase 62: record how this chauffeur was chosen (score + reasons).
+	svc.recordMatch(ctx, a)
 	if err := svc.s.Store.Dispatch().CreateAssignment(ctx, a); err != nil {
 		return nil, err
 	}

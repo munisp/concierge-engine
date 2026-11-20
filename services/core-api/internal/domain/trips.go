@@ -314,6 +314,10 @@ type TrackView struct {
 	// hides when one has; one review per assignment structurally).
 	ReviewURL       string `json:"review_url,omitempty"`
 	ReviewSubmitted bool   `json:"review_submitted"`
+	// Phase 62: the rider can mark this chauffeur favorite / blocked
+	// from the track page; the current mark round-trips here.
+	CrewMemberID  string `json:"crew_member_id,omitempty"`
+	ChauffeurLink string `json:"chauffeur_link,omitempty"`
 }
 
 type TrackPosition struct {
@@ -347,13 +351,17 @@ func (svc *TripService) Track(ctx context.Context, token string) (*TrackView, er
 		AssignmentID: a.ID, Status: a.Status, WindowStart: a.StartAt, WindowEnd: a.EndAt,
 	}
 	// Join booking -> request -> first item for addresses/timing.
+	clientID := ""
 	if b, err := svc.s.Store.Bookings().Get(ctx, tenantID, a.BookingID); err == nil {
-		if sr, err := svc.s.Store.Requests().Get(ctx, tenantID, b.RequestID); err == nil && len(sr.Items) > 0 {
-			it := sr.Items[0]
-			view.Pickup = it.PickupAddress
-			view.Dropoff = it.DropoffAddress
-			view.PickupAt = it.PickupAt
-			view.VehicleClass = it.VehicleClass
+		if sr, err := svc.s.Store.Requests().Get(ctx, tenantID, b.RequestID); err == nil {
+			clientID = sr.ClientID
+			if len(sr.Items) > 0 {
+				it := sr.Items[0]
+				view.Pickup = it.PickupAddress
+				view.Dropoff = it.DropoffAddress
+				view.PickupAt = it.PickupAt
+				view.VehicleClass = it.VehicleClass
+			}
 		}
 	}
 	// Vehicle + crew labels, best-effort.
@@ -367,10 +375,21 @@ func (svc *TripService) Track(ctx context.Context, token string) (*TrackView, er
 		}
 	}
 	if a.CrewMemberID != "" {
+		view.CrewMemberID = a.CrewMemberID
 		if crew, err := svc.s.Store.Dispatch().ListCrew(ctx, tenantID); err == nil {
 			for _, c := range crew {
 				if c.ID == a.CrewMemberID {
 					view.DriverName = firstName(c.FullName)
+				}
+			}
+		}
+		// Phase 62: the rider's current mark on this chauffeur, if any.
+		if clientID != "" {
+			if links, err := svc.s.Store.ChauffeurLinks().ListForClient(ctx, tenantID, clientID); err == nil {
+				for _, l := range links {
+					if l.CrewMemberID == a.CrewMemberID {
+						view.ChauffeurLink = l.Kind
+					}
 				}
 			}
 		}

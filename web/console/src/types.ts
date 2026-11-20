@@ -86,6 +86,8 @@ export interface Assignment {
   status: string;
   start_at?: string; // Phase 22 service window
   end_at?: string;
+  match_score?: number; // Phase 62 recorded match decision
+  match_reasons?: string[];
   created_at: string;
 }
 
@@ -135,6 +137,8 @@ export interface CrewMember {
   id: string;
   full_name: string;
   certificates: string[];
+  languages?: string[]; // Phase 62 BCP-47
+  styles?: string[]; // Phase 62 ride.conversation enum
   quality_score: number;
   active: boolean;
 }

@@ -309,6 +309,7 @@ export default function Clients() {
               </tbody></table>
             )}
             <RideProfileCard clientID={view.client.id} onSaved={() => open360(view.client.id)} />
+            <ChauffeurLinksCard clientID={view.client.id} />
             <JourneyCard clientID={view.client.id} />
             <h3>Preferences ({view.preferences.length})</h3>
             {view.preferences.length > 0 && (
@@ -519,6 +520,53 @@ function JourneyCard({ clientID }: { clientID: string }) {
         </button>
       </div>
       {err && <p className="error">{err}</p>}
+    </>
+  );
+}
+
+// Phase 62: the rider's chauffeur marks — favorites boost matching,
+// blocked is a hard exclusion. Names resolve against the crew roster.
+type ChauffeurLink = {
+  crew_member_id: string;
+  kind: string;
+  created_at: string;
+};
+
+function ChauffeurLinksCard({ clientID }: { clientID: string }) {
+  const [links, setLinks] = useState<ChauffeurLink[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
+
+  const load = async () => {
+    try {
+      const r = await api.get<{ links: ChauffeurLink[] }>(`/v1/clients/${clientID}/chauffeur-links`);
+      setLinks(r.links ?? []);
+      const crew = await api.get<{ id: string; full_name: string }[]>("/v1/dispatch/crew");
+      const m: Record<string, string> = {};
+      for (const c of crew) m[c.id] = c.full_name;
+      setNames(m);
+    } catch { /* links are additive — the 360 stands without them */ }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [clientID]);
+
+  async function clear(crewID: string) {
+    await api.del(`/v1/clients/${clientID}/chauffeur-links/${crewID}`);
+    await load();
+  }
+
+  if (links.length === 0) return null;
+  return (
+    <>
+      <h3>Chauffeur preferences ({links.length})</h3>
+      <table><tbody>
+        {links.map((l) => (
+          <tr key={l.crew_member_id}>
+            <td>{names[l.crew_member_id] ?? l.crew_member_id.slice(0, 8)}</td>
+            <td><span className="badge">{l.kind}</span></td>
+            <td className="muted">{new Date(l.created_at).toLocaleDateString()}</td>
+            <td><button className="secondary" onClick={() => clear(l.crew_member_id)}>Clear</button></td>
+          </tr>
+        ))}
+      </tbody></table>
     </>
   );
 }

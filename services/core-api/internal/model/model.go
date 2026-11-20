@@ -571,6 +571,12 @@ type CrewMember struct {
 	TenantID     string   `json:"tenant_id"`
 	FullName     string   `json:"full_name"`
 	Certificates []string `json:"certificates"`
+	// Phase 62 chauffeur matching: declared capabilities the matcher
+	// scores against the rider's validated preference vocabulary.
+	// Languages are BCP-47 (comms.language); Styles use the
+	// ride.conversation enum (quiet / light / chatty).
+	Languages    []string `json:"languages,omitempty"`
+	Styles       []string `json:"styles,omitempty"`
 	QualityScore float64  `json:"quality_score"`
 	Active       bool     `json:"active"`
 }
@@ -590,7 +596,11 @@ type Assignment struct {
 	// windowed assignments.
 	StartAt   time.Time `json:"start_at,omitempty"`
 	EndAt     time.Time `json:"end_at,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	// Phase 62: the match decision, recorded at assign time — score and
+	// human-readable reasons, never an opaque ranking.
+	MatchScore   int       `json:"match_score,omitempty"`
+	MatchReasons []string  `json:"match_reasons,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type GeoStamp struct {

@@ -56,6 +56,22 @@ function PrepList({ tasks }: { tasks?: string[] }) {
   );
 }
 
+// Phase 68: the partner's own bill-to-desk statements, as the operator
+// sees them — verbatim reminders ledger included.
+type PortalFolio = {
+  id: string;
+  period: string;
+  currency: string;
+  state: string; // OPEN | ISSUED | SETTLED
+  total_minor: number;
+  lines?: { booking_id: string; guest_name?: string; amount_minor: number }[];
+  issued_at?: string;
+  settled_at?: string;
+  due_at?: string; // ISSUED only — derived from the tenant's payment terms
+  overdue_days: number;
+  reminders?: { n: number; channel: string; status: string; created_at: string }[];
+};
+
 type Portal = {
   partner_name: string;
   verticals: string[];
@@ -73,9 +89,56 @@ type Portal = {
     items: number;
     created_at: string;
   }[];
+  // Phase 68: bill-to-desk statements.
+  folios?: PortalFolio[];
 };
 
 const minor = (n: number) => (n / 100).toFixed(2);
+
+// Phase 68: one statement row — expandable lines + reminder history.
+function FolioRow({ f }: { f: PortalFolio }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <tr onClick={() => setOpen(!open)} style={{ cursor: "pointer" }}>
+        <td><strong>{f.period}</strong></td>
+        <td>{minor(f.total_minor)} {f.currency}</td>
+        <td>
+          <strong>{f.state === "OPEN" ? "Accruing" : f.state}</strong>
+          {f.state === "ISSUED" && f.due_at && (
+            <span className="muted">
+              {" "}· due {new Date(f.due_at).toLocaleDateString()}
+              {f.overdue_days > 0 && <span className="error"> — {f.overdue_days}d overdue</span>}
+            </span>
+          )}
+          {f.state === "SETTLED" && f.settled_at && (
+            <span className="muted"> · paid {new Date(f.settled_at).toLocaleDateString()}</span>
+          )}
+        </td>
+        <td className="muted">{f.lines?.length ?? 0} line(s){open ? " ▾" : " ▸"}</td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={4}>
+            {(f.lines ?? []).map((l) => (
+              <div key={l.booking_id} className="muted" style={{ fontSize: 13 }}>
+                {l.guest_name || "Guest"} — {minor(l.amount_minor)} {f.currency}{" "}
+                (<code>{l.booking_id.slice(0, 8)}…</code>)
+              </div>
+            ))}
+            {(f.reminders ?? []).map((r) => (
+              <div key={r.n} className="muted" style={{ fontSize: 13 }}>
+                reminder {r.n} via {r.channel} — <strong>{r.status}</strong> —{" "}
+                {new Date(r.created_at).toLocaleString()}
+              </div>
+            ))}
+            {(f.lines ?? []).length === 0 && <span className="muted">No lines yet.</span>}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 const STATUS_LABELS: Record<string, string> = {
   ASSIGNED: "Awaiting your answer",
@@ -219,6 +282,17 @@ export default function PartnerPortal() {
                   <td>{new Date(r.created_at).toLocaleString()}</td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {view.folios && view.folios.length > 0 && (
+        <>
+          <h3>Statements</h3>
+          <table>
+            <thead><tr><th>Period</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {view.folios.map((f) => <FolioRow key={f.id} f={f} />)}
             </tbody>
           </table>
         </>

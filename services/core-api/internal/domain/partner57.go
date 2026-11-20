@@ -27,6 +27,10 @@ type PartnerPortalView struct {
 	// Phase 63: demand this partner has sourced (book-on-behalf) — the
 	// hotel desk sees its guests' request states next to its offers.
 	SourcedRequests []SourcedRequestView `json:"sourced_requests,omitempty"`
+	// Phase 68: the partner's own bill-to-desk statements — accruing,
+	// payable (with derived due date / days past due) and paid, with the
+	// verbatim reminders ledger.
+	Folios []PortalFolio `json:"folios,omitempty"`
 }
 
 // PortalView builds the partner PWA payload. Suspended partners are locked
@@ -62,6 +66,11 @@ func (svc *PartnerOpsService) PortalView(ctx context.Context, tenantID, partnerI
 		if sourced, err := svc.s.Channels.SourcedRequests(ctx, tenantID, partnerID, 25); err == nil {
 			view.SourcedRequests = sourced
 		}
+	}
+	// Phase 68: the partner's statements — same best-effort discipline: a
+	// folio listing failure never locks the partner out of their offers.
+	if folios, err := svc.s.Folios.PortalFolios(ctx, tenantID, partnerID); err == nil {
+		view.Folios = folios
 	}
 	return view, nil
 }

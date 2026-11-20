@@ -799,6 +799,16 @@ collection evidence and a reminder is never marked sent that was not.
 per 24h; only ISSUED folios are dunned, settled ones leave the working
 set. Console folio card shows age, reminder history, and a Remind action.
 
+**Phase 68 — partner-portal folio visibility.** The partner magic-link
+portal now shows the partner their own statements (docs/phase68.md):
+what is accruing (OPEN), what is payable (ISSUED — with the due date
+and days past due derived on read from the tenant's payment terms, so
+the portal can never disagree with the operator's aging view), and what
+is paid (SETTLED) — lines and the verbatim reminders ledger included.
+Best-effort like sourced demand: a folio listing failure never locks
+the partner out of their offers, and a suspended partner's link stays
+fully revoked. No new routes — the portal payload simply grew.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

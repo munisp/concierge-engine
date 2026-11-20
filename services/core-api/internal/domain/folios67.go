@@ -9,12 +9,14 @@ package domain
 //     partner per currency (currencies never blend). There is no aging
 //     table that could disagree with the statements.
 //   - Dunning is an escalating reminder cadence (1/7/14/30 days past
-//     due) delivered to the partner over WhatsApp. Every touch — sent,
-//     failed, or skipped with the verbatim reason — is recorded on the
-//     folio's own reminders ledger, so the statement carries its own
-//     collection evidence and the cadence is derived, never stored
-//     twice. One rung per sweep: a long-overdue folio catches up
-//     gradually instead of bursting four messages in a minute.
+//     due) delivered to the partner over their best channel —
+//     WhatsApp first, the Phase 71 billing email otherwise (Phase
+//     72). Every touch — sent, failed, or skipped with the verbatim
+//     reason — is recorded on the folio's own reminders ledger, so
+//     the statement carries its own collection evidence and the
+//     cadence is derived, never stored twice. One rung per sweep: a
+//     long-overdue folio catches up gradually instead of bursting
+//     four messages in a minute.
 //   - A reminder is never marked sent that was not, and a settled or
 //     open folio is never dunned.
 
@@ -150,14 +152,26 @@ func (svc *FolioService) RemindNow(ctx context.Context, tenantID, folioID string
 // outcome verbatim on the folio — "sent" only when the adapter accepted
 // it, otherwise the honest skip/failure reason. Returns the recorded
 // status. A store failure is audit-logged and reported, never swallowed.
+//
+// Phase 72: the channel is picked, not hardcoded — WhatsApp when a
+// phone is on file (unchanged Phase 67 behavior), the partner's
+// billing email otherwise (the address a hotel desk reads; the email
+// quotes the same outstanding balance and links the printable
+// statement document from Phase 71). The channel lands on the
+// reminder row, so the ledger says exactly how each touch went out.
 func (svc *FolioService) sendReminder(ctx context.Context, tenantID string, f *model.Folio, terms int) string {
 	now := svc.s.Now()
 	overdue := f.OverdueDays(now, terms)
 	r := model.FolioReminder{N: len(f.Reminders) + 1, Channel: "whatsapp", CreatedAt: now}
 	p, err := svc.s.Store.Partners().Get(ctx, tenantID, f.PartnerID)
 	switch {
-	case err != nil || p.Phone == "":
+	case err != nil || (p.Phone == "" && p.Email == ""):
+		r.Channel = "none"
 		r.Status = "skipped:no-contact"
+	case p.Phone == "":
+		// Phase 72: email lane — phoneless partner with a billing email.
+		r.Channel = "email"
+		r.Status = svc.sendReminderEmail(ctx, tenantID, p, f, r.N, overdue, terms)
 	case svc.s.waURL == "":
 		r.Status = "skipped:no-adapter"
 	default:

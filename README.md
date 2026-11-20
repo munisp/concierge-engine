@@ -852,6 +852,17 @@ quotes the outstanding balance, not just the face value. Console
 folio card: Statement + Link actions, delivery history, and a
 billing-email field on the partner form.
 
+**Phase 72 — dunning over email.** Reminders stop being WhatsApp-only
+(docs/phase72.md). The dunning sweep now channel-picks each reminder:
+partners with a phone keep the Phase 67 WhatsApp path byte-identical,
+phoneless partners with a billing email get a reminder email whose
+subject carries the reminder number, period, outstanding balance, and
+days past due, and whose body links the Phase 71 statement page so the
+document is one tap away. Partners with no contact record a
+`skipped:no-contact` row, and email/adapter absence is recorded
+honestly as `skipped:no-adapter` — every reminder row on the folio
+now carries its actual channel and verbatim status.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

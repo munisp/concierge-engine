@@ -97,20 +97,23 @@ func (svc *FolioService) RecordPayment(ctx context.Context, tenantID, folioID st
 	return f, nil
 }
 
-// emitSettled announces a folio reaching SETTLED — shared by Settle and
-// RecordPayment so downstream consumers see one event shape regardless
-// of which path closed the statement. net/fee are the CUMULATIVE split
+// emitSettled announces a folio reaching SETTLED — shared by Settle,
+// RecordPayment and RecordCredit (Phase 73: a fully-credited statement
+// settles too) so downstream consumers see one event shape regardless of
+// which path closed the statement. net/fee are the CUMULATIVE split
 // across the payment ledger (each payment posted its own proportional
-// split), so the event always matches the ledger exactly.
+// split), and net is measured against the credit-adjusted total, so the
+// event always matches the ledger exactly.
 func (svc *FolioService) emitSettled(ctx context.Context, tenantID string, rules model.PricingRules, f *model.Folio) {
 	var fee int64
 	for _, p := range f.Payments {
 		fee += PlatformFeeMinor(rules, p.AmountMinor)
 	}
-	net := f.TotalMinor - fee
+	net := f.AdjustedTotalMinor() - fee
 	svc.s.Events.Emit(ctx, tenantID, "partner", f.PartnerID, "channel.folio_settled",
 		map[string]any{"folio_id": f.ID, "period": f.Period, "currency": f.Currency,
-			"total_minor": f.TotalMinor, "net_minor": net, "fee_minor": fee})
+			"total_minor": f.TotalMinor, "adjusted_total_minor": f.AdjustedTotalMinor(),
+			"net_minor": net, "fee_minor": fee})
 	svc.s.Audit.Log(ctx, tenantID, "operator", "channel.folio_settled", "partner", f.PartnerID,
 		map[string]any{"folio_id": f.ID, "total_minor": f.TotalMinor})
 }

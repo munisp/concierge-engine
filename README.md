@@ -863,6 +863,22 @@ document is one tap away. Partners with no contact record a
 honestly as `skipped:no-adapter` — every reminder row on the folio
 now carries its actual channel and verbatim status.
 
+**Phase 73 — credit notes & refunds.** Statements get corrected without
+rewriting them (docs/phase73.md). A credit against an ISSUED folio is a
+verbatim row on the folio's own credit ledger (migration 0048) that
+shrinks what the partner owes — outstanding is derived as
+adjusted-total-minus-paid, so aging, dunning, the statement page and
+every delivery recompute from the corrected balance automatically, and
+a fully-credited statement settles itself (channel.folio_settled now
+reports the adjusted total). Over-credit is a 409: you cannot credit
+money the partner already paid. A credit against a SETTLED folio is a
+refund: reversal postings return the proportional net/fee
+(TENANT_REVENUE/PLATFORM_FEES → PARTNER_CLEARING, keyed per credit so a
+retry posts once), and cumulative refunds can never exceed what was
+collected. The statement page shows a Credit notes section with "Less
+credits" in the totals; the console has Credit/Refund actions and the
+credit ledger in the folio history.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

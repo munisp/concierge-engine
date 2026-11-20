@@ -25,6 +25,7 @@ func copyFolio(f *model.Folio) model.Folio {
 	cp.Reminders = append([]model.FolioReminder(nil), f.Reminders...)
 	cp.Payments = append([]model.FolioPayment(nil), f.Payments...)
 	cp.Deliveries = append([]model.FolioDelivery(nil), f.Deliveries...)
+	cp.Credits = append([]model.FolioCredit(nil), f.Credits...)
 	return cp
 }
 
@@ -103,6 +104,9 @@ func (s *memFolios) Update(_ context.Context, f *model.Folio) error {
 	}
 	if cp.Deliveries == nil {
 		cp.Deliveries = existing.Deliveries // …nor the delivery ledger (Phase 71)
+	}
+	if cp.Credits == nil {
+		cp.Credits = existing.Credits // …nor the credit ledger (Phase 73)
 	}
 	s.m.folios[key] = &cp
 	return nil

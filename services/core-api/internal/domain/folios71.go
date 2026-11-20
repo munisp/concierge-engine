@@ -80,12 +80,14 @@ type StatementView struct {
 	Currency         string                `json:"currency"`
 	State            string                `json:"state"`
 	TotalMinor       int64                 `json:"total_minor"`
+	CreditedMinor    int64                 `json:"credited_minor"`
 	PaidMinor        int64                 `json:"paid_minor"`
 	OutstandingMinor int64                 `json:"outstanding_minor"`
 	TermsDays        int                   `json:"terms_days"`
 	OverdueDays      int                   `json:"overdue_days"` // ISSUED only; <= 0 inside terms
 	Lines            []model.FolioLine     `json:"lines,omitempty"`
 	Payments         []model.FolioPayment  `json:"payments,omitempty"`
+	Credits          []model.FolioCredit   `json:"credits,omitempty"`
 	Reminders        []model.FolioReminder `json:"reminders,omitempty"`
 	Deliveries       []model.FolioDelivery `json:"deliveries,omitempty"`
 	IssuedAt         *time.Time            `json:"issued_at,omitempty"`
@@ -117,8 +119,9 @@ func (svc *FolioService) StatementByToken(ctx context.Context, token string) (*S
 	v := &StatementView{
 		TenantName: tenant.Name, PartnerName: partner.Name,
 		FolioID: f.ID, Period: f.Period, Currency: f.Currency, State: f.State,
-		TotalMinor: f.TotalMinor, PaidMinor: f.PaidMinor(), OutstandingMinor: f.OutstandingMinor(),
-		TermsDays: terms, Lines: f.Lines, Payments: f.Payments,
+		TotalMinor: f.TotalMinor, CreditedMinor: f.CreditedMinor(),
+		PaidMinor: f.PaidMinor(), OutstandingMinor: f.OutstandingMinor(),
+		TermsDays: terms, Lines: f.Lines, Payments: f.Payments, Credits: f.Credits,
 		Reminders: f.Reminders, Deliveries: f.Deliveries,
 	}
 	if !f.IssuedAt.IsZero() {

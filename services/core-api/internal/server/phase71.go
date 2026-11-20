@@ -101,9 +101,21 @@ func (h *handlers) statementPage(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</tbody></table>`)
 	}
+	if len(v.Credits) > 0 {
+		b.WriteString(`<h2>Credit notes</h2><table><thead><tr><th>Date</th><th>Kind</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>`)
+		for _, c := range v.Credits {
+			b.WriteString(`<tr><td>` + c.CreatedAt.Format("2006-01-02") + `</td><td>` + esc(c.Kind) +
+				`</td><td class="muted">` + esc(c.Reason) + `</td><td class="r">−` +
+				money71(c.AmountMinor) + ` ` + esc(v.Currency) + `</td></tr>`)
+		}
+		b.WriteString(`</tbody></table>`)
+	}
 	b.WriteString(`<table class="totals"><tbody>` +
-		`<tr><td>Total</td><td class="r">` + money71(v.TotalMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
-		`<tr><td>Paid</td><td class="r">` + money71(v.PaidMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
+		`<tr><td>Total</td><td class="r">` + money71(v.TotalMinor) + ` ` + esc(v.Currency) + `</td></tr>`)
+	if v.CreditedMinor > 0 {
+		b.WriteString(`<tr><td>Less credits</td><td class="r">−` + money71(v.CreditedMinor) + ` ` + esc(v.Currency) + `</td></tr>`)
+	}
+	b.WriteString(`<tr><td>Paid</td><td class="r">` + money71(v.PaidMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
 		`<tr class="due"><td>Outstanding</td><td class="r">` + money71(v.OutstandingMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
 		`</tbody></table>`)
 	if len(v.Payments) > 0 {

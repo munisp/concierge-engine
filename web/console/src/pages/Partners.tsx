@@ -688,6 +688,15 @@ type FolioDelivery = {
   status: string;  // sent | skipped:… | failed:… (verbatim)
   created_at: string;
 };
+// Phase 73: every credit note (issued) or refund (settled), verbatim.
+type FolioCredit = {
+  id: string;
+  amount_minor: number;
+  kind: string; // credit | refund
+  reason?: string;
+  created_at: string;
+  recorded_by: string;
+};
 type Folio = {
   id: string;
   partner_id: string;
@@ -699,6 +708,7 @@ type Folio = {
   reminders?: FolioReminder[];
   payments?: FolioPayment[];
   deliveries?: FolioDelivery[];
+  credits?: FolioCredit[];
   issued_at?: string;
   settled_at?: string;
 };
@@ -750,7 +760,8 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
   // Phase 70: record an amount received. Overpayment is a server-side
   // 409 — the recorded money can never exceed the statement.
   async function recordPayment(f: Folio) {
-    const outstanding = f.total_minor - (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0);
+    const credited = (f.credits ?? []).reduce((s, c) => s + c.amount_minor, 0);
+    const outstanding = f.total_minor - credited - (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0);
     const raw = window.prompt(
       `Amount received against ${f.period} (${minor(outstanding)} ${f.currency} outstanding), in ${f.currency} — e.g. 40.00`);
     if (raw === null) return;
@@ -781,6 +792,26 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
       const res = await api.get<{ url: string }>(`/v1/folios/${f.id}/statement-link`);
       await navigator.clipboard.writeText(res.url);
       onError("Statement link copied — the page prints/saves to PDF from the browser.");
+    } catch (e) { onError(String(e)); }
+  }
+
+  // Phase 73: record a credit note (issued) or refund (settled).
+  // Over-credit and over-refund are server-side 409s — never silently
+  // absorbed.
+  async function recordCredit(f: Folio) {
+    const credited = (f.credits ?? []).reduce((s, c) => s + c.amount_minor, 0);
+    const paid = (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0);
+    const correctable = f.state === "SETTLED" ? paid - credited : f.total_minor - credited - paid;
+    const label = f.state === "SETTLED" ? "refund" : "credit note";
+    const raw = window.prompt(
+      `Amount to ${label} against ${f.period} (${minor(correctable)} ${f.currency} correctable), in ${f.currency} — e.g. 20.00`);
+    if (raw === null) return;
+    const amount = Math.round(parseFloat(raw) * 100);
+    if (!Number.isFinite(amount) || amount <= 0) { onError("invalid amount"); return; }
+    const reason = window.prompt("Reason (optional — shown on the statement)", "") ?? "";
+    try {
+      await api.post(`/v1/folios/${f.id}/credits`, { amount_minor: amount, reason });
+      await load(partnerID);
     } catch (e) { onError(String(e)); }
   }
 
@@ -819,11 +850,16 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                 <td>{f.currency}</td>
                 <td>
                   {minor(f.total_minor)}
-                  {(f.payments ?? []).length > 0 && (
+                  {((f.payments ?? []).length > 0 || (f.credits ?? []).length > 0) && (
                     <div className="muted" style={{ fontSize: 12 }}>
                       paid {minor((f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0))}
+                      {(f.credits ?? []).length > 0 && (
+                        <> · credited {minor((f.credits ?? []).reduce((s, c) => s + c.amount_minor, 0))}</>
+                      )}
                       {f.state === "ISSUED" && (
-                        <> · owed {minor(f.total_minor - (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0))}</>
+                        <> · owed {minor(f.total_minor
+                          - (f.credits ?? []).reduce((s, c) => s + c.amount_minor, 0)
+                          - (f.payments ?? []).reduce((s, p) => s + p.amount_minor, 0))}</>
                       )}
                     </div>
                   )}
@@ -848,11 +884,19 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                         Statement{(f.deliveries ?? []).length > 0 ? ` (${(f.deliveries ?? []).length})` : ""}
                       </button>
                       <button className="secondary" onClick={() => void copyStatementLink(f)}>Link</button>
+                      <button className="secondary" onClick={() => void recordCredit(f)}>
+                        Credit{(f.credits ?? []).length > 0 ? ` (${(f.credits ?? []).length})` : ""}
+                      </button>
                       <button className="secondary" onClick={() => void remind(f)}>
                         Remind{(f.reminders ?? []).length > 0 ? ` (${(f.reminders ?? []).length})` : ""}
                       </button>
                       <button onClick={() => void settle(f)}>Settle</button>
                     </>
+                  )}
+                  {f.state === "SETTLED" && (
+                    <button className="secondary" onClick={() => void recordCredit(f)}>
+                      Refund{(f.credits ?? []).length > 0 ? ` (${(f.credits ?? []).length})` : ""}
+                    </button>
                   )}
                 </td>
               </tr>
@@ -875,6 +919,14 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                 <tr key={`del-${d.id}`}>
                   <td colSpan={5} className="muted">
                     statement via {d.channel} — {d.status} — {new Date(d.created_at).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              {openID === f.id && (f.credits ?? []).map((c) => (
+                <tr key={`cr-${c.id}`}>
+                  <td colSpan={5} className="muted">
+                    {c.kind} −{minor(c.amount_minor)} {f.currency}
+                    {c.reason ? ` — ${c.reason}` : ""} — {new Date(c.created_at).toLocaleString()}
                   </td>
                 </tr>
               ))}

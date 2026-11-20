@@ -58,4 +58,10 @@ type Folio struct {
 	// the statement document was sent to the partner (or honestly
 	// skipped/failed), recorded verbatim.
 	Deliveries []FolioDelivery `json:"deliveries,omitempty"`
+	// Credits (Phase 73): the credit-note/refund ledger — every
+	// correction against this statement, recorded verbatim. The
+	// adjusted total is DERIVED from this slice (CreditedMinor /
+	// AdjustedTotalMinor), so the frozen lines stay untouched and the
+	// balance always matches the credit evidence.
+	Credits []FolioCredit `json:"credits,omitempty"`
 }

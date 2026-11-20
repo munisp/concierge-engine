@@ -28,11 +28,14 @@ func (f *Folio) PaidMinor() int64 {
 	return paid
 }
 
-// OutstandingMinor is what is still owed. Clamped at zero — an
-// overpayment is rejected upstream, so a negative balance cannot occur,
-// but derivation never trusts that blindly.
+// OutstandingMinor is what is still owed: the credit-adjusted total
+// minus what has been paid (Phase 73 — aging and dunning chase the
+// adjusted balance, so a credit note immediately shrinks the debt).
+// Clamped at zero — overpayments and over-credits are rejected upstream,
+// so a negative balance cannot occur, but derivation never trusts that
+// blindly.
 func (f *Folio) OutstandingMinor() int64 {
-	out := f.TotalMinor - f.PaidMinor()
+	out := f.AdjustedTotalMinor() - f.PaidMinor()
 	if out < 0 {
 		return 0
 	}

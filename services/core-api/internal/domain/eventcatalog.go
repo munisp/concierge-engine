@@ -55,6 +55,9 @@ var EventCatalog = []EventSpec{
 	{"channel.request_sourced", "service_request", "Partner sourced a guest request (book-on-behalf)", []string{"partner_id", "source_kind", "client_id", "new_client"}},
 	{"channel.sourcing_commission_accrued", "payout", "Sourcing commission accrued to the demand channel", []string{"partner_id", "booking_id", "source_kind", "amount_minor", "currency", "pct"}},
 	{"channel.source_attributed", "service_request", "Operator reattributed demand to a channel partner", []string{"from_kind", "from_partner", "to_kind", "to_partner"}},
+	{"channel.rate_card_set", "partner", "Partner rate card upserted (negotiated channel pricing)", []string{"partner_id", "vertical", "kind", "value", "currency"}},
+	{"channel.rate_card_applied", "service_request", "Partner rate card adjusted a sourced quote", []string{"partner_id", "vertical", "kind", "value", "adjustment_minor", "currency"}},
+	{"channel.rate_card_skipped", "service_request", "Partner rate card skipped at quoting (reason in payload)", []string{"partner_id", "vertical", "reason"}},
 	{"partner.commission_cancelled", "payout", "Pending commission voided on partner decline", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
 	{"trip.status_changed", "trip", "Chauffeur trip advanced", []string{"status"}},
 

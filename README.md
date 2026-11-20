@@ -759,6 +759,17 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 65 — partner rate cards.** Negotiated per-channel pricing
+(docs/phase65.md): one card per partner per vertical — percentage
+discount/markup (capped ±50%) or a fixed contracted fare with a currency
+— applied at quoting ONLY to demand the partner sourced; direct demand
+never sees a card. Every adjustment lands on the quote as an explicit
+partner-named line, pre-tax; sourcing commission accrues on the adjusted
+gross; a currency-mismatched fixed card is skipped with the reason
+emitted, never a wrong-currency charge. CRUD under
+`/v1/partners/{id}/rate-cards` (migration 0043, RLS), console rate-card
+editor on the Partners page.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

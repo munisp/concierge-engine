@@ -326,6 +326,14 @@ type PartnerStore interface {
 	Update(ctx context.Context, p *model.Partner) error
 }
 
+// RateCardStore (Phase 65): negotiated per-partner, per-vertical pricing.
+// Keyed by (tenant, partner, vertical) — upsert is the write path.
+type RateCardStore interface {
+	Upsert(ctx context.Context, c *model.RateCard) error
+	ListForPartner(ctx context.Context, tenantID, partnerID string) ([]model.RateCard, error)
+	Delete(ctx context.Context, tenantID, partnerID, vertical string) error // missing → ErrNotFound
+}
+
 type CorporateStore interface {
 	CreateAccount(ctx context.Context, a *model.CorporateAccount) error
 	GetAccount(ctx context.Context, tenantID, id string) (*model.CorporateAccount, error)
@@ -568,5 +576,6 @@ type Store interface {
 	Soundscapes() SoundscapeStore
 	Itineraries() ItineraryStore
 	ChauffeurLinks() ChauffeurLinkStore
+	RateCards() RateCardStore
 	Close()
 }

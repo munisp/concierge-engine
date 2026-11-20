@@ -154,6 +154,17 @@ func (svc *BookingService) QuoteRequest(ctx context.Context, tenantID, requestID
 	}
 	lines, total, deposit, currency, instant := BuildQuote(*tenant, catalog, r, svc.s.Now())
 
+	// Phase 65: partner rate cards. Sourced demand reprices against the
+	// sourcing partner's negotiated card — explicit adjustment lines on the
+	// quote, applied pre-tax so tax and deposit follow the adjusted base.
+	if adjLines, delta := svc.s.RateCards.applyToQuote(ctx, tenantID, r, lines, currency); delta != 0 {
+		lines = append(lines, adjLines...)
+		total += delta
+		if tenant.PricingRules.DepositPct > 0 {
+			deposit = int64(math.Round(float64(total) * tenant.PricingRules.DepositPct))
+		}
+	}
+
 	// Phase 17: tax. Applied to the service subtotal per the tenant's tax
 	// posture; the deposit base is the grand total (the client pays tax on
 	// the deposit too). The client's locale feeds Stripe Tax's country

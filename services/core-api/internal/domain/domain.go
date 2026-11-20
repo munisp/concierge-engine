@@ -88,6 +88,7 @@ type Services struct {
 	Music         *MusicService
 	Journeys      *JourneyService
 	Channels      *ChannelService
+	RateCards     *RateCardService
 	// PayoutCallbackSecret authenticates adapter payout callbacks (Phase 48).
 	PayoutCallbackSecret string
 	// StorageEngine (Phase 49) labels the legacy inline media store for
@@ -176,6 +177,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 	s.Music = NewMusicService(s, deps.MusicProvider, deps.MusicURL, deps.MusicKey)
 	s.Journeys = &JourneyService{s: s}
 	s.Channels = &ChannelService{s: s}
+	s.RateCards = &RateCardService{s: s}
 	// Webhook fan-out hooks the event spine after outbox persistence.
 	s.Events.hook = func(ctx context.Context, tenantID, eventType, eventID string, payload map[string]any) {
 		s.Webhooks.FanOut(ctx, tenantID, eventType, eventID, payload)

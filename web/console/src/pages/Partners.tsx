@@ -182,8 +182,114 @@ export default function Partners() {
       </table>
       <SettlementsCard partners={partners} onError={setError} />
       <IntegrationCard partners={partners} onError={setError} />
+      <RateCardsCard partners={partners} onError={setError} />
       <ChannelsCard />
     </section>
+  );
+}
+
+// Phase 65: partner rate cards — negotiated per-vertical pricing applied
+// to the demand a partner sources. Percentages are capped at ±50% (deeper
+// is a catalog decision); fixed totals carry a currency and are skipped at
+// quoting when it mismatches the tenant's pricing currency. Every applied
+// adjustment renders on the quote as a partner-named line.
+type RateCard = {
+  partner_id: string;
+  vertical: string;
+  kind: "pct_discount" | "pct_markup" | "fixed_total";
+  value: number; // percent (1–50) or minor units (fixed_total)
+  currency?: string;
+};
+
+const RATE_KINDS: { value: RateCard["kind"]; label: string }[] = [
+  { value: "pct_discount", label: "Discount %" },
+  { value: "pct_markup", label: "Markup %" },
+  { value: "fixed_total", label: "Fixed total (minor)" },
+];
+
+function RateCardsCard({ partners, onError }: { partners: Partner[]; onError: (e: string) => void }) {
+  const [partnerID, setPartnerID] = useState("");
+  const [cards, setCards] = useState<RateCard[]>([]);
+  const [vertical, setVertical] = useState("");
+  const [kind, setKind] = useState<RateCard["kind"]>("pct_discount");
+  const [value, setValue] = useState("");
+  const [currency, setCurrency] = useState("EUR");
+
+  const load = useCallback(async (pid: string) => {
+    if (!pid) { setCards([]); return; }
+    try {
+      setCards(await api.get<RateCard[]>(`/v1/partners/${pid}/rate-cards`));
+    } catch (e) { onError(String(e)); }
+  }, [onError]);
+
+  useEffect(() => { void load(partnerID); }, [partnerID, load]);
+
+  async function add() {
+    onError("");
+    try {
+      await api.put(`/v1/partners/${partnerID}/rate-cards`, {
+        vertical: vertical.trim(), kind, value: Number(value),
+        currency: kind === "fixed_total" ? currency : undefined,
+      });
+      setVertical(""); setValue("");
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
+  async function remove(v: string) {
+    try {
+      await api.del(`/v1/partners/${partnerID}/rate-cards/${encodeURIComponent(v)}`);
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
+  return (
+    <div className="card">
+      <h3>Rate cards (negotiated channel pricing)</h3>
+      <p className="muted">
+        Applies only to demand the partner sources; every adjustment shows on the quote as a
+        partner-named line. Percentages capped at ±50%.
+      </p>
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <select value={partnerID} onChange={(e) => setPartnerID(e.target.value)}>
+          <option value="">— partner —</option>
+          {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+      {partnerID && (
+        <>
+          {cards.length > 0 && (
+            <table><tbody>
+              {cards.map((c) => (
+                <tr key={c.vertical}>
+                  <td>{c.vertical}</td>
+                  <td>
+                    {c.kind === "fixed_total"
+                      ? `fixed ${minor(c.value)} ${c.currency ?? ""}`
+                      : `${c.kind === "pct_discount" ? "−" : "+"}${c.value}%`}
+                  </td>
+                  <td><button className="secondary" onClick={() => void remove(c.vertical)}>Remove</button></td>
+                </tr>
+              ))}
+            </tbody></table>
+          )}
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            <input placeholder="Vertical (CHAUFFEUR_POINT_TO_POINT)" value={vertical}
+              onChange={(e) => setVertical(e.target.value)} />
+            <select value={kind} onChange={(e) => setKind(e.target.value as RateCard["kind"])}>
+              {RATE_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+            </select>
+            <input placeholder={kind === "fixed_total" ? "amount (minor)" : "percent 1–50"}
+              value={value} onChange={(e) => setValue(e.target.value)} style={{ maxWidth: 140 }} />
+            {kind === "fixed_total" && (
+              <input placeholder="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}
+                style={{ maxWidth: 90 }} />
+            )}
+            <button onClick={() => void add()} disabled={!vertical.trim() || !value}>Save card</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

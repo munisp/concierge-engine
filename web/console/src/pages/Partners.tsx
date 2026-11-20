@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 
 // Partner network (Phase 2): directory, vetting, fill-rate KPI.
@@ -15,6 +15,7 @@ type Partner = {
   commission_pct?: number;
   phone?: string;
   kind?: string; // Phase 63: demand channel kind
+  bill_to_desk?: boolean; // Phase 66: monthly folio settlement
 };
 
 // Phase 63: demand channels — the closed kind vocabulary.
@@ -183,6 +184,7 @@ export default function Partners() {
       <SettlementsCard partners={partners} onError={setError} />
       <IntegrationCard partners={partners} onError={setError} />
       <RateCardsCard partners={partners} onError={setError} />
+      <FoliosCard partners={partners} onError={setError} />
       <ChannelsCard />
     </section>
   );
@@ -638,6 +640,124 @@ function SettlementsCard({ partners, onError }: { partners: Partner[]; onError: 
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+// Phase 66: bill-to-desk folios — monthly consolidated settlement for the
+// demand a partner sources. The partner opts in; every sourced CONFIRMED
+// booking accrues its adjusted gross (post-rate-card) as a folio line.
+// Issue freezes the period total; settle posts the ledger split. Accrual
+// onto an issued period is blocked with provenance, never silently dropped.
+type FolioLine = {
+  booking_id: string;
+  quote_id: string;
+  guest_name?: string;
+  amount_minor: number;
+  created_at: string;
+};
+type Folio = {
+  id: string;
+  partner_id: string;
+  period: string; // YYYY-MM
+  currency: string;
+  state: "OPEN" | "ISSUED" | "SETTLED";
+  total_minor: number;
+  lines?: FolioLine[];
+  issued_at?: string;
+  settled_at?: string;
+};
+
+function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: string) => void }) {
+  const [partnerID, setPartnerID] = useState("");
+  const [folios, setFolios] = useState<Folio[]>([]);
+  const [openID, setOpenID] = useState("");
+  const partner = partners.find((p) => p.id === partnerID);
+
+  const load = useCallback(async (pid: string) => {
+    if (!pid) { setFolios([]); return; }
+    try {
+      setFolios(await api.get<Folio[]>(`/v1/partners/${pid}/folios`));
+    } catch (e) { onError(String(e)); }
+  }, [onError]);
+
+  useEffect(() => { void load(partnerID); }, [partnerID, load]);
+
+  async function toggleDesk() {
+    if (!partner) return;
+    try {
+      await api.put(`/v1/partners/${partner.id}/bill-to-desk`, { enabled: !partner.bill_to_desk });
+      onError("Toggled — refresh the page to update the partner list.");
+    } catch (e) { onError(String(e)); }
+  }
+
+  async function issue(f: Folio) {
+    try {
+      await api.post(`/v1/partners/${partnerID}/folios/${f.period}/${f.currency}/issue`, {});
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
+  async function settle(f: Folio) {
+    try {
+      await api.post(`/v1/folios/${f.id}/settle`, {});
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
+  return (
+    <div className="card">
+      <h3>Bill-to-desk folios (monthly settlement)</h3>
+      <p className="muted">
+        Sourced bookings accrue their adjusted gross onto a monthly folio instead of per-guest
+        payment. Issue at period end, settle when the partner pays. Once a period is issued,
+        further bookings are blocked with an event — bill them manually.
+      </p>
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <select value={partnerID} onChange={(e) => setPartnerID(e.target.value)}>
+          <option value="">— partner —</option>
+          {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        {partner && (
+          <button className="secondary" onClick={() => void toggleDesk()}>
+            {partner.bill_to_desk ? "Disable desk billing" : "Enable desk billing"}
+          </button>
+        )}
+        {partner && (
+          <span className="muted">desk billing: {partner.bill_to_desk ? "ON" : "off"}</span>
+        )}
+      </div>
+      {partnerID && folios.length > 0 && (
+        <table><tbody>
+          {folios.map((f) => (
+            <Fragment key={f.id}>
+              <tr>
+                <td><strong>{f.period}</strong></td>
+                <td>{f.currency}</td>
+                <td>{minor(f.total_minor)}</td>
+                <td><strong>{f.state}</strong></td>
+                <td className="row" style={{ gap: 6 }}>
+                  <button className="secondary" onClick={() => setOpenID(openID === f.id ? "" : f.id)}>
+                    {openID === f.id ? "Hide" : "Lines"}
+                  </button>
+                  {f.state === "OPEN" && <button onClick={() => void issue(f)}>Issue</button>}
+                  {f.state === "ISSUED" && <button onClick={() => void settle(f)}>Settle</button>}
+                </td>
+              </tr>
+              {openID === f.id && (f.lines ?? []).map((l) => (
+                <tr key={l.booking_id}>
+                  <td colSpan={5} className="muted">
+                    {l.guest_name || l.booking_id.slice(0, 8)} — {minor(l.amount_minor)} {f.currency}
+                  </td>
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody></table>
+      )}
+      {partnerID && folios.length === 0 && (
+        <p className="muted">No folios yet — they appear once a sourced booking confirms.</p>
       )}
     </div>
   );

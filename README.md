@@ -770,6 +770,19 @@ emitted, never a wrong-currency charge. CRUD under
 `/v1/partners/{id}/rate-cards` (migration 0043, RLS), console rate-card
 editor on the Partners page.
 
+**Phase 66 — partner bill-to-desk folios.** Monthly consolidated
+settlement for sourced demand (docs/phase66.md): a partner opts into desk
+billing; every sourced CONFIRMED booking accrues its adjusted gross (the
+quote total after rate-card repricing) as a line on the partner's OPEN
+folio per (period YYYY-MM, currency) — migration 0044, RLS, unique key,
+booking-once idempotency. Issue freezes the total (OPEN → ISSUED); settle
+posts the money truth (PARTNER_CLEARING → TENANT_REVENUE net + PLATFORM_FEES
+fee, keyed per folio) and is terminal. Accrual onto an issued period is
+refused with a `channel.folio_accrual_blocked` event — never silently
+dropped, never reopening a billed statement. Sourcing commission accrues
+independently; direct demand never accrues. Console Partners folio card
+with opt-in toggle, statement lines, issue/settle actions.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

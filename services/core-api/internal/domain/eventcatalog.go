@@ -58,6 +58,11 @@ var EventCatalog = []EventSpec{
 	{"channel.rate_card_set", "partner", "Partner rate card upserted (negotiated channel pricing)", []string{"partner_id", "vertical", "kind", "value", "currency"}},
 	{"channel.rate_card_applied", "service_request", "Partner rate card adjusted a sourced quote", []string{"partner_id", "vertical", "kind", "value", "adjustment_minor", "currency"}},
 	{"channel.rate_card_skipped", "service_request", "Partner rate card skipped at quoting (reason in payload)", []string{"partner_id", "vertical", "reason"}},
+	{"channel.bill_to_desk_set", "partner", "Partner bill-to-desk toggled", []string{"partner_id", "enabled"}},
+	{"channel.folio_line_accrued", "booking", "Sourced booking accrued onto the partner folio", []string{"partner_id", "period", "currency", "amount_minor", "folio_created"}},
+	{"channel.folio_accrual_blocked", "booking", "Folio accrual blocked — period already issued (bill manually)", []string{"partner_id", "period", "currency", "reason"}},
+	{"channel.folio_issued", "partner", "Partner folio issued for payment", []string{"folio_id", "period", "currency", "total_minor", "lines"}},
+	{"channel.folio_settled", "partner", "Partner folio settled — ledger posted", []string{"folio_id", "period", "currency", "total_minor", "net_minor", "fee_minor"}},
 	{"partner.commission_cancelled", "payout", "Pending commission voided on partner decline", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
 	{"trip.status_changed", "trip", "Chauffeur trip advanced", []string{"status"}},
 

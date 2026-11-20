@@ -45,6 +45,7 @@ type memory struct {
 	leadIdem      map[string]string                  // tenant/key → lead id
 	chauffLinks   map[string]*model.ChauffeurLink    // tenant/client/crew (Phase 62)
 	rateCards     map[string]*model.RateCard         // tenant/partner/vertical (Phase 65)
+	folios        map[string]*model.Folio            // tenant/partner/period/currency (Phase 66)
 	spend         map[string]*model.CampaignSpend    // tenantID/id (Phase 40)
 	spendIdem     map[string]string                  // tenant/key → spend id
 	suppressions  map[string]*model.EmailSuppression // tenantID/email (Phase 41)
@@ -109,6 +110,7 @@ func NewMemory() Store {
 		leadIdem:      map[string]string{},
 		chauffLinks:   map[string]*model.ChauffeurLink{},
 		rateCards:     map[string]*model.RateCard{},
+		folios:        map[string]*model.Folio{},
 		spend:         map[string]*model.CampaignSpend{},
 		spendIdem:     map[string]string{},
 		suppressions:  map[string]*model.EmailSuppression{},

@@ -26,10 +26,13 @@ type Partner struct {
 	// Phase 63: demand-channel kind (hotel | travel_agency |
 	// transport_company | tour_operator | other). Drives the sourcing
 	// workflow and margin analytics; legacy rows default to tour_operator.
-	Kind      string    `json:"kind,omitempty"`
-	Lat       float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
-	Lng       float64   `json:"lng,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	Kind string `json:"kind,omitempty"`
+	// Phase 66: bill-to-desk — sourced bookings accrue onto a monthly folio
+	// settled by the partner on terms, instead of per-guest payment.
+	BillToDesk bool      `json:"bill_to_desk,omitempty"`
+	Lat        float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
+	Lng        float64   `json:"lng,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // CorporateAccount: consolidated monthly billing for EA bookers (Phase 2).

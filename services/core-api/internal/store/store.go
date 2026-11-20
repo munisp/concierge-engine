@@ -334,6 +334,19 @@ type RateCardStore interface {
 	Delete(ctx context.Context, tenantID, partnerID, vertical string) error // missing → ErrNotFound
 }
 
+// FolioStore (Phase 66): bill-to-desk folios — one per
+// (tenant, partner, period, currency); accrual upserts the OPEN folio.
+type FolioStore interface {
+	// AccrueLine upserts the OPEN folio for (partner, period, currency) and
+	// appends the line. Idempotent per booking: a booking already on the
+	// folio is a no-op (returns created=false).
+	AccrueLine(ctx context.Context, f *model.Folio, line model.FolioLine) (created bool, err error)
+	ListForPartner(ctx context.Context, tenantID, partnerID string) ([]model.Folio, error)
+	Get(ctx context.Context, tenantID, id string) (*model.Folio, error)
+	// Update writes state transitions (issue/settle) and the frozen total.
+	Update(ctx context.Context, f *model.Folio) error
+}
+
 type CorporateStore interface {
 	CreateAccount(ctx context.Context, a *model.CorporateAccount) error
 	GetAccount(ctx context.Context, tenantID, id string) (*model.CorporateAccount, error)
@@ -577,5 +590,6 @@ type Store interface {
 	Itineraries() ItineraryStore
 	ChauffeurLinks() ChauffeurLinkStore
 	RateCards() RateCardStore
+	Folios() FolioStore
 	Close()
 }

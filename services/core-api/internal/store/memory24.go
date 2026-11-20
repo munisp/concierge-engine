@@ -22,6 +22,7 @@ func folioKey(tenantID, partnerID, period, currency string) string {
 func copyFolio(f *model.Folio) model.Folio {
 	cp := *f
 	cp.Lines = append([]model.FolioLine(nil), f.Lines...)
+	cp.Reminders = append([]model.FolioReminder(nil), f.Reminders...)
 	return cp
 }
 
@@ -92,6 +93,23 @@ func (s *memFolios) Update(_ context.Context, f *model.Folio) error {
 	if cp.Lines == nil {
 		cp.Lines = existing.Lines // state transitions never drop the lines
 	}
+	if cp.Reminders == nil {
+		cp.Reminders = existing.Reminders // …nor the dunning ledger (Phase 67)
+	}
 	s.m.folios[key] = &cp
 	return nil
+}
+
+// ListIssued (Phase 67): every unpaid statement, oldest issue first.
+func (s *memFolios) ListIssued(_ context.Context, tenantID string) ([]model.Folio, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	out := []model.Folio{}
+	for _, f := range s.m.folios {
+		if f.TenantID == tenantID && f.State == model.FolioIssued {
+			out = append(out, copyFolio(f))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].IssuedAt.Before(out[j].IssuedAt) })
+	return out, nil
 }

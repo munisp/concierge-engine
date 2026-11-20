@@ -783,6 +783,22 @@ dropped, never reopening a billed statement. Sourcing commission accrues
 independently; direct demand never accrues. Console Partners folio card
 with opt-in toggle, statement lines, issue/settle actions.
 
+**Phase 67 — folio aging & dunning.** Issued folios are money owed; this
+phase makes them collected (docs/phase67.md). Aging is a derived
+receivables view — `GET /v1/folios/aging` buckets every unpaid statement
+current / 1–7 / 8–30 / 30+ days overdue against the tenant's payment
+terms (`pricing_rules.folio_terms_days`, default 14), one row per partner
+per currency (never blended), sorted most-overdue first. Dunning is an
+escalating WhatsApp cadence (1/7/14/30 days past due) run by the hourly
+sweeper and on demand (`POST /v1/dunning/run`), one rung per sweep so a
+long-overdue folio catches up gradually. Every touch — sent, failed, or
+skipped with the verbatim reason — is recorded on the folio's own
+reminders ledger (migration 0045), so the statement carries its own
+collection evidence and a reminder is never marked sent that was not.
+`POST /v1/folios/{id}/remind` is the manual nudge, guarded to one touch
+per 24h; only ISSUED folios are dunned, settled ones leave the working
+set. Console folio card shows age, reminder history, and a Remind action.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

@@ -202,6 +202,20 @@ type PricingRules struct {
 	// ReferralRewardPct is the referrer's reward as a fraction of the
 	// referee's first booking value (Phase 18). Default 0.05 when unset.
 	ReferralRewardPct float64 `json:"referral_reward_pct,omitempty"`
+	// FolioTermsDays (Phase 67): payment terms on issued bill-to-desk
+	// folios — days after issue before the statement is overdue and the
+	// dunning cadence starts. 0 = platform default (14).
+	FolioTermsDays int `json:"folio_terms_days,omitempty"`
+}
+
+// FolioTerms resolves the tenant's bill-to-desk payment terms in days
+// (Phase 67). Unset or invalid means the 14-day platform default — terms
+// are never silently zero.
+func (r PricingRules) FolioTerms() int {
+	if r.FolioTermsDays > 0 {
+		return r.FolioTermsDays
+	}
+	return 14
 }
 
 // RewardProgram is the tenant's two-sided reward sharing configuration

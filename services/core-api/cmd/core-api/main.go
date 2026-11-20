@@ -206,6 +206,15 @@ func main() {
 					} else if n > 0 {
 						log.Printf("batch timeout sweep: tenant %s — %d compensated", t.Slug, n)
 					}
+					// Phase 67: folio dunning — escalating payment reminders
+					// on issued bill-to-desk statements. The reminders ledger
+					// on each folio is the evidence; one rung per sweep.
+					if res, err := svc.Folios.RunDunning(dispatchCtx, t.ID); err != nil {
+						log.Printf("folio dunning sweep: tenant %s — %v", t.Slug, err)
+					} else if res.Sent+res.Skipped > 0 {
+						log.Printf("folio dunning sweep: tenant %s — %d sent, %d skipped",
+							t.Slug, res.Sent, res.Skipped)
+					}
 				}
 			}
 		}

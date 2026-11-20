@@ -46,4 +46,8 @@ type Folio struct {
 	CreatedAt  time.Time   `json:"created_at"`
 	IssuedAt   time.Time   `json:"issued_at,omitempty"`
 	SettledAt  time.Time   `json:"settled_at,omitempty"`
+	// Reminders (Phase 67): the dunning ledger — every payment reminder
+	// sent or attempted against this statement, recorded verbatim. The
+	// cadence is DERIVED from this slice, never stored separately.
+	Reminders []FolioReminder `json:"reminders,omitempty"`
 }

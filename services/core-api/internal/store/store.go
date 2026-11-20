@@ -342,8 +342,12 @@ type FolioStore interface {
 	// folio is a no-op (returns created=false).
 	AccrueLine(ctx context.Context, f *model.Folio, line model.FolioLine) (created bool, err error)
 	ListForPartner(ctx context.Context, tenantID, partnerID string) ([]model.Folio, error)
+	// ListIssued (Phase 67) returns all ISSUED (unpaid) folios for the
+	// tenant, oldest issue first — the dunning/aging working set.
+	ListIssued(ctx context.Context, tenantID string) ([]model.Folio, error)
 	Get(ctx context.Context, tenantID, id string) (*model.Folio, error)
-	// Update writes state transitions (issue/settle) and the frozen total.
+	// Update writes state transitions (issue/settle), the frozen total,
+	// and the Phase 67 reminders ledger.
 	Update(ctx context.Context, f *model.Folio) error
 }
 

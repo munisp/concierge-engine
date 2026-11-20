@@ -77,14 +77,15 @@ func (s pgFolios) AccrueLine(ctx context.Context, f *model.Folio, line model.Fol
 
 func scanFolio(row interface{ Scan(...any) error }) (*model.Folio, error) {
 	var f model.Folio
-	var lines []byte
+	var lines, reminders []byte
 	var issuedAt, settledAt *time.Time
 	err := row.Scan(&f.ID, &f.TenantID, &f.PartnerID, &f.Period, &f.Currency,
-		&f.State, &f.TotalMinor, &lines, &f.CreatedAt, &issuedAt, &settledAt)
+		&f.State, &f.TotalMinor, &lines, &f.CreatedAt, &issuedAt, &settledAt, &reminders)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(lines, &f.Lines)
+	_ = json.Unmarshal(reminders, &f.Reminders)
 	if issuedAt != nil {
 		f.IssuedAt = *issuedAt
 	}
@@ -94,7 +95,7 @@ func scanFolio(row interface{ Scan(...any) error }) (*model.Folio, error) {
 	return &f, nil
 }
 
-const folioCols = `id, tenant_id, partner_id, period, currency, state, total_minor, lines, created_at, issued_at, settled_at`
+const folioCols = `id, tenant_id, partner_id, period, currency, state, total_minor, lines, created_at, issued_at, settled_at, reminders`
 
 func (s pgFolios) ListForPartner(ctx context.Context, tenantID, partnerID string) ([]model.Folio, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -137,17 +138,54 @@ func (s pgFolios) Get(ctx context.Context, tenantID, id string) (*model.Folio, e
 	return f, tx.Commit()
 }
 
+// ListIssued (Phase 67): the tenant's unpaid statements, oldest first —
+// the dunning sweeper's working set.
+func (s pgFolios) ListIssued(ctx context.Context, tenantID string) ([]model.Folio, error) {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT `+folioCols+` FROM partner_folios WHERE tenant_id=$1 AND state='ISSUED'
+		 ORDER BY issued_at`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.Folio{}
+	for rows.Next() {
+		f, err := scanFolio(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
+}
+
 func (s pgFolios) Update(ctx context.Context, f *model.Folio) error {
 	tx, err := s.p.tenantTx(ctx, f.TenantID)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	reminders := f.Reminders
+	if reminders == nil {
+		reminders = []model.FolioReminder{} // jsonb NOT NULL — never write NULL
+	}
+	remindersJSON, err := json.Marshal(reminders)
+	if err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx,
-		`UPDATE partner_folios SET state=$3, total_minor=$4, issued_at=$5, settled_at=$6
+		`UPDATE partner_folios SET state=$3, total_minor=$4, issued_at=$5, settled_at=$6, reminders=$7
 		 WHERE tenant_id=$1 AND id=$2`,
 		f.TenantID, f.ID, f.State, f.TotalMinor,
-		nullTime(f.IssuedAt), nullTime(f.SettledAt))
+		nullTime(f.IssuedAt), nullTime(f.SettledAt), string(remindersJSON))
 	if err != nil {
 		return err
 	}

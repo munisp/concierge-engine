@@ -657,6 +657,14 @@ type FolioLine = {
   amount_minor: number;
   created_at: string;
 };
+// Phase 67: every payment reminder (or honestly recorded skip) rides on
+// the folio — the statement carries its own collection evidence.
+type FolioReminder = {
+  n: number;
+  channel: string;
+  status: string; // sent | skipped:… | failed:… (verbatim)
+  created_at: string;
+};
 type Folio = {
   id: string;
   partner_id: string;
@@ -665,6 +673,7 @@ type Folio = {
   state: "OPEN" | "ISSUED" | "SETTLED";
   total_minor: number;
   lines?: FolioLine[];
+  reminders?: FolioReminder[];
   issued_at?: string;
   settled_at?: string;
 };
@@ -706,6 +715,17 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
     } catch (e) { onError(String(e)); }
   }
 
+  async function remind(f: Folio) {
+    try {
+      await api.post(`/v1/folios/${f.id}/remind`, {});
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
+  // Phase 67: whole days since issue — the operator's at-a-glance age.
+  const ageDays = (f: Folio) =>
+    f.issued_at ? Math.max(0, Math.floor((Date.now() - Date.parse(f.issued_at)) / 86400000)) : 0;
+
   return (
     <div className="card">
       <h3>Bill-to-desk folios (monthly settlement)</h3>
@@ -736,19 +756,38 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                 <td><strong>{f.period}</strong></td>
                 <td>{f.currency}</td>
                 <td>{minor(f.total_minor)}</td>
-                <td><strong>{f.state}</strong></td>
+                <td>
+                  <strong>{f.state}</strong>
+                  {f.state === "ISSUED" && (
+                    <span className="muted"> — {ageDays(f)}d ago</span>
+                  )}
+                </td>
                 <td className="row" style={{ gap: 6 }}>
                   <button className="secondary" onClick={() => setOpenID(openID === f.id ? "" : f.id)}>
                     {openID === f.id ? "Hide" : "Lines"}
                   </button>
                   {f.state === "OPEN" && <button onClick={() => void issue(f)}>Issue</button>}
-                  {f.state === "ISSUED" && <button onClick={() => void settle(f)}>Settle</button>}
+                  {f.state === "ISSUED" && (
+                    <>
+                      <button className="secondary" onClick={() => void remind(f)}>
+                        Remind{(f.reminders ?? []).length > 0 ? ` (${(f.reminders ?? []).length})` : ""}
+                      </button>
+                      <button onClick={() => void settle(f)}>Settle</button>
+                    </>
+                  )}
                 </td>
               </tr>
               {openID === f.id && (f.lines ?? []).map((l) => (
                 <tr key={l.booking_id}>
                   <td colSpan={5} className="muted">
                     {l.guest_name || l.booking_id.slice(0, 8)} — {minor(l.amount_minor)} {f.currency}
+                  </td>
+                </tr>
+              ))}
+              {openID === f.id && (f.reminders ?? []).map((r) => (
+                <tr key={`rem-${r.n}`}>
+                  <td colSpan={5} className="muted">
+                    reminder {r.n} via {r.channel} — {r.status} — {new Date(r.created_at).toLocaleString()}
                   </td>
                 </tr>
               ))}

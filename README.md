@@ -809,6 +809,14 @@ Best-effort like sourced demand: a folio listing failure never locks
 the partner out of their offers, and a suspended partner's link stays
 fully revoked. No new routes — the portal payload simply grew.
 
+**Phase 69 — console aging page.** The Phase 67 derived receivables
+view is now a first-class console page (`/aging`): per-currency summary
+cards (outstanding, overdue, 30+ exposure — currencies never blended),
+the full bucket table (partner, open folios, current / 1–7 / 8–30 /
+30+, total, oldest overdue, most-overdue first), and a "Run dunning
+sweep" action whose receipt is shown verbatim — sent vs skipped/failed,
+never assumed. Console-only; the API surface is unchanged.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

@@ -1,5 +1,6 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import Admin from "./pages/Admin";
+import Aging from "./pages/Aging";
 import Capture from "./pages/Capture";
 import Cases from "./pages/Cases";
 import Catalog from "./pages/Catalog";
@@ -36,6 +37,7 @@ export default function App() {
         <Link to="/kyc">KYC</Link>
         <Link to="/dispatch">Dispatch board</Link>
         <Link to="/partners">Partners</Link>
+        <Link to="/aging">Aging</Link>
         <Link to="/geo">Geo</Link>
         <Link to="/receipts">Receipts &amp; SLA</Link>
         <Link to="/growth">Growth</Link>
@@ -61,6 +63,7 @@ export default function App() {
           <Route path="/kyc" element={<Kyc />} />
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/partners" element={<Partners />} />
+          <Route path="/aging" element={<Aging />} />
           <Route path="/geo" element={<Geo />} />
           <Route path="/receipts" element={<Receipts />} />
           <Route path="/growth" element={<Growth />} />

@@ -977,7 +977,7 @@ func (s pgPayments) CreateIntent(ctx context.Context, pi *model.PaymentIntent) e
 			 FROM payment_intents WHERE id=$1`, existing)
 		if err := row.Scan(&pi.ID, &pi.TenantID, &pi.BookingID, &pi.QuoteID, &pi.Mode, &pi.AmountMinor,
 			&pi.Currency, &pi.PSP, &pi.PSPRef, &pi.HostedURL, &pi.State, &pi.IdempotencyKey,
-			&pi.RewardAppliedMinor); err != nil {
+			&pi.RewardAppliedMinor, &pi.CreatedAt); err != nil {
 			return err
 		}
 		return tx.Commit()

@@ -879,6 +879,23 @@ collected. The statement page shows a Credit notes section with "Less
 credits" in the totals; the console has Credit/Refund actions and the
 credit ledger in the folio history.
 
+**Phase 74 — partner self-service payment links.** The statement now
+carries its own collection rail (docs/phase74.md). A pay/ HMAC
+capability token (tenantctx-exempt, cross-family rejected) opens a
+public pay page quoting the DERIVED outstanding balance — after
+partial payments and credit notes, never the stale face value. "Pay
+now" mints a hosted checkout on the tenant's live rail (Stripe, or
+Paystack for the Africa-corridor currencies — same routing as guest
+checkout) for the outstanding amount; the signed PSP webhook routes on
+folio_id metadata and the capture records through the SAME payment
+ledger as operator-keyed payments (recorded_by "system"), with
+identical money truth and auto-settlement. No live rail is honest —
+the page says online payment is not enabled and gives the
+bank-transfer reference; a capture that arrives after the balance
+moved fires folio_payment_mismatch for manual reconciliation (Phase 73
+refund is the remedy), never a silent absorption. Console: Pay link
+action on issued folios.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

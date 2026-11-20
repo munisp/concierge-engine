@@ -795,6 +795,18 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
     } catch (e) { onError(String(e)); }
   }
 
+  // Phase 74: copy the public self-service pay link. The page quotes the
+  // outstanding balance and shows "Pay now" only when a live rail can
+  // actually take the money — otherwise it says so and gives the
+  // bank-transfer reference.
+  async function copyPayLink(f: Folio) {
+    try {
+      const res = await api.get<{ url: string }>(`/v1/folios/${f.id}/pay-link`);
+      await navigator.clipboard.writeText(res.url);
+      onError("Pay link copied — the partner pays the outstanding balance by card on the live rail.");
+    } catch (e) { onError(String(e)); }
+  }
+
   // Phase 73: record a credit note (issued) or refund (settled).
   // Over-credit and over-refund are server-side 409s — never silently
   // absorbed.
@@ -884,6 +896,7 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                         Statement{(f.deliveries ?? []).length > 0 ? ` (${(f.deliveries ?? []).length})` : ""}
                       </button>
                       <button className="secondary" onClick={() => void copyStatementLink(f)}>Link</button>
+                      <button className="secondary" onClick={() => void copyPayLink(f)}>Pay link</button>
                       <button className="secondary" onClick={() => void recordCredit(f)}>
                         Credit{(f.credits ?? []).length > 0 ? ` (${(f.credits ?? []).length})` : ""}
                       </button>

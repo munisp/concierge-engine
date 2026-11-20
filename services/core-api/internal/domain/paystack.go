@@ -104,6 +104,65 @@ func (c *PaystackClient) InitializeTransaction(ctx context.Context, intent *mode
 	return out.Data.AuthorizationURL, out.Data.Reference, nil
 }
 
+// InitializeFolioTransaction (Phase 74) mints a hosted payment page for a
+// partner folio's outstanding balance — the Africa-corridor rail for
+// statement collection (card, bank transfer, USSD, mobile money). The
+// intent id is the reference (idempotent by construction) and the
+// metadata carries folio_id so the signed webhook routes the capture
+// onto the folio's payment ledger.
+func (c *PaystackClient) InitializeFolioTransaction(ctx context.Context, intent *model.PaymentIntent, folioID, email string, channels []string) (hostedURL, reference string, err error) {
+	if !c.Enabled() {
+		return "", "", ErrPaystackDisabled
+	}
+	payload := map[string]any{
+		"amount":    intent.AmountMinor, // already in kobo/minor units
+		"currency":  strings.ToUpper(intent.Currency),
+		"reference": intent.ID,
+		"metadata": map[string]string{
+			"tenant_id": intent.TenantID, "intent_id": intent.ID, "folio_id": folioID,
+		},
+	}
+	if email != "" {
+		payload["email"] = email
+	} else {
+		// Paystack requires an email; deterministic placeholder so receipts
+		// still route to the tenant's ops mailbox.
+		payload["email"] = fmt.Sprintf("partner-%s@pay.concierge.engine", intent.ID[:8])
+	}
+	if len(channels) > 0 {
+		payload["channels"] = channels
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.base+"/transaction/initialize", bytes.NewReader(body))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("paystack unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var out struct {
+		Status bool `json:"status"`
+		Data   struct {
+			AuthorizationURL string `json:"authorization_url"`
+			Reference        string `json:"reference"`
+		} `json:"data"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", "", fmt.Errorf("paystack: malformed response")
+	}
+	if resp.StatusCode != http.StatusOK || !out.Status || out.Data.AuthorizationURL == "" {
+		return "", "", fmt.Errorf("paystack %d: %s", resp.StatusCode, out.Message)
+	}
+	return out.Data.AuthorizationURL, out.Data.Reference, nil
+}
+
 // VerifyWebhook validates x-paystack-signature (HMAC-SHA512 of the raw body
 // with the secret key) in constant time.
 func (c *PaystackClient) VerifyWebhook(signature string, body []byte) bool {

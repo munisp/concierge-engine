@@ -82,7 +82,7 @@ func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.
 		"line_items[0][price_data][currency]":    {strings.ToLower(intent.Currency)},
 		"line_items[0][price_data][unit_amount]": {strconv.FormatInt(intent.AmountMinor, 10)},
 		"line_items[0][price_data][product_data][name]": {"Concierge service — " + intent.Mode},
-		"line_items[0][price_data][tax_behavior]":        {"inclusive"},
+		"line_items[0][price_data][tax_behavior]":       {"inclusive"},
 		"metadata[tenant_id]":                           {intent.TenantID},
 		"metadata[quote_id]":                            {intent.QuoteID},
 		"metadata[intent_id]":                           {intent.ID},
@@ -92,6 +92,58 @@ func (c *StripeClient) CreateCheckoutSession(ctx context.Context, intent *model.
 	}
 	if locale != "" {
 		form.Set("locale", locale)
+	}
+	if customerEmail != "" {
+		form.Set("customer_email", customerEmail)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.base+"/v1/checkout/sessions", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	req.Header.Set("Idempotency-Key", intent.IdempotencyKey)
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("stripe unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("stripe %d: %s", resp.StatusCode, string(body[:min(len(body), 300)]))
+	}
+	var session struct {
+		ID  string `json:"id"`
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(body, &session); err != nil || session.ID == "" || session.URL == "" {
+		return "", "", fmt.Errorf("stripe: malformed session response")
+	}
+	return session.URL, session.ID, nil
+}
+
+// CreateFolioCheckoutSession (Phase 74) mints a hosted checkout for a
+// partner folio's outstanding balance. Same PCI SAQ-A discipline as the
+// guest flow; the metadata carries folio_id so the signed webhook routes
+// the capture onto the folio's payment ledger, and success/cancel return
+// to the folio's own public pay page.
+func (c *StripeClient) CreateFolioCheckoutSession(ctx context.Context, intent *model.PaymentIntent, folioID, period, customerEmail, returnURL string) (hostedURL, sessionID string, err error) {
+	if !c.Enabled() {
+		return "", "", ErrStripeDisabled
+	}
+	form := url.Values{
+		"mode":                                   {"payment"},
+		"success_url":                            {returnURL},
+		"cancel_url":                             {returnURL},
+		"line_items[0][quantity]":                {"1"},
+		"line_items[0][price_data][currency]":    {strings.ToLower(intent.Currency)},
+		"line_items[0][price_data][unit_amount]": {strconv.FormatInt(intent.AmountMinor, 10)},
+		"line_items[0][price_data][product_data][name]": {"Partner statement — " + period},
+		"line_items[0][price_data][tax_behavior]":       {"inclusive"},
+		"metadata[tenant_id]":                           {intent.TenantID},
+		"metadata[intent_id]":                           {intent.ID},
+		"metadata[folio_id]":                            {folioID},
 	}
 	if customerEmail != "" {
 		form.Set("customer_email", customerEmail)
@@ -176,6 +228,7 @@ type StripeEvent struct {
 	TenantID  string
 	IntentID  string
 	QuoteID   string
+	FolioID   string // Phase 74: set on folio pay-page checkouts
 }
 
 // ParseStripeEvent extracts routing fields from a checkout.session event.
@@ -191,6 +244,7 @@ func ParseStripeEvent(payload []byte) (*StripeEvent, error) {
 					TenantID string `json:"tenant_id"`
 					IntentID string `json:"intent_id"`
 					QuoteID  string `json:"quote_id"`
+					FolioID  string `json:"folio_id"`
 				} `json:"metadata"`
 			} `json:"object"`
 		} `json:"data"`
@@ -203,6 +257,7 @@ func ParseStripeEvent(payload []byte) (*StripeEvent, error) {
 		TenantID: ev.Data.Object.Metadata.TenantID,
 		IntentID: ev.Data.Object.Metadata.IntentID,
 		QuoteID:  ev.Data.Object.Metadata.QuoteID,
+		FolioID:  ev.Data.Object.Metadata.FolioID,
 	}
 	if out.Type == "" {
 		return nil, httpx.ErrValidation
@@ -220,11 +275,11 @@ func (c *StripeClient) CalculateTax(ctx context.Context, currency string, subtot
 		return 0, ErrStripeDisabled
 	}
 	form := url.Values{
-		"currency":                          {strings.ToLower(currency)},
-		"line_items[0][amount]":             {strconv.FormatInt(subtotalMinor, 10)},
-		"line_items[0][reference]":          {"concierge-service"},
-		"line_items[0][tax_behavior]":       {"exclusive"},
-		"customer_details[address_source]":  {"shipping"},
+		"currency":                         {strings.ToLower(currency)},
+		"line_items[0][amount]":            {strconv.FormatInt(subtotalMinor, 10)},
+		"line_items[0][reference]":         {"concierge-service"},
+		"line_items[0][tax_behavior]":      {"exclusive"},
+		"customer_details[address_source]": {"shipping"},
 	}
 	if country != "" {
 		form.Set("customer_details[address][country]", country)

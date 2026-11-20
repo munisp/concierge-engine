@@ -143,11 +143,24 @@ func (h *handlers) paystackWebhook(w http.ResponseWriter, r *http.Request) {
 			Reference string `json:"reference"`
 			Metadata  struct {
 				TenantID string `json:"tenant_id"`
+				FolioID  string `json:"folio_id"`
 			} `json:"metadata"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil || ev.Data.Reference == "" {
 		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	if ev.Data.Metadata.FolioID != "" && ev.Event == "charge.success" {
+		// Phase 74: a folio pay-page checkout — the reference IS the
+		// intent id (set at initialize); the capture lands on the
+		// folio's payment ledger, not the guest settlement path.
+		if err := h.svc.Folios.HandleFolioCapture(r.Context(), ev.Data.Metadata.TenantID,
+			ev.Data.Metadata.FolioID, ev.Data.Reference, "paystack", ev.Data.Reference); err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
 		return
 	}
 	if err := h.svc.Payments.HandlePaystackWebhook(r.Context(),

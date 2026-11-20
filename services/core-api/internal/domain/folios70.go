@@ -36,6 +36,15 @@ import (
 // terminal. The amount must be positive and must not exceed the
 // outstanding balance — overpayment is a 409, never silently absorbed.
 func (svc *FolioService) RecordPayment(ctx context.Context, tenantID, folioID string, amountMinor int64, method, reference string) (*model.Folio, error) {
+	return svc.recordPayment(ctx, tenantID, folioID, amountMinor, method, reference, "operator")
+}
+
+// recordPayment is the shared collection path: the operator console
+// (recordedBy "operator") and the Phase 74 PSP capture webhook
+// (recordedBy "system") converge on the same verbatim payment row, the
+// same proportional money truth and the same auto-settlement — the
+// ledger cannot tell who clicked pay.
+func (svc *FolioService) recordPayment(ctx context.Context, tenantID, folioID string, amountMinor int64, method, reference, recordedBy string) (*model.Folio, error) {
 	if amountMinor <= 0 {
 		return nil, httpx.ErrValidation
 	}
@@ -60,7 +69,7 @@ func (svc *FolioService) RecordPayment(ctx context.Context, tenantID, folioID st
 	pay := model.FolioPayment{
 		ID: NewID(), AmountMinor: amountMinor, Method: method,
 		Reference:  strings.TrimSpace(reference),
-		ReceivedAt: svc.s.Now(), RecordedBy: "operator",
+		ReceivedAt: svc.s.Now(), RecordedBy: recordedBy,
 	}
 	// Money truth, proportional to this payment: partner clearing clears
 	// into tenant revenue net of the platform fee — the same split as a

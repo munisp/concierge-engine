@@ -69,6 +69,9 @@ var EventCatalog = []EventSpec{
 	{"channel.folio_statement_sent", "partner", "Statement document delivered to the partner over their best channel", []string{"folio_id", "delivery_id", "channel", "status", "period", "currency", "outstanding_minor"}},
 	{"channel.folio_statement_skipped", "partner", "Statement delivery not deliverable — reason recorded verbatim on the folio", []string{"folio_id", "delivery_id", "channel", "status", "period", "currency", "outstanding_minor"}},
 	{"channel.folio_credit_recorded", "partner", "Credit note (issued) or refund (settled) recorded against a folio — refunds post reversal ledger entries", []string{"folio_id", "credit_id", "kind", "amount_minor", "reason", "currency", "outstanding_minor", "settled"}},
+	{"channel.folio_checkout_started", "partner", "Partner opened hosted checkout for a folio's outstanding balance", []string{"folio_id", "intent_id", "psp", "amount_minor", "currency"}},
+	{"channel.folio_payment_captured", "partner", "PSP capture recorded on the folio payment ledger — same money truth as operator-keyed payments", []string{"folio_id", "intent_id", "psp", "reference", "amount_minor", "currency", "outstanding_minor", "settled"}},
+	{"channel.folio_payment_mismatch", "partner", "PSP capture exceeds the remaining balance — money exists, reconcile manually (refund via credit)", []string{"folio_id", "intent_id", "psp", "reference", "amount_minor", "reason"}},
 	{"partner.commission_cancelled", "payout", "Pending commission voided on partner decline", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
 	{"trip.status_changed", "trip", "Chauffeur trip advanced", []string{"status"}},
 

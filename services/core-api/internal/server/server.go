@@ -175,6 +175,7 @@ func New(svc *domain.Services, optFns ...Option) http.Handler {
 	h.registerPhase70(mux)
 	h.registerPhase71(mux)
 	h.registerPhase73(mux)
+	h.registerPhase74(mux)
 	h.registerPhase55(mux)
 
 	// API-key auth: "Bearer cek_..." resolves tenant + scopes (Phase 3 public API).
@@ -591,6 +592,16 @@ func (h *handlers) stripeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	switch ev.Type {
 	case "checkout.session.completed":
+		if ev.FolioID != "" {
+			// Phase 74: a folio pay-page checkout — the capture lands on
+			// the folio's payment ledger, not the guest settlement path.
+			if err := h.svc.Folios.HandleFolioCapture(r.Context(), ev.TenantID, ev.FolioID,
+				ev.IntentID, "stripe", ev.SessionID); err != nil {
+				httpx.WriteError(w, err)
+				return
+			}
+			break
+		}
 		if err := h.svc.Payments.HandlePSPWebhook(r.Context(), ev.TenantID, ev.IntentID,
 			"checkout.session.completed", ev.SessionID); err != nil {
 			httpx.WriteError(w, err)

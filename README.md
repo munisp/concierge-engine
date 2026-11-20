@@ -759,6 +759,18 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 60 — ride modes & cabin pre-conditioning.** One-tap ambiance
+presets (docs/phase60.md): Focus / Relax / Family / Celebrate expand into
+validated preference bundles through the normal SavePreference path
+(provenance `mode:{mode}`); tenants override preset *content* via
+`tenants.mode_presets` (migration 0039), never the validated enum.
+`PrepTasks` turns the profile into the chauffeur's pre-pickup checklist
+(set cabin to 20 °C, install toddler seat, wheelchair setup) on the trip
+view and — consent-filtered — the partner portal. Soundscapes inherit
+the mode (celebrate overrides quiet conversation to upbeat; Focus's
+`music=none` skips rendering honestly — `rider-prefers:no-music`, never
+a fake fallback). Self-serve mode picker on the Track page.
+
 **Phase 59 — signature ride soundscapes.** Every confirmed booking gets a
 track composed from the rider's own profile (docs/phase59.md): the LLM
 writes the composition spec (genre from `ride.music`, vocal language from

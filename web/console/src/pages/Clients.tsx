@@ -353,6 +353,18 @@ function RideProfileCard({ clientID, onSaved }: { clientID: string; onSaved: () 
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
+  // Phase 60: one-tap mode — server expands the preset bundle.
+  async function applyMode(mode: string) {
+    try {
+      await api.post(`/v1/clients/${clientID}/ride-mode`, { mode });
+      setMsg(`${mode} mode applied`);
+      setErr("");
+      await onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function save(key: string, value: string) {
     try {
       await api.put(`/v1/clients/${clientID}/preferences/${key}`, {
@@ -374,6 +386,13 @@ function RideProfileCard({ clientID, onSaved }: { clientID: string; onSaved: () 
       <p className="muted">
         Surfaces to the chauffeur trip view and — consent permitting — to partner offers.
       </p>
+      <div className="row" style={{ flexWrap: "wrap", gap: 6, margin: "4px 0 10px" }}>
+        {["focus", "relax", "family", "celebrate"].map((m) => (
+          <button key={m} onClick={() => void applyMode(m)}>
+            {m.charAt(0).toUpperCase() + m.slice(1)} mode
+          </button>
+        ))}
+      </div>
       {RIDE_QUICK_SET.map((f) => (
         <div key={f.key} className="row" style={{ justifyContent: "space-between" }}>
           <span>{f.label}</span>

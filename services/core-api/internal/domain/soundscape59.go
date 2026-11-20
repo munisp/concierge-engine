@@ -32,6 +32,11 @@ import (
 // CompositionSpec is the recorded input to the renderer — the console and
 // the rider can see exactly what the track was built from.
 type CompositionSpec struct {
+	// Skip, when non-empty, is the honest reason no render should happen
+	// (e.g. "rider-prefers:no-music" — the Focus mode sets ride.music=none).
+	// Generate records a DEGRADED row with this detail instead of calling
+	// the provider.
+	Skip     string `json:"skip,omitempty"`
 	Genre    string `json:"genre"`
 	Language string `json:"language"` // "" = instrumental (no vocals)
 	Mood     string `json:"mood"`     // ambient | chill | upbeat
@@ -119,12 +124,28 @@ func (svc *MusicService) CompositionFor(ctx context.Context, tenantID, bookingID
 		// house defaults and record the defaults in the spec.
 		rp = &RideProfile{}
 	}
+	spec := &CompositionSpec{Language: strings.TrimSpace(rp.Language)}
+	// Phase 60: explicit silence wins — never render against a stated
+	// no-music preference.
+	if isNoMusic(rp.Music) {
+		spec.Skip = "rider-prefers:no-music"
+	}
 	genre := strings.TrimSpace(rp.Music)
 	if genre == "" {
-		genre = "instrumental lounge"
+		// Mode-implied genre before the house default.
+		if g := modeDefaultGenre(rp.Mode); g != "" {
+			genre = g
+		} else {
+			genre = "instrumental lounge"
+		}
 	}
-	language := strings.TrimSpace(rp.Language)
+	language := spec.Language
+	// A mode is the newer, more explicit signal; it overrides the
+	// conversation-derived mood when set.
 	mood, bpm := moodFromConversation(rp.Conversation)
+	if m, b, ok := modeMood(rp.Mode); ok {
+		mood, bpm = m, b
+	}
 	title := "Signature Ride"
 	if rp.Music != "" {
 		title = "Signature Ride — " + genre
@@ -135,10 +156,9 @@ func (svc *MusicService) CompositionFor(ctx context.Context, tenantID, bookingID
 	} else {
 		prompt += ", instrumental, no vocals"
 	}
-	return &CompositionSpec{
-		Genre: genre, Language: language, Mood: mood, TempoBPM: bpm,
-		Duration: defaultSoundscapeDuration, Title: title, Prompt: prompt,
-	}, clientID, nil
+	spec.Genre, spec.Mood, spec.TempoBPM = genre, mood, bpm
+	spec.Duration, spec.Title, spec.Prompt = defaultSoundscapeDuration, title, prompt
+	return spec, clientID, nil
 }
 
 // curatedFallback names the house playlist for a genre — the honest
@@ -195,6 +215,12 @@ func (svc *MusicService) Generate(ctx context.Context, tenantID, bookingID strin
 // media store, honest status transition.
 func (svc *MusicService) render(ctx context.Context, sc *model.Soundscape, spec *CompositionSpec) (*model.Soundscape, error) {
 	sc.UpdatedAt = svc.s.Now()
+	if spec.Skip != "" {
+		sc.Status = model.SoundscapeDegraded
+		sc.Detail = spec.Skip
+		sc.AiComposed = false
+		return sc, svc.s.Store.Soundscapes().Update(ctx, sc)
+	}
 	if svc.provider == nil {
 		sc.Status = model.SoundscapeDegraded
 		sc.Detail = "provider:not-configured"

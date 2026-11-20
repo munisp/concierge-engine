@@ -50,6 +50,11 @@ type Tenant struct {
 	// operational data with personal content is kept before the retention
 	// sweep purges or scrubs it.
 	RetentionConfig RetentionConfig `json:"retention_config"`
+	// ModePresets (Phase 60): tenant overrides for ride-mode preset
+	// content — same-named entries replace the house preset; the mode
+	// NAMES stay the house enum (focus/relax/family/celebrate/custom), so
+	// preference validation never forks per tenant.
+	ModePresets map[string]ModePreset `json:"mode_presets,omitempty"`
 	// KycConfig (Phase 47): identity-verification posture — the booking
 	// totals at or above which a client must hold STANDARD / ENHANCED
 	// verification before their quote can confirm.

@@ -85,18 +85,19 @@ func (s pgTenants) Create(ctx context.Context, t *model.Tenant) error {
 	siteCfg, _ := json.Marshal(t.SiteConfig)
 	retCfg, _ := json.Marshal(t.RetentionConfig)
 	kycCfg, _ := json.Marshal(t.KycConfig)
+	modePresets := marshalModePresets(t.ModePresets)
 	_, err := s.p.db.ExecContext(ctx,
-		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg)
+		`INSERT INTO tenants (id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, mode_presets)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		t.ID, t.Slug, t.Name, t.Archetype, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg, modePresets)
 	return err
 }
 
 func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	var t model.Tenant
-	var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg []byte
+	var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg, modePresets []byte
 	err := row.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &dispatchCfg, &lifecycleCfg, &acqCfg, &obCfg, &siteCfg, &retCfg, &kycCfg, &t.CreatedAt)
+		&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &dispatchCfg, &lifecycleCfg, &acqCfg, &obCfg, &siteCfg, &retCfg, &kycCfg, &modePresets, &t.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -115,18 +116,19 @@ func (s pgTenants) scan(row *sql.Row) (*model.Tenant, error) {
 	_ = json.Unmarshal(siteCfg, &t.SiteConfig)
 	_ = json.Unmarshal(retCfg, &t.RetentionConfig)
 	_ = json.Unmarshal(kycCfg, &t.KycConfig)
+	_ = json.Unmarshal(modePresets, &t.ModePresets)
 	return &t, nil
 }
 
 func (s pgTenants) Get(ctx context.Context, tenantID string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, mode_presets, created_at
 		 FROM tenants WHERE id = $1`, tenantID))
 }
 
 func (s pgTenants) GetBySlug(ctx context.Context, slug string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, mode_presets, created_at
 		 FROM tenants WHERE slug = $1`, slug))
 }
 
@@ -134,7 +136,7 @@ func (s pgTenants) GetBySlug(ctx context.Context, slug string) (*model.Tenant, e
 // Host normalization (lowercase, port/www strip) happens in the caller.
 func (s pgTenants) GetByDomain(ctx context.Context, host string) (*model.Tenant, error) {
 	return s.scan(s.p.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, mode_presets, created_at
 		 FROM tenants WHERE site_config->'custom_domains' ? $1`, host))
 }
 
@@ -154,9 +156,10 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 	siteCfg, _ := json.Marshal(t.SiteConfig)
 	retCfg, _ := json.Marshal(t.RetentionConfig)
 	kycCfg, _ := json.Marshal(t.KycConfig)
+	modePresets := marshalModePresets(t.ModePresets)
 	res, err := s.p.db.ExecContext(ctx,
-		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9, reward_program=$10, outreach_config=$11, operator_config=$12, dispatch_config=$13, lifecycle_config=$14, acquisition_config=$15, onboarding_config=$16, site_config=$17, retention_config=$18, kyc_config=$19
-		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg)
+		`UPDATE tenants SET name=$2, brand=$3, pricing_rules=$4, sla_config=$5, autonomy_dial=$6, tier2_limit_minor=$7, tax_config=$8, payment_config=$9, reward_program=$10, outreach_config=$11, operator_config=$12, dispatch_config=$13, lifecycle_config=$14, acquisition_config=$15, onboarding_config=$16, site_config=$17, retention_config=$18, kyc_config=$19, mode_presets=$20
+		 WHERE id=$1`, t.ID, t.Name, brand, pricing, sla, t.AutonomyDial, t.Tier2LimitMinor, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg, modePresets)
 	if err != nil {
 		return err
 	}
@@ -168,7 +171,7 @@ func (s pgTenants) UpdateConfig(ctx context.Context, t *model.Tenant) error {
 
 func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	rows, err := s.p.db.QueryContext(ctx,
-		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, created_at
+		`SELECT id, slug, name, archetype, brand, pricing_rules, sla_config, autonomy_dial, tier2_limit_minor, tax_config, payment_config, reward_program, outreach_config, operator_config, dispatch_config, lifecycle_config, acquisition_config, onboarding_config, site_config, retention_config, kyc_config, mode_presets, created_at
 		 FROM tenants ORDER BY slug`)
 	if err != nil {
 		return nil, err
@@ -177,9 +180,9 @@ func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 	out := []model.Tenant{}
 	for rows.Next() {
 		var t model.Tenant
-		var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg []byte
+		var brand, pricing, sla, taxCfg, payCfg, rewardCfg, outreachCfg, operatorCfg, dispatchCfg, lifecycleCfg, acqCfg, obCfg, siteCfg, retCfg, kycCfg, modePresets []byte
 		if err := rows.Scan(&t.ID, &t.Slug, &t.Name, &t.Archetype, &brand, &pricing, &sla,
-			&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &dispatchCfg, &lifecycleCfg, &acqCfg, &obCfg, &siteCfg, &retCfg, &kycCfg, &t.CreatedAt); err != nil {
+			&t.AutonomyDial, &t.Tier2LimitMinor, &taxCfg, &payCfg, &rewardCfg, &outreachCfg, &operatorCfg, &dispatchCfg, &lifecycleCfg, &acqCfg, &obCfg, &siteCfg, &retCfg, &kycCfg, &modePresets, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(brand, &t.Brand)
@@ -197,9 +200,20 @@ func (s pgTenants) List(ctx context.Context) ([]model.Tenant, error) {
 		_ = json.Unmarshal(siteCfg, &t.SiteConfig)
 		_ = json.Unmarshal(retCfg, &t.RetentionConfig)
 		_ = json.Unmarshal(kycCfg, &t.KycConfig)
+		_ = json.Unmarshal(modePresets, &t.ModePresets)
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// marshalModePresets — nil maps must not become SQL NULL (column is
+// NOT NULL DEFAULT '{}'): tenants without overrides store an empty object.
+func marshalModePresets(m map[string]model.ModePreset) []byte {
+	if m == nil {
+		return []byte("{}")
+	}
+	b, _ := json.Marshal(m)
+	return b
 }
 
 // ------------------------------------------------------------- clients

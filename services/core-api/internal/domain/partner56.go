@@ -39,6 +39,9 @@ type PartnerAssignmentView struct {
 	// dietary, mobility, language…), consent-filtered — "private"-scoped
 	// preferences never leave the tenant. Absent when none set.
 	Preferences map[string]string `json:"preferences,omitempty"`
+	// Phase 60: prep tasks derived from the consent-filtered preferences —
+	// a tour operator gets the same actionable checklist as the chauffeur.
+	PrepTasks []string `json:"prep_tasks,omitempty"`
 }
 
 // AssignmentsFor lists one partner's assignments, newest last (store order).
@@ -72,9 +75,11 @@ func (svc *PartnerOpsService) AssignmentsFor(ctx context.Context, tenantID, part
 		if cid := svc.bookingClientID(ctx, tenantID, a.BookingID); cid != "" {
 			if prefs, ok := prefCache[cid]; ok {
 				v.Preferences = prefs
+				v.PrepTasks = PrepTasks(prefs)
 			} else if prefs, err := svc.s.Clients.PartnerPreferenceMap(ctx, tenantID, cid); err == nil {
 				prefCache[cid] = prefs
 				v.Preferences = prefs
+				v.PrepTasks = PrepTasks(prefs)
 			}
 		}
 		out = append(out, v)

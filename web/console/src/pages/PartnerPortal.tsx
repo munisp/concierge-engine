@@ -14,9 +14,11 @@ type Assignment = {
   end_at?: string;
   created_at: string;
   preferences?: Record<string, string>; // Phase 58: client comfort/dietary
+  prep_tasks?: string[]; // Phase 60: actionable prep checklist
 };
 
 const PREF_LABELS: Record<string, string> = {
+  "ride.mode": "Mode",
   "ride.music": "Music",
   "ride.temperature_c": "Temp",
   "ride.conversation": "Conversation",
@@ -38,6 +40,19 @@ function PrefChips({ prefs }: { prefs?: Record<string, string> }) {
         </span>
       ))}
     </span>
+  );
+}
+
+// Phase 60: the operator's prep checklist (child seat, wheelchair setup…)
+// — same tasks the chauffeur sees, consent-filtered upstream.
+function PrepList({ tasks }: { tasks?: string[] }) {
+  if (!tasks || tasks.length === 0) return null;
+  return (
+    <ul className="muted" style={{ margin: "2px 0 0", paddingLeft: 18, fontSize: 13 }}>
+      {tasks.map((t) => (
+        <li key={t}>{t}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -146,6 +161,7 @@ export default function PartnerPortal() {
                 Booking <code>{a.booking_id.slice(0, 8)}…</code>
                 {a.start_at && <> · {new Date(a.start_at).toLocaleString()}</>}
                 <PrefChips prefs={a.preferences} />
+                <PrepList tasks={a.prep_tasks} />
               </span>
               <span className="row" style={{ gap: 6 }}>
                 <button disabled={busy === a.id} onClick={() => void respond(a.id, "accept")}>

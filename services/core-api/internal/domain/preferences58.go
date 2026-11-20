@@ -22,6 +22,7 @@ import (
 // (no breaking change for existing records).
 var curatedPreferenceValues = map[string][]string{
 	"ride.conversation": {"quiet", "light", "chatty"},
+	"ride.mode":         {"focus", "relax", "family", "celebrate", "custom"},
 	"ride.route":        {"fastest", "scenic", "no_tolls"},
 	"ride.seat":         {"front_passenger", "rear_left", "rear_right"},
 	"ride.child_seat":   {"none", "infant", "toddler", "booster"},
@@ -87,7 +88,7 @@ func ValidatePreference(key, value string) error {
 // rideProfileKeys surface to the chauffeur trip view — the person actually
 // delivering the ride.
 var rideProfileKeys = []string{
-	"ride.music", "ride.music_volume", "ride.temperature_c", "ride.conversation",
+	"ride.mode", "ride.music", "ride.music_volume", "ride.temperature_c", "ride.conversation",
 	"ride.route", "ride.seat", "ride.child_seat", "ride.luggage",
 	"access.mobility", "comms.language",
 }
@@ -95,13 +96,14 @@ var rideProfileKeys = []string{
 // partnerPreferenceKeys propagate to partner assignment views and webhook
 // offers — what a tour operator or DMC needs to deliver well.
 var partnerPreferenceKeys = []string{
-	"ride.music", "ride.temperature_c", "ride.conversation", "ride.child_seat",
+	"ride.mode", "ride.music", "ride.temperature_c", "ride.conversation", "ride.child_seat",
 	"ride.luggage", "access.mobility", "comms.language",
 	"dining.dietary", "dining.allergens",
 }
 
 // RideProfile is the typed comfort view merged from the preference store.
 type RideProfile struct {
+	Mode         string `json:"mode,omitempty"`
 	Music        string `json:"music,omitempty"`
 	MusicVolume  string `json:"music_volume,omitempty"`
 	TemperatureC string `json:"temperature_c,omitempty"`
@@ -132,6 +134,8 @@ func (svc *ClientService) RideProfile(ctx context.Context, tenantID, clientID st
 	rp := &RideProfile{}
 	for _, p := range prefs {
 		switch p.Key {
+		case "ride.mode":
+			rp.Mode = p.Value
 		case "ride.music":
 			rp.Music = p.Value
 		case "ride.music_volume":

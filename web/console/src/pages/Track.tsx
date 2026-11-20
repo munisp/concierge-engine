@@ -207,6 +207,7 @@ export default function Track() {
 // edits their own comfort profile (music, temperature, conversation…);
 // curated values only — the server validates the vocabulary.
 type RideProfile = {
+  mode?: string;
   music?: string;
   music_volume?: string;
   temperature_c?: string;
@@ -217,6 +218,16 @@ type RideProfile = {
   luggage?: string;
   mobility?: string;
   language?: string;
+};
+
+// Phase 60: one-tap ride modes — the server expands the preset bundle
+// through the validated preference path; these labels are cosmetic only.
+const RIDE_MODES = ["focus", "relax", "family", "celebrate"] as const;
+const RIDE_MODE_LABELS: Record<string, string> = {
+  focus: "🎯 Focus",
+  relax: "🌿 Relax",
+  family: "👨‍👩‍👧 Family",
+  celebrate: "🎉 Celebrate",
 };
 
 const RIDE_PREF_FIELDS: { key: keyof RideProfile; label: string; options: string[] }[] = [
@@ -268,10 +279,33 @@ function RidePreferences({ token }: { token: string }) {
     }
   }
 
+  async function applyMode(mode: string) {
+    try {
+      await tokenCall("POST", `/v1/track/${token}/ride-mode`, { mode });
+      setSaved(`${RIDE_MODE_LABELS[mode] ?? mode} mode applied`);
+      setErr("");
+      await load();
+      setTimeout(() => setSaved(""), 2500);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "save failed");
+    }
+  }
+
   return (
     <div className="card" style={{ maxWidth: 480 }}>
       <h3>Your ride preferences</h3>
       <p className="muted">Set once — your chauffeur sees them on every trip.</p>
+      <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        {RIDE_MODES.map((m) => (
+          <button
+            key={m}
+            className={profile.mode === m ? "badge" : ""}
+            onClick={() => void applyMode(m)}
+          >
+            {RIDE_MODE_LABELS[m]}
+          </button>
+        ))}
+      </div>
       {RIDE_PREF_FIELDS.map((f) => (
         <div key={f.key} className="row" style={{ justifyContent: "space-between" }}>
           <span>{f.label}</span>
@@ -358,6 +392,10 @@ function SoundscapeCard({ token }: { token: string }) {
             ride preferences, just for this journey.
           </p>
         </>
+      ) : view.status === "DEGRADED" && view.detail?.startsWith("rider-prefers") ? (
+        <p className="muted">
+          Quiet ride, per your preference — no soundtrack this time.
+        </p>
       ) : view.status === "DEGRADED" ? (
         <p className="muted">
           Your personal composer is off duty today — your chauffeur has a

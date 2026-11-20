@@ -48,6 +48,9 @@ type TripView struct {
 	// preferences surfaced to the person delivering the service. Absent
 	// when the client has set nothing (never an empty card).
 	Preferences map[string]string `json:"preferences,omitempty"`
+	// Phase 60: the chauffeur's pre-pickup checklist derived from the
+	// comfort block (set cabin to 21°C, install toddler seat…).
+	PrepTasks []string `json:"prep_tasks,omitempty"`
 }
 
 // TokenFor mints the chauffeur magic-link token for an assignment.
@@ -142,6 +145,7 @@ func (svc *TripService) View(ctx context.Context, token string) (*TripView, erro
 				// of the join — the trip renders regardless.
 				if prefs, err := svc.s.Clients.RidePreferenceMap(ctx, tenantID, sr.ClientID); err == nil {
 					view.Preferences = prefs
+					view.PrepTasks = PrepTasks(prefs)
 				}
 			}
 		}

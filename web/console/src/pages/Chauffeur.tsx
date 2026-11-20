@@ -16,9 +16,11 @@ type TripView = {
   client_name: string;
   notes?: string;
   preferences?: Record<string, string>; // Phase 58 rider comfort block
+  prep_tasks?: string[]; // Phase 60 pre-pickup checklist
 };
 
 const PREF_LABELS: Record<string, string> = {
+  "ride.mode": "Mode",
   "ride.music": "Music",
   "ride.music_volume": "Volume",
   "ride.temperature_c": "Temperature",
@@ -143,6 +145,18 @@ export default function Chauffeur() {
                   {(PREF_LABELS[k] ?? k) + ": " + prefText(k, v)}
                 </span>
               ))}
+            </dd>
+          </>
+        )}
+        {trip.prep_tasks && trip.prep_tasks.length > 0 && (
+          <>
+            <dt>Prep before pickup</dt>
+            <dd>
+              <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+                {trip.prep_tasks.map((task) => (
+                  <li key={task}>{task}</li>
+                ))}
+              </ul>
             </dd>
           </>
         )}

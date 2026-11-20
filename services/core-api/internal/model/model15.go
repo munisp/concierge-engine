@@ -44,3 +44,11 @@ type Soundscape struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
+
+// ModePreset (Phase 60): a named one-tap ride ambiance bundle. Selecting
+// the mode expands Prefs into the rider's profile via the normal
+// validated SavePreference path (provenance "mode:{mode}").
+type ModePreset struct {
+	Label string            `json:"label"`
+	Prefs map[string]string `json:"prefs"`
+}

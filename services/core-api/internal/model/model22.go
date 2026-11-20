@@ -38,3 +38,23 @@ func (f *Folio) OutstandingMinor() int64 {
 	}
 	return out
 }
+
+// Phase 71: statement delivery. A statement the partner never receives
+// is a statement that never gets paid — every delivery of the folio
+// document itself (link sent over WhatsApp or email) is recorded
+// verbatim on the folio, same discipline as the Phase 67 reminders
+// ledger: "sent" only when the channel adapter accepted it, otherwise
+// the honest skip/failure reason. The partner-visible statement page
+// is derived on read from this ledger plus the lines/payments, so the
+// document and the delivery evidence can never disagree.
+
+// FolioDelivery is one delivery of the statement document to the
+// partner. Kind leaves room for later artifacts (credit notes);
+// Phase 71 delivers kind "statement" only.
+type FolioDelivery struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`    // statement
+	Channel   string    `json:"channel"` // whatsapp | email
+	Status    string    `json:"status"`  // sent | skipped:reason | failed:reason
+	CreatedAt time.Time `json:"created_at"`
+}

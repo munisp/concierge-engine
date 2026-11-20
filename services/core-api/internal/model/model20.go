@@ -54,4 +54,8 @@ type Folio struct {
 	// against this statement, recorded verbatim. Paid and outstanding
 	// are DERIVED from this slice (PaidMinor / OutstandingMinor).
 	Payments []FolioPayment `json:"payments,omitempty"`
+	// Deliveries (Phase 71): the statement-delivery ledger — every time
+	// the statement document was sent to the partner (or honestly
+	// skipped/failed), recorded verbatim.
+	Deliveries []FolioDelivery `json:"deliveries,omitempty"`
 }

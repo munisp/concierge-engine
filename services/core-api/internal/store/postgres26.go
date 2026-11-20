@@ -77,16 +77,17 @@ func (s pgFolios) AccrueLine(ctx context.Context, f *model.Folio, line model.Fol
 
 func scanFolio(row interface{ Scan(...any) error }) (*model.Folio, error) {
 	var f model.Folio
-	var lines, reminders, payments []byte
+	var lines, reminders, payments, deliveries []byte
 	var issuedAt, settledAt *time.Time
 	err := row.Scan(&f.ID, &f.TenantID, &f.PartnerID, &f.Period, &f.Currency,
-		&f.State, &f.TotalMinor, &lines, &f.CreatedAt, &issuedAt, &settledAt, &reminders, &payments)
+		&f.State, &f.TotalMinor, &lines, &f.CreatedAt, &issuedAt, &settledAt, &reminders, &payments, &deliveries)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	_ = json.Unmarshal(lines, &f.Lines)
 	_ = json.Unmarshal(reminders, &f.Reminders)
 	_ = json.Unmarshal(payments, &f.Payments)
+	_ = json.Unmarshal(deliveries, &f.Deliveries)
 	if issuedAt != nil {
 		f.IssuedAt = *issuedAt
 	}
@@ -96,7 +97,7 @@ func scanFolio(row interface{ Scan(...any) error }) (*model.Folio, error) {
 	return &f, nil
 }
 
-const folioCols = `id, tenant_id, partner_id, period, currency, state, total_minor, lines, created_at, issued_at, settled_at, reminders, payments`
+const folioCols = `id, tenant_id, partner_id, period, currency, state, total_minor, lines, created_at, issued_at, settled_at, reminders, payments, deliveries`
 
 func (s pgFolios) ListForPartner(ctx context.Context, tenantID, partnerID string) ([]model.Folio, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -190,11 +191,19 @@ func (s pgFolios) Update(ctx context.Context, f *model.Folio) error {
 	if err != nil {
 		return err
 	}
+	deliveries := f.Deliveries
+	if deliveries == nil {
+		deliveries = []model.FolioDelivery{} // jsonb NOT NULL — never write NULL
+	}
+	deliveriesJSON, err := json.Marshal(deliveries)
+	if err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx,
-		`UPDATE partner_folios SET state=$3, total_minor=$4, issued_at=$5, settled_at=$6, reminders=$7, payments=$8
+		`UPDATE partner_folios SET state=$3, total_minor=$4, issued_at=$5, settled_at=$6, reminders=$7, payments=$8, deliveries=$9
 		 WHERE tenant_id=$1 AND id=$2`,
 		f.TenantID, f.ID, f.State, f.TotalMinor,
-		nullTime(f.IssuedAt), nullTime(f.SettledAt), string(remindersJSON), string(paymentsJSON))
+		nullTime(f.IssuedAt), nullTime(f.SettledAt), string(remindersJSON), string(paymentsJSON), string(deliveriesJSON))
 	if err != nil {
 		return err
 	}

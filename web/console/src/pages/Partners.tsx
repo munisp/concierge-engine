@@ -14,6 +14,7 @@ type Partner = {
   payout_ref?: string;
   commission_pct?: number;
   phone?: string;
+  email?: string; // Phase 71: billing contact — statement/dunning email lane
   kind?: string; // Phase 63: demand channel kind
   bill_to_desk?: boolean; // Phase 66: monthly folio settlement
 };
@@ -68,6 +69,7 @@ export default function Partners() {
   const [rail, setRail] = useState("MANUAL");
   const [payoutRef, setPayoutRef] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState(""); // Phase 71: billing contact — statements/dunning email lane
   const [kind, setKind] = useState("tour_operator");
   const [error, setError] = useState("");
 
@@ -93,11 +95,13 @@ export default function Partners() {
         payout_rail: rail,
         payout_ref: payoutRef,
         phone,
+        email,
         kind,
       });
       setName("");
       setPayoutRef("");
       setPhone("");
+      setEmail("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
@@ -143,6 +147,8 @@ export default function Partners() {
             onChange={(e) => setPayoutRef(e.target.value)} />
           <input placeholder="WhatsApp (E.164, e.g. +234…)" value={phone}
             onChange={(e) => setPhone(e.target.value)} />
+          <input placeholder="Billing email (statements/dunning)" value={email}
+            onChange={(e) => setEmail(e.target.value)} />
           <select value={kind} onChange={(e) => setKind(e.target.value)} title="Demand channel kind">
             {PARTNER_KINDS.map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}
           </select>
@@ -674,6 +680,14 @@ type FolioPayment = {
   received_at: string;
   recorded_by: string;
 };
+// Phase 71: every statement delivery (or honestly recorded skip).
+type FolioDelivery = {
+  id: string;
+  kind: string;
+  channel: string; // whatsapp | email | none
+  status: string;  // sent | skipped:… | failed:… (verbatim)
+  created_at: string;
+};
 type Folio = {
   id: string;
   partner_id: string;
@@ -684,6 +698,7 @@ type Folio = {
   lines?: FolioLine[];
   reminders?: FolioReminder[];
   payments?: FolioPayment[];
+  deliveries?: FolioDelivery[];
   issued_at?: string;
   settled_at?: string;
 };
@@ -751,6 +766,24 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
     } catch (e) { onError(String(e)); }
   }
 
+  // Phase 71: deliver the statement document over the partner's best
+  // channel; the outcome (sent or honest skip) lands on the folio.
+  async function sendStatement(f: Folio) {
+    try {
+      await api.post(`/v1/folios/${f.id}/send-statement`, {});
+      await load(partnerID);
+    } catch (e) { onError(String(e)); }
+  }
+
+  // Phase 71: copy the public printable statement link.
+  async function copyStatementLink(f: Folio) {
+    try {
+      const res = await api.get<{ url: string }>(`/v1/folios/${f.id}/statement-link`);
+      await navigator.clipboard.writeText(res.url);
+      onError("Statement link copied — the page prints/saves to PDF from the browser.");
+    } catch (e) { onError(String(e)); }
+  }
+
   // Phase 67: whole days since issue — the operator's at-a-glance age.
   const ageDays = (f: Folio) =>
     f.issued_at ? Math.max(0, Math.floor((Date.now() - Date.parse(f.issued_at)) / 86400000)) : 0;
@@ -811,6 +844,10 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                       <button className="secondary" onClick={() => void recordPayment(f)}>
                         Payment{(f.payments ?? []).length > 0 ? ` (${(f.payments ?? []).length})` : ""}
                       </button>
+                      <button className="secondary" onClick={() => void sendStatement(f)}>
+                        Statement{(f.deliveries ?? []).length > 0 ? ` (${(f.deliveries ?? []).length})` : ""}
+                      </button>
+                      <button className="secondary" onClick={() => void copyStatementLink(f)}>Link</button>
                       <button className="secondary" onClick={() => void remind(f)}>
                         Remind{(f.reminders ?? []).length > 0 ? ` (${(f.reminders ?? []).length})` : ""}
                       </button>
@@ -831,6 +868,13 @@ function FoliosCard({ partners, onError }: { partners: Partner[]; onError: (e: s
                   <td colSpan={5} className="muted">
                     payment {minor(p.amount_minor)} {f.currency} via {p.method}
                     {p.reference ? ` — ref ${p.reference}` : ""} — {new Date(p.received_at).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              {openID === f.id && (f.deliveries ?? []).map((d) => (
+                <tr key={`del-${d.id}`}>
+                  <td colSpan={5} className="muted">
+                    statement via {d.channel} — {d.status} — {new Date(d.created_at).toLocaleString()}
                   </td>
                 </tr>
               ))}

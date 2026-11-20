@@ -835,6 +835,23 @@ payments with paid/owed display and full payment history; the aging
 page shows collected per currency; the partner portal shows paid/owed
 on every statement.
 
+**Phase 71 — statement delivery.** A statement the partner never
+receives is a statement that never gets paid (docs/phase71.md). A new
+`stmt/` HMAC capability token (tenantctx-exempt, cross-family tokens
+rejected) opens a public, printable statement page —
+`GET /v1/statement/{token}` renders the folio as the partner-facing
+document with due/overdue derived from tenant terms on read (the
+document can never disagree with aging), print-to-PDF from the
+browser, and a saved link keeps resolving after settlement marked
+PAID. `POST /v1/folios/{id}/send-statement` delivers the statement
+link over the partner's best channel — WhatsApp first, the new
+partner billing email (migration 0047) otherwise — with every send or
+honest skip (`skipped:no-contact` / `skipped:no-adapter` / `failed:…`)
+recorded verbatim on the folio's own deliveries ledger; the email
+quotes the outstanding balance, not just the face value. Console
+folio card: Statement + Link actions, delivery history, and a
+billing-email field on the partner form.
+
 **Phase 64 — channel engagement closure.** Sourced bookings stop
 being silent: confirming one messages the guest on the service lane
 naming the arranger ("arranged for you by …", WhatsApp by default,

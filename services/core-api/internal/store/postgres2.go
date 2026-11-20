@@ -41,10 +41,10 @@ func (s pgPartners) Create(ctx context.Context, pt *model.Partner) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO partners (id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, commission_pct, phone, kind, bill_to_desk)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,coalesce(nullif($14,''),'tour_operator'),$15)`,
+		`INSERT INTO partners (id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, commission_pct, phone, kind, bill_to_desk, email)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,coalesce(nullif($14,''),'tour_operator'),$15,$16)`,
 		pt.ID, pt.TenantID, pt.Name, verticals, markets, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef,
-		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone, pt.Kind, pt.BillToDesk)
+		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone, pt.Kind, pt.BillToDesk, pt.Email)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func scanPartner(row interface{ Scan(...any) error }) (*model.Partner, error) {
 	var verticals, markets []byte
 	var lat, lng sql.NullFloat64 // base-of-operations (Phase 6) is nullable
 	err := row.Scan(&pt.ID, &pt.TenantID, &pt.Name, &verticals, &markets,
-		&pt.Status, &pt.QualityScore, &pt.PayoutRail, &pt.PayoutRef, &lat, &lng, &pt.CreatedAt, &pt.CommissionPct, &pt.Phone, &pt.Kind, &pt.BillToDesk)
+		&pt.Status, &pt.QualityScore, &pt.PayoutRail, &pt.PayoutRef, &lat, &lng, &pt.CreatedAt, &pt.CommissionPct, &pt.Phone, &pt.Kind, &pt.BillToDesk, &pt.Email)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -67,7 +67,7 @@ func scanPartner(row interface{ Scan(...any) error }) (*model.Partner, error) {
 	return &pt, nil
 }
 
-const partnerCols = `id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, created_at, commission_pct, phone, kind, bill_to_desk`
+const partnerCols = `id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, created_at, commission_pct, phone, kind, bill_to_desk, email`
 
 func (s pgPartners) Get(ctx context.Context, tenantID, id string) (*model.Partner, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -115,9 +115,9 @@ func (s pgPartners) Update(ctx context.Context, pt *model.Partner) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`UPDATE partners SET name=$2, status=$3, quality_score=$4, payout_rail=$5, payout_ref=$6, lat=$7, lng=$8, commission_pct=$9, phone=$10, kind=coalesce(nullif($11,''),'tour_operator'), bill_to_desk=$12 WHERE id=$1`,
+		`UPDATE partners SET name=$2, status=$3, quality_score=$4, payout_rail=$5, payout_ref=$6, lat=$7, lng=$8, commission_pct=$9, phone=$10, kind=coalesce(nullif($11,''),'tour_operator'), bill_to_desk=$12, email=$13 WHERE id=$1`,
 		pt.ID, pt.Name, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef,
-		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone, pt.Kind, pt.BillToDesk)
+		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone, pt.Kind, pt.BillToDesk, pt.Email)
 	if err != nil {
 		return err
 	}

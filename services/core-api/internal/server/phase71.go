@@ -1,0 +1,136 @@
+package server
+
+// Phase 71: statement delivery. Three routes:
+//
+//	GET  /v1/statement/{token}           — public printable statement
+//	                                      page (tenantctx exempts
+//	                                      /v1/statement/ like
+//	                                      /v1/consent/: the HMAC token
+//	                                      IS the credential). Print-to-
+//	                                      PDF from the browser — honest,
+//	                                      no fake "PDF generation".
+//	POST /v1/folios/{id}/send-statement  — operator: deliver over the
+//	                                      partner's best channel,
+//	                                      verbatim delivery ledger.
+//	GET  /v1/folios/{id}/statement-link  — operator: mint the link.
+
+import (
+	"fmt"
+	"html"
+	"net/http"
+	"strings"
+
+	"concierge-engine/services/core-api/internal/httpx"
+)
+
+func (h *handlers) registerPhase71(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v1/statement/{token}", h.statementPage)
+	mux.HandleFunc("POST /v1/folios/{id}/send-statement", h.folioSendStatement)
+	mux.HandleFunc("GET /v1/folios/{id}/statement-link", h.folioStatementLink)
+}
+
+func (h *handlers) folioSendStatement(w http.ResponseWriter, r *http.Request) {
+	f, err := h.svc.Folios.SendStatement(r.Context(), tenantOf(r), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, f)
+}
+
+func (h *handlers) folioStatementLink(w http.ResponseWriter, r *http.Request) {
+	tenantID, id := tenantOf(r), r.PathValue("id")
+	if _, err := h.svc.Store.Folios().Get(r.Context(), tenantID, id); err != nil {
+		httpx.WriteError(w, err) // 404 — never leak existence cross-tenant
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{
+		"url": h.svc.Folios.StatementURL(tenantID, id),
+	})
+}
+
+// money renders minor units as a human amount ("1,234.56").
+func money71(minor int64) string {
+	neg := ""
+	if minor < 0 {
+		neg, minor = "-", -minor
+	}
+	whole := fmt.Sprintf("%d", minor/100)
+	for i := len(whole) - 3; i > 0; i -= 3 {
+		whole = whole[:i] + "," + whole[i:]
+	}
+	return fmt.Sprintf("%s%s.%02d", neg, whole, minor%100)
+}
+
+func (h *handlers) statementPage(w http.ResponseWriter, r *http.Request) {
+	v, err := h.svc.Folios.StatementByToken(r.Context(), r.PathValue("token"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	esc := html.EscapeString
+	var b strings.Builder
+	stateLabel := map[string]string{"OPEN": "ACCRUING", "ISSUED": "DUE", "SETTLED": "PAID"}[v.State]
+	b.WriteString(`<div class="head"><div><h1>Statement</h1><p class="muted">` +
+		esc(v.Period) + ` · ` + esc(v.FolioID) + `</p></div>` +
+		`<div class="state ` + esc(v.State) + `">` + stateLabel + `</div></div>`)
+	b.WriteString(`<table class="meta"><tbody>` +
+		`<tr><td>From</td><td>` + esc(v.TenantName) + `</td></tr>` +
+		`<tr><td>To</td><td>` + esc(v.PartnerName) + `</td></tr>`)
+	if v.IssuedAt != nil {
+		b.WriteString(`<tr><td>Issued</td><td>` + v.IssuedAt.Format("2006-01-02") + `</td></tr>`)
+	}
+	if v.DueAt != nil {
+		b.WriteString(`<tr><td>Due</td><td>` + v.DueAt.Format("2006-01-02") +
+			fmt.Sprintf(` (terms %d days)`, v.TermsDays) + `</td></tr>`)
+		if v.OverdueDays > 0 {
+			b.WriteString(`<tr><td></td><td class="overdue">` +
+				fmt.Sprintf("%d days past due", v.OverdueDays) + `</td></tr>`)
+		}
+	}
+	if v.SettledAt != nil {
+		b.WriteString(`<tr><td>Paid in full</td><td>` + v.SettledAt.Format("2006-01-02") + `</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+	if len(v.Lines) > 0 {
+		b.WriteString(`<h2>Charges</h2><table><thead><tr><th>Date</th><th>Guest</th><th>Booking</th><th class="r">Amount</th></tr></thead><tbody>`)
+		for _, l := range v.Lines {
+			b.WriteString(`<tr><td>` + l.CreatedAt.Format("2006-01-02") + `</td><td>` + esc(l.GuestName) +
+				`</td><td class="muted">` + esc(l.BookingID) + `</td><td class="r">` +
+				money71(l.AmountMinor) + ` ` + esc(v.Currency) + `</td></tr>`)
+		}
+		b.WriteString(`</tbody></table>`)
+	}
+	b.WriteString(`<table class="totals"><tbody>` +
+		`<tr><td>Total</td><td class="r">` + money71(v.TotalMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
+		`<tr><td>Paid</td><td class="r">` + money71(v.PaidMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
+		`<tr class="due"><td>Outstanding</td><td class="r">` + money71(v.OutstandingMinor) + ` ` + esc(v.Currency) + `</td></tr>` +
+		`</tbody></table>`)
+	if len(v.Payments) > 0 {
+		b.WriteString(`<h2>Payments received</h2><table><thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="r">Amount</th></tr></thead><tbody>`)
+		for _, p := range v.Payments {
+			b.WriteString(`<tr><td>` + p.ReceivedAt.Format("2006-01-02") + `</td><td>` + esc(p.Method) +
+				`</td><td class="muted">` + esc(p.Reference) + `</td><td class="r">` +
+				money71(p.AmountMinor) + ` ` + esc(v.Currency) + `</td></tr>`)
+		}
+		b.WriteString(`</tbody></table>`)
+	}
+	b.WriteString(`<p class="muted foot">Generated by ` + esc(v.TenantName) +
+		` — print or save this page as PDF for your records.</p>`)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Statement %s · %s</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2.5rem auto;padding:0 1rem;color:#1a1a1a;line-height:1.45}
+.head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:.6rem}
+h1{margin:0;font-size:1.5rem}h2{font-size:1.02rem;margin:1.4rem 0 .4rem}
+.state{font-weight:700;padding:.25rem .7rem;border-radius:6px;border:1.5px solid #999}
+.state.SETTLED{color:#0a7a2f;border-color:#0a7a2f}.state.ISSUED{color:#9a5b00;border-color:#9a5b00}
+.muted{color:#666;font-size:.88rem}
+table{border-collapse:collapse;width:100%%;font-size:.92rem}td,th{padding:.32rem .5rem;border-bottom:1px solid #e5e5e5;text-align:left}
+.meta td:first-child{color:#666;width:7rem}.r{text-align:right}
+.totals{margin-top:.8rem;font-size:1rem}.totals td{border-bottom:none;padding:.2rem .5rem}
+.totals .due{font-weight:700;border-top:2px solid #1a1a1a}
+.overdue{color:#b3261e;font-weight:600}.foot{margin-top:2rem}
+@media print{.foot{display:none}}</style>
+</head><body>%s</body></html>`, esc(v.Period), esc(v.TenantName), b.String())
+}

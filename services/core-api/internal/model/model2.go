@@ -23,6 +23,10 @@ type Partner struct {
 	// Phase 57: WhatsApp number (E.164) for assignment offers. Empty = the
 	// partner is portal-link only; offers are shared by the operator.
 	Phone string `json:"phone,omitempty"`
+	// Phase 71: billing contact email. Statements and dunning fall back
+	// to email when the partner has no phone on file; empty = email
+	// lane unavailable for this partner.
+	Email string `json:"email,omitempty"`
 	// Phase 63: demand-channel kind (hotel | travel_agency |
 	// transport_company | tour_operator | other). Drives the sourcing
 	// workflow and margin analytics; legacy rows default to tour_operator.

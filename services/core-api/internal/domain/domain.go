@@ -110,6 +110,7 @@ type Services struct {
 	publicBase    string
 	consoleBase   string
 	waURL         string // shared operator-alert transport (Phase 27 notices)
+	emailURL      string // Phase 39 email adapter base; empty = record-only (Phase 71 statement delivery reuses it)
 	operatorPhone string
 	now           func() time.Time
 }
@@ -120,7 +121,7 @@ func NewServices(st store.Store, deps Deps) *Services {
 		now = time.Now
 	}
 	s := &Services{Store: st, now: now, publicBase: deps.PublicBase, consoleBase: deps.ConsoleBase,
-		waURL: deps.WhatsAppURL, operatorPhone: deps.OperatorPhone}
+		waURL: deps.WhatsAppURL, emailURL: deps.EmailURL, operatorPhone: deps.OperatorPhone}
 	s.Policy = NewPolicyClient(deps.PolicyURL)
 	s.Ledger = NewLedgerClient(deps.LedgerURL)
 	s.Stripe = NewStripeClient(deps.StripeKey, deps.StripeBase, deps.StripeWHSec, now)

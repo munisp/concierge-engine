@@ -82,7 +82,7 @@ func TestPGDemandChannels63(t *testing.T) {
 
 	// Direct request: empty source lands on the SQL default.
 	dreq := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: cl.ID,
-		State: model.StateCapturing, Version: 1, IdempotencyKey: "pg63-direct-1",
+		State: model.StateCapturing, Version: 1, IdempotencyKey: "req-pg63-b",
 		CreatedAt: now, UpdatedAt: now,
 		Items: []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant,
 			Vertical: "chauffeur", PickupAddress: "Home", PickupAt: now.Unix(), Passengers: 1}}}

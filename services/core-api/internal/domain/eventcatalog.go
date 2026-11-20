@@ -52,6 +52,8 @@ var EventCatalog = []EventSpec{
 	{"assignment.partner_offered", "assignment", "Partner-routed assignment offered", []string{"booking_id", "partner_id"}},
 	{"assignment.partner_responded", "assignment", "Partner accepted or declined an assignment", []string{"partner_id", "booking_id", "action"}},
 	{"partner.commission_accrued", "payout", "Partner commission accrued as pending payout", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
+	{"channel.request_sourced", "service_request", "Partner sourced a guest request (book-on-behalf)", []string{"partner_id", "source_kind", "client_id", "new_client"}},
+	{"channel.sourcing_commission_accrued", "payout", "Sourcing commission accrued to the demand channel", []string{"partner_id", "booking_id", "source_kind", "amount_minor", "currency", "pct"}},
 	{"partner.commission_cancelled", "payout", "Pending commission voided on partner decline", []string{"partner_id", "booking_id", "amount_minor", "currency"}},
 	{"trip.status_changed", "trip", "Chauffeur trip advanced", []string{"status"}},
 

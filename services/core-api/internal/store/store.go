@@ -67,6 +67,8 @@ type RequestStore interface {
 	Update(ctx context.Context, r *model.ServiceRequest) error
 	// ForClient: a client's requests, newest first (Phase 15 CRM-360).
 	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.ServiceRequest, error)
+	// ForSource: demand one partner has sourced, newest first (Phase 63).
+	ForSource(ctx context.Context, tenantID, partnerID string, limit int) ([]model.ServiceRequest, error)
 }
 
 type QuoteStore interface {

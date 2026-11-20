@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"concierge-engine/services/core-api/internal/httpx"
+	"concierge-engine/services/core-api/internal/model"
 )
 
 // PartnerPortalView is everything the partner PWA renders: who they are,
@@ -20,8 +21,12 @@ import (
 type PartnerPortalView struct {
 	PartnerName string                  `json:"partner_name"`
 	Verticals   []string                `json:"verticals"`
+	Kind        string                  `json:"kind,omitempty"` // Phase 63: demand channel kind
 	Assignments []PartnerAssignmentView `json:"assignments"`
 	Settlement  *PartnerSettlement      `json:"settlement"`
+	// Phase 63: demand this partner has sourced (book-on-behalf) — the
+	// hotel desk sees its guests' request states next to its offers.
+	SourcedRequests []SourcedRequestView `json:"sourced_requests,omitempty"`
 }
 
 // PortalView builds the partner PWA payload. Suspended partners are locked
@@ -43,10 +48,22 @@ func (svc *PartnerOpsService) PortalView(ctx context.Context, tenantID, partnerI
 	if err != nil {
 		return nil, err
 	}
-	return &PartnerPortalView{
-		PartnerName: p.Name, Verticals: p.Verticals,
+	kind := p.Kind
+	if kind == "" {
+		kind = model.PartnerKindTourOperator
+	}
+	view := &PartnerPortalView{
+		PartnerName: p.Name, Verticals: p.Verticals, Kind: kind,
 		Assignments: assignments, Settlement: settlement,
-	}, nil
+	}
+	// Phase 63: sourced demand is best-effort — a listing failure never
+	// locks the partner out of their offers and money.
+	if svc.s.Channels != nil {
+		if sourced, err := svc.s.Channels.SourcedRequests(ctx, tenantID, partnerID, 25); err == nil {
+			view.SourcedRequests = sourced
+		}
+	}
+	return view, nil
 }
 
 // PortalURL is the shareable partner portal link (console "copy link", and

@@ -121,7 +121,7 @@ func (s pgRequests) ForClient(ctx context.Context, tenantID, clientID string, li
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, tenant_id, client_id, coalesce(conversation_id::text,''), state, version,
-		        idempotency_key, created_at, updated_at
+		        idempotency_key, source_kind, coalesce(source_partner_id::text,''), created_at, updated_at
 		 FROM service_requests WHERE client_id = $1
 		 ORDER BY created_at DESC LIMIT $2`, clientID, limit)
 	if err != nil {
@@ -132,7 +132,8 @@ func (s pgRequests) ForClient(ctx context.Context, tenantID, clientID string, li
 	for rows.Next() {
 		var r model.ServiceRequest
 		if err := rows.Scan(&r.ID, &r.TenantID, &r.ClientID, &r.ConversationID, &r.State,
-			&r.Version, &r.IdempotencyKey, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			&r.Version, &r.IdempotencyKey, &r.SourceKind, &r.SourcePartnerID,
+			&r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -152,7 +153,8 @@ func (s pgBookings) ForClient(ctx context.Context, tenantID, clientID string, li
 	// Bookings carry no client_id — resolve through their request. Both
 	// tables are RLS-scoped by the tenant GUC inside tenantTx.
 	rows, err := tx.QueryContext(ctx,
-		`SELECT b.id, b.tenant_id, b.request_id, b.quote_id, b.state, b.created_at
+		`SELECT b.id, b.tenant_id, b.request_id, b.quote_id, b.state, b.source_kind,
+		        coalesce(b.source_partner_id::text,''), b.created_at
 		 FROM bookings b JOIN service_requests r ON r.id = b.request_id
 		 WHERE r.client_id = $1
 		 ORDER BY b.created_at DESC LIMIT $2`, clientID, limit)
@@ -163,7 +165,8 @@ func (s pgBookings) ForClient(ctx context.Context, tenantID, clientID string, li
 	var out []model.Booking
 	for rows.Next() {
 		var b model.Booking
-		if err := rows.Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State, &b.CreatedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State,
+			&b.SourceKind, &b.SourcePartnerID, &b.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, b)

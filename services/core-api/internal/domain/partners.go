@@ -39,6 +39,13 @@ func (svc *PartnerService) Create(ctx context.Context, p *model.Partner) (*model
 	if p.QualityScore == 0 {
 		p.QualityScore = 1.0
 	}
+	// Phase 63: demand-channel kind, closed vocabulary.
+	if p.Kind == "" {
+		p.Kind = model.PartnerKindTourOperator
+	}
+	if !model.ValidPartnerKind(p.Kind) {
+		return nil, httpx.ErrValidation
+	}
 	p.CreatedAt = svc.s.Now()
 	if err := svc.s.Store.Partners().Create(ctx, p); err != nil {
 		return nil, err

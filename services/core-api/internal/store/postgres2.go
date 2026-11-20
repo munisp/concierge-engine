@@ -41,10 +41,10 @@ func (s pgPartners) Create(ctx context.Context, pt *model.Partner) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO partners (id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, commission_pct, phone)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		`INSERT INTO partners (id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, commission_pct, phone, kind)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,coalesce(nullif($14,''),'tour_operator'))`,
 		pt.ID, pt.TenantID, pt.Name, verticals, markets, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef,
-		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone)
+		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone, pt.Kind)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func scanPartner(row interface{ Scan(...any) error }) (*model.Partner, error) {
 	var verticals, markets []byte
 	var lat, lng sql.NullFloat64 // base-of-operations (Phase 6) is nullable
 	err := row.Scan(&pt.ID, &pt.TenantID, &pt.Name, &verticals, &markets,
-		&pt.Status, &pt.QualityScore, &pt.PayoutRail, &pt.PayoutRef, &lat, &lng, &pt.CreatedAt, &pt.CommissionPct, &pt.Phone)
+		&pt.Status, &pt.QualityScore, &pt.PayoutRail, &pt.PayoutRef, &lat, &lng, &pt.CreatedAt, &pt.CommissionPct, &pt.Phone, &pt.Kind)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -67,7 +67,7 @@ func scanPartner(row interface{ Scan(...any) error }) (*model.Partner, error) {
 	return &pt, nil
 }
 
-const partnerCols = `id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, created_at, commission_pct, phone`
+const partnerCols = `id, tenant_id, name, verticals, markets, status, quality_score, payout_rail, payout_ref, lat, lng, created_at, commission_pct, phone, kind`
 
 func (s pgPartners) Get(ctx context.Context, tenantID, id string) (*model.Partner, error) {
 	tx, err := s.p.tenantTx(ctx, tenantID)
@@ -115,9 +115,9 @@ func (s pgPartners) Update(ctx context.Context, pt *model.Partner) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`UPDATE partners SET name=$2, status=$3, quality_score=$4, payout_rail=$5, payout_ref=$6, lat=$7, lng=$8, commission_pct=$9, phone=$10 WHERE id=$1`,
+		`UPDATE partners SET name=$2, status=$3, quality_score=$4, payout_rail=$5, payout_ref=$6, lat=$7, lng=$8, commission_pct=$9, phone=$10, kind=coalesce(nullif($11,''),'tour_operator') WHERE id=$1`,
 		pt.ID, pt.Name, pt.Status, pt.QualityScore, pt.PayoutRail, pt.PayoutRef,
-		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone)
+		nullZeroFloat(pt.Lat), nullZeroFloat(pt.Lng), pt.CommissionPct, pt.Phone, pt.Kind)
 	if err != nil {
 		return err
 	}
@@ -431,7 +431,8 @@ func (s pgBookings) List(ctx context.Context, tenantID string) ([]model.Booking,
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, tenant_id, request_id, quote_id, state, created_at FROM bookings ORDER BY created_at`)
+		`SELECT id, tenant_id, request_id, quote_id, state, source_kind, coalesce(source_partner_id::text,''), created_at
+		 FROM bookings ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +440,8 @@ func (s pgBookings) List(ctx context.Context, tenantID string) ([]model.Booking,
 	var out []model.Booking
 	for rows.Next() {
 		var b model.Booking
-		if err := rows.Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State, &b.CreatedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State,
+			&b.SourceKind, &b.SourcePartnerID, &b.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, b)

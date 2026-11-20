@@ -519,6 +519,11 @@ type ServiceRequest struct {
 	State          RequestState  `json:"state"`
 	Version        int           `json:"version"`
 	Items          []ServiceItem `json:"items"`
+	// Phase 63: demand channel. SourceKind is "direct" (zero-commission)
+	// or mirrors the sourcing partner's kind; SourcePartnerID names the
+	// partner who brought the demand (empty on direct demand).
+	SourceKind      string `json:"source_kind,omitempty"`
+	SourcePartnerID string `json:"source_partner_id,omitempty"`
 	IdempotencyKey string        `json:"-"`
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
@@ -553,6 +558,10 @@ type Booking struct {
 	RequestID string    `json:"request_id"`
 	QuoteID   string    `json:"quote_id"`
 	State     string    `json:"state"`
+	// Phase 63: demand channel denormalized from the request at confirm
+	// time so margin reporting never has to join back through requests.
+	SourceKind      string `json:"source_kind,omitempty"`
+	SourcePartnerID string `json:"source_partner_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

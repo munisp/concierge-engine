@@ -759,6 +759,25 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 63 — demand channels.** Every request carries its source:
+a direct client (zero commission — the margin benchmark), a hotel
+concierge desk, a travel agency, another transport company farming
+overflow in, or a tour operator. Partners gain a channel `kind`
+(migration 0042); requests and bookings carry `source_kind` +
+`source_partner_id` (denormalized at confirm so reporting never joins
+back). Sourcing is attribution, not a parallel pipeline: a partner's
+book-on-behalf request (`POST /v1/partner/requests`, partner-key
+scoped, guest resolved through progressive registration) enters the
+standard state machine — quoting, KYC gate, dispatch, tracking all
+unchanged. The sourcing partner accrues a PENDING commission payout at
+confirm (idempotent per booking); a partner who sources AND fulfils the
+same booking is paid once — fulfilment accrual skips when a sourcing
+payout exists. `GET /v1/analytics/sources` reports per-channel gross /
+commission / net (single-currency rows only, blended totals withheld),
+the console Partners page classifies channels and shows the margin
+card, and the partner portal lists each partner's referred guests.
+See docs/phase63.md.
+
 **Phase 62 — chauffeur matching.** Dispatch becomes a scored,
 explainable decision (docs/phase62.md): crew declare capabilities
 (languages, conversation styles; migration 0041), riders mark

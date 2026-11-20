@@ -45,6 +45,20 @@ func (svc *BookingService) CreateRequest(ctx context.Context, r *model.ServiceRe
 	if r.ClientID == "" || len(r.Items) == 0 || r.IdempotencyKey == "" {
 		return nil, httpx.ErrValidation
 	}
+	// Phase 63: source vocabulary is closed; a sourced request must name
+	// its channel partner, a direct one must not.
+	if r.SourceKind == "" {
+		r.SourceKind = model.SourceDirect
+	}
+	if !model.ValidSourceKind(r.SourceKind) {
+		return nil, httpx.ErrValidation
+	}
+	if r.SourceKind == model.SourceDirect && r.SourcePartnerID != "" {
+		return nil, httpx.ErrValidation
+	}
+	if r.SourceKind != model.SourceDirect && r.SourcePartnerID == "" {
+		return nil, httpx.ErrValidation
+	}
 	if r.ID == "" {
 		r.ID = NewID()
 	}
@@ -238,9 +252,19 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 		ID: NewID(), TenantID: tenantID, RequestID: q.RequestID, QuoteID: q.ID,
 		State: "CONFIRMED", CreatedAt: svc.s.Now(),
 	}
+	// Phase 63: the demand channel travels from request onto the booking
+	// so margin reporting never joins back.
+	if rerr == nil && req.SourceKind != "" {
+		b.SourceKind, b.SourcePartnerID = req.SourceKind, req.SourcePartnerID
+	} else {
+		b.SourceKind = model.SourceDirect
+	}
 	if err := svc.s.Store.Bookings().Create(ctx, b); err != nil {
 		return nil, err
 	}
+	// Phase 63: the sourcing channel earns its commission at confirm —
+	// failure is audit-logged inside, never blocks the booking.
+	svc.s.Channels.AccrueSourcingCommission(ctx, tenantID, b)
 	if _, err := svc.Transition(ctx, tenantID, q.RequestID, model.StateConfirmed); err != nil {
 		return nil, err
 	}

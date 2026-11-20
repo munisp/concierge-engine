@@ -14,7 +14,11 @@ type Partner = {
   payout_ref?: string;
   commission_pct?: number;
   phone?: string;
+  kind?: string; // Phase 63: demand channel kind
 };
+
+// Phase 63: demand channels — the closed kind vocabulary.
+const PARTNER_KINDS = ["hotel", "travel_agency", "transport_company", "tour_operator", "other"];
 
 type Metrics = {
   total_assignments: number;
@@ -63,6 +67,7 @@ export default function Partners() {
   const [rail, setRail] = useState("MANUAL");
   const [payoutRef, setPayoutRef] = useState("");
   const [phone, setPhone] = useState("");
+  const [kind, setKind] = useState("tour_operator");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -87,6 +92,7 @@ export default function Partners() {
         payout_rail: rail,
         payout_ref: payoutRef,
         phone,
+        kind,
       });
       setName("");
       setPayoutRef("");
@@ -99,6 +105,11 @@ export default function Partners() {
 
   async function setStatus(id: string, status: string) {
     await api.put(`/v1/partners/${id}/status`, { status });
+    await load();
+  }
+
+  async function setKindFor(id: string, k: string) {
+    await api.put(`/v1/partners/${id}/kind`, { kind: k });
     await load();
   }
 
@@ -131,17 +142,25 @@ export default function Partners() {
             onChange={(e) => setPayoutRef(e.target.value)} />
           <input placeholder="WhatsApp (E.164, e.g. +234…)" value={phone}
             onChange={(e) => setPhone(e.target.value)} />
+          <select value={kind} onChange={(e) => setKind(e.target.value)} title="Demand channel kind">
+            {PARTNER_KINDS.map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}
+          </select>
           <button onClick={() => void create()} disabled={!name}>Add</button>
         </div>
       </div>
       <table>
         <thead>
-          <tr><th>Name</th><th>Verticals</th><th>Status</th><th>Quality</th><th>Rail</th><th>Comm.</th><th /></tr>
+          <tr><th>Name</th><th>Channel</th><th>Verticals</th><th>Status</th><th>Quality</th><th>Rail</th><th>Comm.</th><th /></tr>
         </thead>
         <tbody>
           {partners.map((p) => (
             <tr key={p.id}>
               <td>{p.name}</td>
+              <td>
+                <select value={p.kind ?? "tour_operator"} onChange={(e) => void setKindFor(p.id, e.target.value)}>
+                  {PARTNER_KINDS.map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}
+                </select>
+              </td>
               <td>{(p.verticals ?? []).join(", ")}</td>
               <td><strong>{p.status}</strong></td>
               <td>{p.quality_score.toFixed(2)}</td>
@@ -163,7 +182,74 @@ export default function Partners() {
       </table>
       <SettlementsCard partners={partners} onError={setError} />
       <IntegrationCard partners={partners} onError={setError} />
+      <ChannelsCard />
     </section>
+  );
+}
+
+// Phase 63: demand-channel margin. Every confirmed booking is attributed
+// to the channel that sourced it; the table shows what each channel
+// costs in commission — and what direct demand saves. Numbers render only
+// when the row is single-currency (the API withholds blended ratios).
+type SourceRow = {
+  source_kind: string;
+  bookings: number;
+  gross_minor: number;
+  commission_minor: number;
+  net_minor: number;
+  currency: string;
+  mixed_currency?: boolean;
+};
+type SourceReport = { days: number; rows: SourceRow[]; note: string };
+
+function ChannelsCard() {
+  const [rep, setRep] = useState<SourceReport | null>(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api.get<SourceReport>("/v1/analytics/sources?days=30")
+      .then(setRep)
+      .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
+  }, []);
+
+  if (err) return <div className="card"><h3>Demand channels</h3><p className="error">{err}</p></div>;
+  if (!rep) return null;
+  return (
+    <div className="card">
+      <h3>Demand channels — last {rep.days} days</h3>
+      {rep.rows.length === 0 ? (
+        <p className="muted">No confirmed bookings in this window yet.</p>
+      ) : (
+        <>
+          <table>
+            <thead>
+              <tr><th>Channel</th><th>Bookings</th><th>Gross</th><th>Commission</th><th>Net</th></tr>
+            </thead>
+            <tbody>
+              {rep.rows.map((r) => (
+                <tr key={r.source_kind}>
+                  <td>
+                    <strong>{r.source_kind.replace(/_/g, " ")}</strong>
+                    {r.source_kind === "direct" && <span className="muted"> — no channel commission</span>}
+                  </td>
+                  <td>{r.bookings}</td>
+                  {r.mixed_currency ? (
+                    <td colSpan={3} className="muted">mixed currencies — totals withheld</td>
+                  ) : (
+                    <>
+                      <td>{r.currency} {minor(r.gross_minor)}</td>
+                      <td>{r.currency} {minor(r.commission_minor)}</td>
+                      <td><strong>{r.currency} {minor(r.net_minor)}</strong></td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted">{rep.note}</p>
+        </>
+      )}
+    </div>
   );
 }
 

@@ -53,6 +53,9 @@ export interface ServiceRequest {
   state: string;
   version: number;
   items: ServiceItem[];
+  // Phase 63: demand channel ("direct" when unsourced).
+  source_kind?: string;
+  source_partner_id?: string;
 }
 
 export interface Quote {

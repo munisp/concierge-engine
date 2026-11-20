@@ -23,6 +23,10 @@ type Partner struct {
 	// Phase 57: WhatsApp number (E.164) for assignment offers. Empty = the
 	// partner is portal-link only; offers are shared by the operator.
 	Phone string `json:"phone,omitempty"`
+	// Phase 63: demand-channel kind (hotel | travel_agency |
+	// transport_company | tour_operator | other). Drives the sourcing
+	// workflow and margin analytics; legacy rows default to tour_operator.
+	Kind string `json:"kind,omitempty"`
 	Lat          float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
 	Lng          float64   `json:"lng,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`

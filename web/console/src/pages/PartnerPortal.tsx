@@ -65,6 +65,14 @@ type Portal = {
     payout_rail: string;
     totals: Record<string, number>;
   };
+  // Phase 63: demand this partner sourced (book-on-behalf).
+  sourced_requests?: {
+    id: string;
+    state: string;
+    guest_name?: string;
+    items: number;
+    created_at: string;
+  }[];
 };
 
 const minor = (n: number) => (n / 100).toFixed(2);
@@ -197,6 +205,24 @@ export default function PartnerPortal() {
           {rest.length === 0 && <tr><td colSpan={3} className="muted">No assignments yet.</td></tr>}
         </tbody>
       </table>
+      {view.sourced_requests && view.sourced_requests.length > 0 && (
+        <>
+          <h3>Guests you referred</h3>
+          <table>
+            <thead><tr><th>Guest</th><th>Request</th><th>State</th><th>Placed</th></tr></thead>
+            <tbody>
+              {view.sourced_requests.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.guest_name || "—"}</td>
+                  <td><code>{r.id.slice(0, 8)}…</code></td>
+                  <td><strong>{r.state}</strong></td>
+                  <td>{new Date(r.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
       {error && <p className="error">{error}</p>}
     </section>
   );

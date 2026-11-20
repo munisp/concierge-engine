@@ -179,6 +179,14 @@ func (svc *PartnerOpsService) AccrueCommission(ctx context.Context, tenantID, bo
 	if p.CommissionPct <= 0 {
 		return nil
 	}
+	// Phase 63: a partner who SOURCED this booking already holds a
+	// sourcing commission payout for it — the same rate is never paid
+	// twice on one booking, so fulfilment accrual skips them.
+	if svc.s.Channels != nil && svc.s.Channels.sourcingPaid(ctx, tenantID, bookingID, partnerID) {
+		svc.s.Audit.Log(ctx, tenantID, "partner", "partner.commission_merged", "partner", partnerID,
+			map[string]any{"booking_id": bookingID, "reason": "sourcing commission already accrued — single line per booking per partner"})
+		return nil
+	}
 	b, err := svc.s.Store.Bookings().Get(ctx, tenantID, bookingID)
 	if err != nil {
 		return err

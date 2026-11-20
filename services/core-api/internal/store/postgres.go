@@ -539,10 +539,12 @@ func (s pgRequests) Create(ctx context.Context, r *model.ServiceRequest) error {
 	if err == nil {
 		// idempotent replay: load and return the original
 		row := tx.QueryRowContext(ctx,
-			`SELECT id, tenant_id, client_id, coalesce(conversation_id::text,''), state, version, idempotency_key, created_at, updated_at
+			`SELECT id, tenant_id, client_id, coalesce(conversation_id::text,''), state, version, idempotency_key,
+			        source_kind, coalesce(source_partner_id::text,''), created_at, updated_at
 			 FROM service_requests WHERE id=$1`, existing)
 		if err := row.Scan(&r.ID, &r.TenantID, &r.ClientID, &r.ConversationID, &r.State,
-			&r.Version, &r.IdempotencyKey, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			&r.Version, &r.IdempotencyKey, &r.SourceKind, &r.SourcePartnerID,
+			&r.CreatedAt, &r.UpdatedAt); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -551,9 +553,10 @@ func (s pgRequests) Create(ctx context.Context, r *model.ServiceRequest) error {
 		return err
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO service_requests (id, tenant_id, client_id, conversation_id, state, version, idempotency_key)
-		 VALUES ($1,$2,$3,nullif($4,'')::uuid,$5,$6,$7)`,
-		r.ID, r.TenantID, r.ClientID, r.ConversationID, string(r.State), r.Version, r.IdempotencyKey)
+		`INSERT INTO service_requests (id, tenant_id, client_id, conversation_id, state, version, idempotency_key, source_kind, source_partner_id)
+		 VALUES ($1,$2,$3,nullif($4,'')::uuid,$5,$6,$7,coalesce(nullif($8,''),'direct'),nullif($9,'')::uuid)`,
+		r.ID, r.TenantID, r.ClientID, r.ConversationID, string(r.State), r.Version, r.IdempotencyKey,
+		r.SourceKind, r.SourcePartnerID)
 	if err != nil {
 		return err
 	}
@@ -576,10 +579,12 @@ func (s pgRequests) Get(ctx context.Context, tenantID, id string) (*model.Servic
 	defer tx.Rollback()
 	var r model.ServiceRequest
 	err = tx.QueryRowContext(ctx,
-		`SELECT id, tenant_id, client_id, coalesce(conversation_id::text,''), state, version, idempotency_key, created_at, updated_at
+		`SELECT id, tenant_id, client_id, coalesce(conversation_id::text,''), state, version, idempotency_key,
+		        source_kind, coalesce(source_partner_id::text,''), created_at, updated_at
 		 FROM service_requests WHERE id=$1`, id).
 		Scan(&r.ID, &r.TenantID, &r.ClientID, &r.ConversationID, &r.State,
-			&r.Version, &r.IdempotencyKey, &r.CreatedAt, &r.UpdatedAt)
+			&r.Version, &r.IdempotencyKey, &r.SourceKind, &r.SourcePartnerID,
+			&r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -711,8 +716,9 @@ func (s pgBookings) Create(ctx context.Context, b *model.Booking) error {
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO bookings (id, tenant_id, request_id, quote_id, state) VALUES ($1,$2,$3,$4,$5)`,
-		b.ID, b.TenantID, b.RequestID, b.QuoteID, b.State)
+		`INSERT INTO bookings (id, tenant_id, request_id, quote_id, state, source_kind, source_partner_id)
+		 VALUES ($1,$2,$3,$4,$5,coalesce(nullif($6,''),'direct'),nullif($7,'')::uuid)`,
+		b.ID, b.TenantID, b.RequestID, b.QuoteID, b.State, b.SourceKind, b.SourcePartnerID)
 	if err != nil {
 		return err
 	}
@@ -727,8 +733,10 @@ func (s pgBookings) Get(ctx context.Context, tenantID, id string) (*model.Bookin
 	defer tx.Rollback()
 	var b model.Booking
 	err = tx.QueryRowContext(ctx,
-		`SELECT id, tenant_id, request_id, quote_id, state, created_at FROM bookings WHERE id=$1`, id).
-		Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State, &b.CreatedAt)
+		`SELECT id, tenant_id, request_id, quote_id, state, source_kind, coalesce(source_partner_id::text,''), created_at
+		 FROM bookings WHERE id=$1`, id).
+		Scan(&b.ID, &b.TenantID, &b.RequestID, &b.QuoteID, &b.State,
+			&b.SourceKind, &b.SourcePartnerID, &b.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}

@@ -1,0 +1,6 @@
+# Phase 63: test-only idempotency key literal ("pg63-direct-1") tripped the
+# generic-api-key entropy rule in commit a4488759. It is a pg integration
+# test fixture, not a credential; the value was renamed in 89e6c6eb and the
+# current tree scans clean. History retains the original diff, so the
+# commit-scoped fingerprint is ignored here.
+a448875988fa1a24afe7b4deb41effa908fd950a:services/core-api/internal/store/pg_integration_phase63_test.go:generic-api-key:85

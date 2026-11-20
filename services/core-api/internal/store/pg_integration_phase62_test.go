@@ -70,7 +70,7 @@ func TestPGChauffeurMatching62(t *testing.T) {
 	a := &model.Assignment{ID: newTestUUID(), TenantID: tenant, BookingID: b1,
 		CrewMemberID: crew.ID, Status: "ASSIGNED",
 		MatchScore: 59, MatchReasons: []string{"speaks fr", "quiet-style match", "quality 9.0"},
-		CreatedAt:  now}
+		CreatedAt: now}
 	if err := s.Dispatch().CreateAssignment(ctx, a); err != nil {
 		t.Fatalf("create assignment: %v", err)
 	}

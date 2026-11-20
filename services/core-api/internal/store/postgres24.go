@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 
+	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
 )
 
@@ -43,4 +44,24 @@ func (s pgRequests) ForSource(ctx context.Context, tenantID, partnerID string, l
 		return nil, err
 	}
 	return out, tx.Commit()
+}
+
+// SetSource reattributes a booking's demand channel (Phase 64). RLS
+// scopes the row to the tenant; empty partner clears back to direct.
+func (s pgBookings) SetSource(ctx context.Context, tenantID, id, kind, partnerID string) error {
+	tx, err := s.p.tenantTx(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
+		`UPDATE bookings SET source_kind=$2, source_partner_id=nullif($3,'')::uuid WHERE id=$1`,
+		id, kind, partnerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return httpx.ErrNotFound
+	}
+	return tx.Commit()
 }

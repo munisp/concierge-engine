@@ -9,13 +9,13 @@ import "time"
 // is stored. Scope strings gate the public surface ("read", "write",
 // "webhooks:manage").
 type ApiKey struct {
-	ID         string    `json:"id"`
-	TenantID   string    `json:"tenant_id"`
-	Name       string    `json:"name"`
-	Prefix     string    `json:"prefix"` // "cek_" + 8 — safe to log/display
-	SecretHash string    `json:"-"`
-	Scopes     []string  `json:"scopes"`
-	Revoked    bool      `json:"revoked"`
+	ID         string   `json:"id"`
+	TenantID   string   `json:"tenant_id"`
+	Name       string   `json:"name"`
+	Prefix     string   `json:"prefix"` // "cek_" + 8 — safe to log/display
+	SecretHash string   `json:"-"`
+	Scopes     []string `json:"scopes"`
+	Revoked    bool     `json:"revoked"`
 	// Phase 56: when set, the key is partner-scoped — it authenticates only
 	// the /v1/partner/* surface for this partner, never the tenant API.
 	PartnerID  string    `json:"partner_id,omitempty"`
@@ -26,12 +26,12 @@ type ApiKey struct {
 // WebhookSubscription is a tenant's outbound event subscription. Secret signs
 // every delivery (X-Concierge-Signature: sha256=<hmac>).
 type WebhookSubscription struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	URL       string    `json:"url"`
-	Events    []string  `json:"events"` // e.g. ["booking.*", "quote.created"]; "*" = all
-	Secret    string    `json:"-"`      // returned once at creation, never re-exposed
-	Active    bool      `json:"active"`
+	ID       string   `json:"id"`
+	TenantID string   `json:"tenant_id"`
+	URL      string   `json:"url"`
+	Events   []string `json:"events"` // e.g. ["booking.*", "quote.created"]; "*" = all
+	Secret   string   `json:"-"`      // returned once at creation, never re-exposed
+	Active   bool     `json:"active"`
 	// Phase 56: when set, this subscription receives only events whose
 	// payload carries a matching partner_id — the partner-facing feed.
 	PartnerID string    `json:"partner_id,omitempty"`

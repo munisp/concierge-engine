@@ -23,7 +23,11 @@ type View360 = {
   client: Client;
   referral_code: string;
   preferences: { key: string; value: string; consent_scope: string }[];
-  requests: { id: string; state: string; created_at: string }[];
+  requests: {
+    id: string; state: string; created_at: string;
+    // Phase 63/64: demand channel ("direct"/absent when unsourced).
+    source_kind?: string; source_partner_id?: string;
+  }[];
   bookings: { id: string; state: string; created_at: string }[];
   cases: { id: string; title: string; priority: string; state: string; created_at: string }[];
   conversations: { id: string; channel: string; state: string; created_at: string }[];
@@ -274,7 +278,12 @@ export default function Clients() {
               <table><tbody>
                 {view.requests.map((r) => (
                   <tr key={r.id}><td>{r.id.slice(0, 8)}</td><td>{r.state}</td>
-                    <td>{new Date(r.created_at).toLocaleDateString()}</td></tr>
+                    <td>{new Date(r.created_at).toLocaleDateString()}</td>
+                    <td>
+                      {/* Phase 64: channel badge + operator reattribution for
+                          email/phone-arrived partner demand. */}
+                      <SourceBadge request={r} onChanged={() => open360(view.client.id)} />
+                    </td></tr>
                 ))}
               </tbody></table>
             )}
@@ -332,6 +341,62 @@ export default function Clients() {
         </>
       )}
     </div>
+  );
+}
+
+// Phase 64: demand-channel badge + reattribution. Demand that arrived by
+// email or phone lands as "direct"; when the operator learns a partner
+// actually sourced it, they pick the partner here — the request (and its
+// confirmed booking) move to the channel, and the sourcing commission
+// accrues once. Clearing back to direct never rewrites accrued payouts.
+type SourcePartner = { id: string; name: string; kind?: string };
+
+function SourceBadge({ request, onChanged }: {
+  request: { id: string; source_kind?: string; source_partner_id?: string };
+  onChanged: () => Promise<void> | void;
+}) {
+  const [partners, setPartners] = useState<SourcePartner[] | null>(null);
+  const [err, setErr] = useState("");
+  const kind = request.source_kind || "direct";
+
+  const loadPartners = async () => {
+    if (partners !== null) return;
+    try {
+      setPartners(await api.get<SourcePartner[]>("/v1/partners"));
+    } catch (e) { setErr(String(e)); }
+  };
+
+  const reattribute = async (partnerID: string) => {
+    setErr("");
+    try {
+      await api.post(`/v1/requests/${request.id}/source`, { partner_id: partnerID });
+      await onChanged();
+    } catch (e) { setErr(String(e)); }
+  };
+
+  return (
+    <span style={{ whiteSpace: "nowrap" }}>
+      <span className={kind === "direct" ? "muted" : "badge"}>
+        {kind === "direct"
+          ? "direct"
+          : kind.replace(/_/g, " ")}
+      </span>
+      <select
+        style={{ marginLeft: 6 }}
+        value={request.source_partner_id ?? ""}
+        onFocus={() => void loadPartners()}
+        onChange={(e) => void reattribute(e.target.value)}
+        title="Attribute demand source (partner, or direct)"
+      >
+        <option value="">direct</option>
+        {(partners ?? []).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}{p.kind ? ` (${p.kind.replace(/_/g, " ")})` : ""}
+          </option>
+        ))}
+      </select>
+      {err && <span className="error"> {err}</span>}
+    </span>
   );
 }
 

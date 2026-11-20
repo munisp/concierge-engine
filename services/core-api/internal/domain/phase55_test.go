@@ -100,8 +100,8 @@ func TestPackValidation55(t *testing.T) {
 		t.Fatalf("valid pack: %v", err)
 	}
 	bad := map[string][]model.IndustryPack{
-		"bad slug":   {{Slug: "F1 Weekend!", Name: "x", ServiceIDs: []string{"a"}}},
-		"no name":    {{Slug: "ok-slug", ServiceIDs: []string{"a"}}},
+		"bad slug":    {{Slug: "F1 Weekend!", Name: "x", ServiceIDs: []string{"a"}}},
+		"no name":     {{Slug: "ok-slug", ServiceIDs: []string{"a"}}},
 		"no services": {{Slug: "ok-slug", Name: "x"}},
 		"dup slug": {
 			{Slug: "dup", Name: "a", ServiceIDs: []string{"a"}},

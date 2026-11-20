@@ -82,6 +82,8 @@ type BookingStore interface {
 	Get(ctx context.Context, tenantID, id string) (*model.Booking, error)
 	UpdateState(ctx context.Context, tenantID, id, state string) error
 	List(ctx context.Context, tenantID string) ([]model.Booking, error)
+	// SetSource reattributes a booking's demand channel (Phase 64).
+	SetSource(ctx context.Context, tenantID, id, kind, partnerID string) error
 	// ForClient: bookings on the client's requests, newest first (Phase 15).
 	ForClient(ctx context.Context, tenantID, clientID string, limit int) ([]model.Booking, error)
 }

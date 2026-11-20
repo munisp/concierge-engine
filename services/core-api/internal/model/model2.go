@@ -7,15 +7,15 @@ import "time"
 // Partner is a vetted supplier in the partner network (ground, aviation,
 // security, events...). Partner routing reuses the dispatch assignment path.
 type Partner struct {
-	ID           string    `json:"id"`
-	TenantID     string    `json:"tenant_id"`
-	Name         string    `json:"name"`
-	Verticals    []string  `json:"verticals"`
-	Markets      []string  `json:"markets"`
-	Status       string    `json:"status"` // PENDING | VETTED | SUSPENDED
-	QualityScore float64   `json:"quality_score"`
-	PayoutRail   string    `json:"payout_rail"` // MOJALOOP | MANUAL
-	PayoutRef    string    `json:"payout_ref,omitempty"`
+	ID           string   `json:"id"`
+	TenantID     string   `json:"tenant_id"`
+	Name         string   `json:"name"`
+	Verticals    []string `json:"verticals"`
+	Markets      []string `json:"markets"`
+	Status       string   `json:"status"` // PENDING | VETTED | SUSPENDED
+	QualityScore float64  `json:"quality_score"`
+	PayoutRail   string   `json:"payout_rail"` // MOJALOOP | MANUAL
+	PayoutRef    string   `json:"payout_ref,omitempty"`
 	// Phase 56: commission on partner-routed confirmed bookings. Accrues as
 	// a PENDING payout (idempotent per booking+partner) that flows through
 	// the Phase 48 settlement batching like any other payout.
@@ -26,10 +26,10 @@ type Partner struct {
 	// Phase 63: demand-channel kind (hotel | travel_agency |
 	// transport_company | tour_operator | other). Drives the sourcing
 	// workflow and margin analytics; legacy rows default to tour_operator.
-	Kind string `json:"kind,omitempty"`
-	Lat          float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
-	Lng          float64   `json:"lng,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	Kind      string    `json:"kind,omitempty"`
+	Lat       float64   `json:"lat,omitempty"` // base-of-operations for proximity ranking (Phase 6)
+	Lng       float64   `json:"lng,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // CorporateAccount: consolidated monthly billing for EA bookers (Phase 2).

@@ -60,9 +60,9 @@ func (svc *JourneyService) AddLeg(ctx context.Context, tenantID, clientID string
 		ID: NewID(), TenantID: tenantID, ClientID: clientID,
 		Kind: in.Kind, Title: in.Title, Ref: in.Ref,
 		FlightNumber: strings.ToUpper(strings.TrimSpace(in.FlightNumber)),
-		Origin: strings.ToUpper(strings.TrimSpace(in.Origin)),
-		Destination: strings.ToUpper(strings.TrimSpace(in.Destination)),
-		SchedStart: in.SchedStart, SchedEnd: in.SchedEnd,
+		Origin:       strings.ToUpper(strings.TrimSpace(in.Origin)),
+		Destination:  strings.ToUpper(strings.TrimSpace(in.Destination)),
+		SchedStart:   in.SchedStart, SchedEnd: in.SchedEnd,
 		BookingID: in.BookingID, LinkedLegID: in.LinkedLegID,
 		Status: model.LegScheduled, Source: "manual",
 		CreatedAt: now, UpdatedAt: now,
@@ -118,7 +118,7 @@ func (svc *JourneyService) LinkGroundLeg(ctx context.Context, tenantID, bookingI
 		Kind: model.LegGround, Title: title,
 		Origin: it.PickupAddress, Destination: it.DropoffAddress,
 		SchedStart: time.Unix(it.PickupAt, 0).UTC(),
-		BookingID: bookingID, LinkedLegID: flightLegID,
+		BookingID:  bookingID, LinkedLegID: flightLegID,
 	}
 	return svc.AddLeg(ctx, tenantID, req.ClientID, in)
 }
@@ -195,8 +195,8 @@ func (svc *JourneyService) ApplyFlightUpdate(ctx context.Context, tenantID, flig
 		}
 		svc.s.Events.Emit(ctx, tenantID, "itinerary", gl.ID, "journey.ground_adjusted",
 			map[string]any{"booking_id": gl.BookingID, "flight": leg.FlightNumber,
-				"old_pickup": oldPickup.Format(time.RFC3339),
-				"new_pickup": gl.ActualStart.Format(time.RFC3339),
+				"old_pickup":    oldPickup.Format(time.RFC3339),
+				"new_pickup":    gl.ActualStart.Format(time.RFC3339),
 				"delay_minutes": rep.DelayMinutes})
 		svc.notifyGroundAdjusted(ctx, tenantID, leg, &gl)
 	}

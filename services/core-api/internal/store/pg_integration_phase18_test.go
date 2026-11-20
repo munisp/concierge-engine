@@ -22,14 +22,14 @@ func pgQuoteBornBooking(t *testing.T, s Store, tenant, clientID, idem string) st
 	t.Helper()
 	req := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: clientID,
 		State: "NEW", Version: 1, IdempotencyKey: idem,
-		Items:    []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
+		Items:     []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := s.Requests().Create(ctx18, req); err != nil {
 		t.Fatalf("request: %v", err)
 	}
 	q := &model.Quote{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
 		Version: 1, Origin: "INSTANT", TotalMinor: 10000, Currency: "EUR",
-		Lines: []model.QuoteLine{{Description: "base", AmountMinor: 10000}},
+		Lines:     []model.QuoteLine{{Description: "base", AmountMinor: 10000}},
 		ExpiresAt: time.Now().Add(time.Hour).UTC(), CreatedAt: time.Now().UTC()}
 	if err := s.Quotes().Create(ctx18, q); err != nil {
 		t.Fatalf("quote: %v", err)
@@ -260,7 +260,7 @@ func TestPGQuoteExpiresAtNull(t *testing.T) {
 	}
 	req := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: cl.ID,
 		State: "NEW", Version: 1, IdempotencyKey: "pg-qnull-r1",
-		Items:    []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
+		Items:     []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatalf("request: %v", err)
@@ -269,7 +269,7 @@ func TestPGQuoteExpiresAtNull(t *testing.T) {
 	// zero time would defeat the expiring-quotes partial index.
 	q := &model.Quote{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
 		Version: 1, Origin: "INSTANT", TotalMinor: 9000, Currency: "EUR",
-		Lines: []model.QuoteLine{{Description: "base", AmountMinor: 9000}},
+		Lines:     []model.QuoteLine{{Description: "base", AmountMinor: 9000}},
 		CreatedAt: time.Now().UTC()}
 	if err := s.Quotes().Create(ctx, q); err != nil {
 		t.Fatalf("quote create: %v", err)

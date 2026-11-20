@@ -53,14 +53,14 @@ func TestPGClientErasureRoundtrip(t *testing.T) {
 	// a booking created pre-erasure is still listed ForClient afterwards.
 	req := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: c.ID,
 		State: "NEW", Version: 1, IdempotencyKey: "pg-erasure-r1",
-		Items:    []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
+		Items:     []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatalf("request: %v", err)
 	}
 	q := &model.Quote{ID: newTestUUID(), TenantID: tenant, RequestID: req.ID,
 		Version: 1, Origin: "INSTANT", TotalMinor: 22000, Currency: "EUR",
-		Lines: []model.QuoteLine{{Description: "base", AmountMinor: 22000}},
+		Lines:     []model.QuoteLine{{Description: "base", AmountMinor: 22000}},
 		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now().UTC()}
 	if err := s.Quotes().Create(ctx, q); err != nil {
 		t.Fatalf("quote: %v", err)

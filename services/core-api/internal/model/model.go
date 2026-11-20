@@ -522,11 +522,11 @@ type ServiceRequest struct {
 	// Phase 63: demand channel. SourceKind is "direct" (zero-commission)
 	// or mirrors the sourcing partner's kind; SourcePartnerID names the
 	// partner who brought the demand (empty on direct demand).
-	SourceKind      string `json:"source_kind,omitempty"`
-	SourcePartnerID string `json:"source_partner_id,omitempty"`
-	IdempotencyKey string        `json:"-"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
+	SourceKind      string    `json:"source_kind,omitempty"`
+	SourcePartnerID string    `json:"source_partner_id,omitempty"`
+	IdempotencyKey  string    `json:"-"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type QuoteLine struct {
@@ -553,16 +553,16 @@ type Quote struct {
 }
 
 type Booking struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	RequestID string    `json:"request_id"`
-	QuoteID   string    `json:"quote_id"`
-	State     string    `json:"state"`
+	ID        string `json:"id"`
+	TenantID  string `json:"tenant_id"`
+	RequestID string `json:"request_id"`
+	QuoteID   string `json:"quote_id"`
+	State     string `json:"state"`
 	// Phase 63: demand channel denormalized from the request at confirm
 	// time so margin reporting never has to join back through requests.
-	SourceKind      string `json:"source_kind,omitempty"`
-	SourcePartnerID string `json:"source_partner_id,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	SourceKind      string    `json:"source_kind,omitempty"`
+	SourcePartnerID string    `json:"source_partner_id,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type FleetResource struct {
@@ -603,8 +603,8 @@ type Assignment struct {
 	// (pickup_at + hours, else tenant default duration) or set explicitly.
 	// Zero window = schedule unknown; conflict gating only applies to
 	// windowed assignments.
-	StartAt   time.Time `json:"start_at,omitempty"`
-	EndAt     time.Time `json:"end_at,omitempty"`
+	StartAt time.Time `json:"start_at,omitempty"`
+	EndAt   time.Time `json:"end_at,omitempty"`
 	// Phase 62: the match decision, recorded at assign time — score and
 	// human-readable reasons, never an opaque ranking.
 	MatchScore   int       `json:"match_score,omitempty"`

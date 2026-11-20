@@ -43,7 +43,7 @@ func TestPGQuoteTaxAndTenantConfig(t *testing.T) {
 	}
 	req := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: cl.ID,
 		State: "NEW", Version: 1, IdempotencyKey: "pg-tax-r1",
-		Items:    []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
+		Items:     []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatalf("request: %v", err)

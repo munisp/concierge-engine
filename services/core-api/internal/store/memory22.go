@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"concierge-engine/services/core-api/internal/httpx"
 	"concierge-engine/services/core-api/internal/model"
 )
 
@@ -26,4 +27,18 @@ func (s *memRequests) ForSource(_ context.Context, tenantID, partnerID string, l
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// SetSource reattributes a booking's demand channel (Phase 64 operator
+// reattribution). Tenant-checked like every other booking write.
+func (s *memBookings) SetSource(_ context.Context, tenantID, id, kind, partnerID string) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	b, ok := s.m.bookings[id]
+	if !ok || b.TenantID != tenantID {
+		return httpx.ErrNotFound
+	}
+	b.SourceKind = kind
+	b.SourcePartnerID = partnerID
+	return nil
 }

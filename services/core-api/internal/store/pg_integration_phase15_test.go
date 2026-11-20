@@ -49,7 +49,7 @@ func TestPGClientLocaleSearchMerge(t *testing.T) {
 	// Loser carries a request and a case; merge folds them into the winner.
 	req := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: loser.ID,
 		State: "NEW", Version: 1, IdempotencyKey: "pg-merge-r1",
-		Items:    []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
+		Items:     []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatalf("request: %v", err)
@@ -98,7 +98,7 @@ func TestPGBookingsForClient(t *testing.T) {
 	}
 	req := &model.ServiceRequest{ID: newTestUUID(), TenantID: tenant, ClientID: c.ID,
 		State: "NEW", Version: 1, IdempotencyKey: "pg-bfc-r1",
-		Items:    []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
+		Items:     []model.ServiceItem{{ID: newTestUUID(), TenantID: tenant, Vertical: "CHAUFFEUR_POINT_TO_POINT"}},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := s.Requests().Create(ctx, req); err != nil {
 		t.Fatal(err)

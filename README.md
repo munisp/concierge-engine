@@ -759,6 +759,19 @@ as the AML accountability record. The only provider is operator review
 ("manual") — external KYC vendors attach behind the same case shape when
 contracted. See docs/phase47.md.
 
+**Phase 64 — channel engagement closure.** Sourced bookings stop
+being silent: confirming one messages the guest on the service lane
+naming the arranger ("arranged for you by …", WhatsApp by default,
+email for email-only guests) and notifies the sourcing partner with
+the portal link — detached, idempotent, audit-logged, never blocking
+the confirm. And demand that arrives off-channel (a partner's guest
+phoning or emailing in, landing as "direct") is now correctable:
+`POST /v1/requests/{id}/source` reattributes the request and its
+confirmed bookings to the real sourcing partner, accruing the missed
+sourcing commission exactly once; clearing back to direct never
+rewrites accrued payouts. The console 360 shows a channel badge per
+request with an inline reattribution dropdown. See docs/phase64.md.
+
 **Phase 63 — demand channels.** Every request carries its source:
 a direct client (zero commission — the margin benchmark), a hotel
 concierge desk, a travel agency, another transport company farming

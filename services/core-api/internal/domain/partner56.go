@@ -210,9 +210,9 @@ func (svc *PartnerOpsService) AccrueCommission(ctx context.Context, tenantID, bo
 		ID: NewID(), TenantID: tenantID, PartnerID: partnerID,
 		BookingID: bookingID, QuoteID: b.QuoteID,
 		AmountMinor: amount, Currency: currency, Rail: rail,
-		State:         model.PayoutPending,
+		State:          model.PayoutPending,
 		IdempotencyKey: PartnerCommissionKey(bookingID, partnerID),
-		CreatedAt:     svc.s.Now(),
+		CreatedAt:      svc.s.Now(),
 	}
 	if err := svc.s.Store.Payouts().Create(ctx, po); err != nil {
 		return err
@@ -248,11 +248,11 @@ func (svc *PartnerOpsService) cancelCommission(ctx context.Context, tenantID, bo
 // PartnerSettlement is the partner-facing money view: accrued commission
 // payouts grouped by saga state, plus minor-unit totals.
 type PartnerSettlement struct {
-	PartnerID     string         `json:"partner_id"`
-	CommissionPct float64        `json:"commission_pct"`
-	PayoutRail    string         `json:"payout_rail"`
+	PartnerID     string           `json:"partner_id"`
+	CommissionPct float64          `json:"commission_pct"`
+	PayoutRail    string           `json:"payout_rail"`
 	Totals        map[string]int64 `json:"totals"` // state → minor units
-	Payouts       []model.Payout `json:"payouts"`
+	Payouts       []model.Payout   `json:"payouts"`
 }
 
 // Settlement summarizes a partner's commission payouts by saga state.

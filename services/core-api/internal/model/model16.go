@@ -33,7 +33,7 @@ type ItineraryLeg struct {
 	// the flight leg it meets, so a delay can cascade.
 	LinkedLegID  string    `json:"linked_leg_id,omitempty"`
 	Kind         string    `json:"kind"`
-	Title        string    `json:"title"` // "BA75 LHR → LOS", "Eko Hotel (check-out 11:00)"
+	Title        string    `json:"title"`         // "BA75 LHR → LOS", "Eko Hotel (check-out 11:00)"
 	Ref          string    `json:"ref,omitempty"` // PNR / confirmation
 	FlightNumber string    `json:"flight_number,omitempty"`
 	Origin       string    `json:"origin,omitempty"`

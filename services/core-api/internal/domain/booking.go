@@ -265,6 +265,9 @@ func (svc *BookingService) Confirm(ctx context.Context, tenantID, quoteID string
 	// Phase 63: the sourcing channel earns its commission at confirm —
 	// failure is audit-logged inside, never blocks the booking.
 	svc.s.Channels.AccrueSourcingCommission(ctx, tenantID, b)
+	// Phase 64: guest + sourcing partner get the confirmation off the
+	// request path — channel latency never holds the API response.
+	svc.s.Channels.notifySourcedConfirmedDetached(ctx, tenantID, b)
 	if _, err := svc.Transition(ctx, tenantID, q.RequestID, model.StateConfirmed); err != nil {
 		return nil, err
 	}

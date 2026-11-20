@@ -618,8 +618,10 @@ func (s pgRequests) Update(ctx context.Context, r *model.ServiceRequest) error {
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx,
-		`UPDATE service_requests SET state=$2, version=$3, updated_at=now() WHERE id=$1`,
-		r.ID, string(r.State), r.Version)
+		`UPDATE service_requests SET state=$2, version=$3, updated_at=now(),
+		        source_kind=coalesce(nullif($4,''),'direct'), source_partner_id=nullif($5,'')::uuid
+		 WHERE id=$1`,
+		r.ID, string(r.State), r.Version, r.SourceKind, r.SourcePartnerID)
 	if err != nil {
 		return err
 	}
